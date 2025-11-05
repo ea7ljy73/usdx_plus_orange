@@ -11,5 +11,10 @@ Plan de Optimización y Personalización para usdx_plus_orange.ino
 3.  **Optimizar la función `ssb()` (Generación de SSB):**
     *   Revisar las multiplicaciones del filtro FIR de la transformada de Hilbert y reemplazarlas por operaciones de desplazamiento y suma más eficientes.
 
-4.  **Mejorar la capacidad de respuesta de la `loop()` principal:**
-    *   Reimplementar la lógica de manejo de botones utilizando una máquina de estados no bloqueante basada en `millis()` para eliminar los `delay()` y las esperas activas.
+4**Optimizar `arctan3()` para Cálculo de Fase Rápido:**
+    *   **Análisis:** La función `arctan3`, usada en `ssb()`, depende de una división de punto flotante que consume ciclos de CPU valiosos.
+    *   **Propuesta:** Crear una tabla de consulta (LUT) para la función interna `_atan2`. La tabla contendrá valores precalculados, permitiendo reemplazar la división por una búsqueda rápida, lo que acelerará notablemente la ruta de procesamiento de la señal de SSB.
+
+5**Optimizar `process_minsky()` para Generación de CW:**
+    *   **Análisis:** La generación de tonos de CW en `process_minsky()` utiliza aritmética que puede ser optimizada.
+    *   **Propuesta:** Convertir los cálculos a **aritmética de punto fijo**. Esto es considerablemente más rápido que la emulación de punto flotante y mejorará la eficiencia y precisión en modo CW.
