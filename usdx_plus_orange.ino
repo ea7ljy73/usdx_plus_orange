@@ -90,9 +90,9 @@
 #endif //!TX_ENABLE
 
 #ifdef SWR_METER
-float FWD;
-float SWR;
-float ref_V = 5 * 1.15;
+uint32_t FWD_scaled; // Scaled by 100
+uint32_t SWR_scaled; // Scaled by 1000
+uint16_t ref_V_scaled = 575; // Scaled by 100 (5.75 * 100)
 static uint32_t stimer;
 #define PIN_FWD  A6
 #define PIN_REF  A7
@@ -2626,17 +2626,19 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
     static int16_t zz1,zz2;
     zz2=zz1;
     zz1=za0;
-    za0=(30*(za0-zz2)+25*zz1) >> 5;                                  //300-Hz
+    // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+    za0=((((za0-zz2) << 5) - ((za0-zz2) << 1))+((zz1 << 4) + (zz1 << 3) + zz1)) >> 5;                                  //300-Hz
 
     // 4th Order (SR=8kHz) IIR in Direct Form I, 8x8:16
     switch(filt){
-      case 1: zb0=((za0+(za1<<1)+za2) >> 1)-((13*zb1+11*zb2) >> 4); break;   // 0-2900Hz filter, first biquad section
+      case 1: zb0=((za0+(za1<<1)+za2) >> 1)-((((zb1 << 3) + (zb1 << 2) + zb1) + ((zb2 << 3) + (zb2 << 1) + zb2)) >> 4); break;   // 0-2900Hz filter, first biquad section
       case 2: zb0=((za0+(za1<<1)+za2) >> 1)-(((zb1<<1)+(zb2<<3)) >> 4); break;     // 0-2400Hz filter, first biquad section
       case 3: zb0=((za0+(za1<<1)+za2) >> 1)-(zb2 >> 2); break;     //0-1800Hz  elliptic
     }
 
     switch(filt){
-      case 1: zc0=((zb0+(zb1<<1)+zb2) >> 1)-((18*zc1+11*zc2) >> 4); break;     // 0-2900Hz filter, second biquad section
+      // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+      case 1: zc0=((zb0+(zb1<<1)+zb2) >> 1)-((((zc1 << 4) + (zc1 << 1)) + ((zc2 << 3) + (zc2 << 1) + zc2)) >> 4); break;     // 0-2900Hz filter, second biquad section
       case 2: zc0=((zb0+(zb1<<1)+zb2) >> 2)-(((zc1<<2)+(zc2<<3)) >> 4); break;       // 0-2400Hz filter, second biquad section
       case 3: zc0=((zb0+(zb1<<1)+zb2) >> 2)-(zc2 >> 2); break;       //0-1800Hz  elliptic
     }
@@ -2655,34 +2657,42 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
 #ifdef FILTER_700HZ
     if(cw_tone == 0){
       switch(filt){
-        case 4: zb0=((za0+(za1<<1)+za2) >> 1)+((41L*zb1-23L*zb2) >> 5); break;   //500-1000Hz
-        case 5: zb0=5*(za0-(za1<<1)+za2)+((105L*zb1-58L*zb2) >> 6); break;   //650-840Hz
-        case 6: zb0=3*(za0-(za1<<1)+za2)+((108L*zb1-61L*zb2) >> 6); break;   //650-750Hz
-        case 7: zb0=((za0<<1)-3*za1+(za2<<1))+((111L*zb1-62L*zb2) >> 6); break; //630-680Hz
+        case 4: zb0=((za0+(za1<<1)+za2) >> 1)+((((zb1 << 5) + (zb1 << 3) + zb1) - ((zb2 << 4) + (zb2 << 2) + (zb2 << 1) + zb2)) >> 5); break;   //500-1000Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 5: zb0=(((za0-(za1<<1)+za2) << 2) + (za0-(za1<<1)+za2))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 1))) >> 6); break;   //650-840Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 6: zb0=(((za0-(za1<<1)+za2) << 1) + (za0-(za1<<1)+za2))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 2)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + zb2)) >> 6); break;   //650-750Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 7: zb0=((za0<<1)-((za1 << 1) + za1)+(za2<<1))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + (zb2 << 1))) >> 6); break; //630-680Hz
       }
 
       switch(filt){
-        case 4: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((105L*zc1-52L*zc2) >> 6); break;      //500-1000Hz
-        case 5: zc0=((zb0+(zb1<<1)+zb2)+97L*zc1-57L*zc2) >> 6; break;      //650-840Hz
-        case 6: zc0=(zb0+zb1+zb2+104L*zc1-60L*zc2) >> 6; break;       //650-750Hz
-        case 7: zc0=(zb1+109L*zc1-62L*zc2) >> 6; break;               //630-680Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 4: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6); break;      //500-1000Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 5: zc0=((zb0+(zb1<<1)+zb2)+((zc1 << 6) + (zc1 << 5) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + zc2)) >> 6; break;      //650-840Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 6: zc0=(zb0+zb1+zb2+((zc1 << 6) + (zc1 << 5) + (zc1 << 3))-((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6; break;       //650-750Hz
+        case 7: zc0=(zb1 + (((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + (zc1 << 2) + zc1)) - (((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1)))) >> 6; break;               //630-680Hz
       }
     }
     if(cw_tone == 1)
 #endif
     {
       switch(filt){
-        case 4: zb0=za1+((114L*zb1-57L*zb2) >> 6); break; //600Hz+-250Hz
-        case 5: zb0=za1+((113L*zb1-60L*zb2) >> 6); break; //600Hz+-100Hz
-        case 6: zb0=za1+((110L*zb1-62L*zb2) >> 6); break; //600Hz+-50Hz
-        case 7: zb0=za1+((110L*zb1-61L*zb2) >> 6); break; //600Hz+-18Hz
+        case 4: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 4) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + zb2)) >> 6); break; //600Hz+-250Hz
+        case 5: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 4) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2))) >> 6); break; //600Hz+-100Hz
+        case 6: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + (zb2 << 1))) >> 6); break; //600Hz+-50Hz
+        case 7: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + zb2)) >> 6); break; //600Hz+-18Hz
       }
 
       switch(filt){
-        case 4: zc0=(zb0-(zb1<<1)+zb2)+((95L*zc1-52L*zc2) >> 6); break; //600Hz+-250Hz
-        case 5: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((106L*zc1-59L*zc2) >> 6); break; //600Hz+-100Hz
-        case 6: zc0=((zb0-(zb1<<1)+zb2) >> 4)+((113L*zc1-62L*zc2) >> 6); break; //600Hz+-50Hz
-        case 7: zc0=((zb0-(zb1<<1)+zb2) >> 5)+((112L*zc1-62L*zc2) >> 6); break; //600Hz+-18Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 4: zc0=(zb0-(zb1<<1)+zb2)+(((((zc1 << 6) + (zc1 << 5)) - zc1)-((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6); break; //600Hz+-250Hz
+        case 5: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + (zc1 << 1)) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 1) + zc2)) >> 6); break; //600Hz+-100Hz
+        case 6: zc0=((zb0-(zb1<<1)+zb2) >> 4)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 4) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1))) >> 6); break; //600Hz+-50Hz
+        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
+        case 7: zc0=((zb0-(zb1<<1)+zb2) >> 5)+(((((zc1 << 6) + (zc1 << 5) + (zc1 << 4))) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1))) >> 6); break; //600Hz+-18Hz
       }
     }
     zc2=zc1;
