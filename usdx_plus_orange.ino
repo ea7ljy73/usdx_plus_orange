@@ -3641,6 +3641,19 @@ uint8_t smode = 1;
 uint32_t max_absavg256 = 0;
 int16_t dbm;
 
+const uint16_t log10_lut[] = {0, 301, 477, 602, 699, 778, 845, 903, 954};
+
+int32_t log10_fix(uint32_t n) {
+    if (n == 0) return -32768; // Represents negative infinity
+    int32_t l = 0;
+    uint32_t n_copy = n;
+    while (n_copy >= 10) {
+        n_copy /= 10;
+        l++;
+    }
+    return l * 1000 + log10_lut[n_copy-1];
+}
+
 static int16_t smeter_cnt = 0;
 
 int16_t smeter(int16_t ref = 0)
@@ -3648,10 +3661,21 @@ int16_t smeter(int16_t ref = 0)
   max_absavg256 = max(_absavg256, max_absavg256); // peak
 
   if((smode) && ((++smeter_cnt % 2048) == 0)){   // slowed down display slightly
-    float rms = (float)max_absavg256 * (float)(1 << att2);
-    if(dsp_cap == SDR) rms /= (256.0 * 1024.0 * (float)R * 8.0 * 500.0 * 1.414 / (0.707 * 1.1));   // = -98.8dB  1 rx gain stage: rmsV = ADC value * AREF / [ADC DR * processing gain * receiver gain * "RMS compensation"]
-    else               rms /= (256.0 * 1024.0 * (float)R * 2.0 * 100.0 * 120.0 / (1.750 * 5.0));   // = -94.6dB
-    dbm = 10 * log10((rms * rms) / 50) + 30 - ref; //from rmsV to dBm at 50R
+    
+    int32_t log_val = log10_fix(max_absavg256);
+    if (log_val > -32768) {
+        int32_t dbm_scaled;
+        if(dsp_cap == SDR) {
+            // dbm = 20 * log10(max_absavg256) + 6 * att2 - 184.6
+            dbm_scaled = (20 * log_val) / 1000 + 6 * att2 - 185;
+        } else {
+            // dbm = 20 * log10(max_absavg256) + 6 * att2 - 176.2
+            dbm_scaled = (20 * log_val) / 1000 + 6 * att2 - 176;
+        }
+        dbm = dbm_scaled - ref;
+    } else {
+        dbm = -127 - ref; // Minimum S-meter reading
+    }
 
     lcd.noCursor(); 
     if(smode == 1){ // dBm meter
@@ -4767,43 +4791,54 @@ void readSWR()
     pwr = ((((Vinc) * (Vinc)) - 0.25 ) * k);
     Eff = (pwr) / ((power_mW) / 1000) * 100; */
 {
-  float v_FWD = 0;
-  float v_REF = 0;
+  int32_t v_FWD_raw = 0;
+  int32_t v_REF_raw = 0;
   for (int i = 0; i <= 7; i++) {
-    v_FWD = v_FWD + (ref_V / 1023) * (int) analogRead(PIN_FWD);
-    v_REF = v_REF + (ref_V / 1023) * (int) analogRead(PIN_REF);
+    v_FWD_raw += analogRead(PIN_FWD);
+    v_REF_raw += analogRead(PIN_REF);
     delay(5);
   }
-  v_FWD = v_FWD / 8;
-  v_REF = v_REF / 8;
 
-  float p_FWD = sq(v_FWD);
-  float p_REV = sq(v_REF);
+  // v_scaled is voltage * 10000
+  int32_t v_FWD_scaled = ((int64_t)v_FWD_raw * 57500) / 8184;
+  int32_t v_REF_scaled = ((int64_t)v_REF_raw * 57500) / 8184;
 
-  float vRatio = v_REF / v_FWD;
-  float VSWR = (1 + vRatio) / (1 - vRatio);
+  // p_scaled is power * 100
+  int32_t p_FWD_scaled = ((int64_t)v_FWD_scaled * v_FWD_scaled) / 1000000;
+  int32_t p_REV_scaled = ((int64_t)v_REF_scaled * v_REF_scaled) / 1000000;
 
-  if ((VSWR > 9.99) || (VSWR < 1) )VSWR = 9.99;
+  int32_t VSWR_scaled;
+  if (v_FWD_scaled <= v_REF_scaled) {
+    VSWR_scaled = 9999; // Indicate infinite SWR with a large value
+  } else {
+    VSWR_scaled = ((int64_t)(v_FWD_scaled + v_REF_scaled) * 100) / (v_FWD_scaled - v_REF_scaled);
+  }
 
-  if (p_FWD != FWD || VSWR != SWR) {
+  if (VSWR_scaled > 9999) VSWR_scaled = 9999;
+  if (VSWR_scaled < 100) VSWR_scaled = 100;
+
+  // To avoid changing global variable types, convert back to float at the end.
+  float p_FWD_float = (float)p_FWD_scaled / 100.0;
+  float VSWR_float = (float)VSWR_scaled / 100.0;
+
+  if (p_FWD_float != FWD || VSWR_float != SWR) {
       lcd.noCursor();
       lcd.setCursor(0,0);
       switch(swrmeter) {
         case 1:
-          lcd.print(" "); lcd.print(floor(100*p_FWD)/100); lcd.print("W  SWR:"); lcd.print(floor(100*VSWR)/100);
+          lcd.print(" "); lcd.print(p_FWD_float, 2); lcd.print("W  SWR:"); lcd.print(VSWR_float, 2);
           break;
         case 2:
-          lcd.print(" F:"); lcd.print(floor(100*p_FWD)/100); lcd.print("W R:"); lcd.print(floor(100*p_REV)/100); lcd.print("W");
+          lcd.print(" F:"); lcd.print(p_FWD_float, 2); lcd.print("W R:"); lcd.print((float)p_REV_scaled/100.0, 2); lcd.print("W");
           break;
         case 3:
-          lcd.print(" F:"); lcd.print(floor(100*v_FWD)/100); lcd.print("V R:"); lcd.print(floor(100*v_REF)/100); lcd.print("V");
+          lcd.print(" F:"); lcd.print((float)v_FWD_scaled/10000.0, 2); lcd.print("V R:"); lcd.print((float)v_REF_scaled/10000.0, 2); lcd.print("V");
           break;
       }
-    FWD = p_FWD;
-    SWR = VSWR;
+      FWD = p_FWD_float;
+      SWR = VSWR_float;
   }
-}
-#endif
+}#endif
 void setup()
 {
   digitalWrite(KEY_OUT, LOW);  // for safety: to prevent exploding PA MOSFETs, in case there was something still biasing them.
