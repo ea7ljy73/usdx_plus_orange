@@ -2058,7 +2058,7 @@ inline int16_t ssb(int16_t in)
   }
 #endif
   if(mode == USB)
-    return dp * ( _F_SAMP_TX / _UA); // calculate frequency-difference based on phase-difference
+    return dp << 3; // calculate frequency-difference based on phase-difference
   else
     return dp * (-_F_SAMP_TX / _UA);
 }
@@ -4810,27 +4810,29 @@ void handle_swr() {
     uint16_t avg_fwd = swr_fwd_sum >> 3;
     uint16_t avg_ref = swr_ref_sum >> 3;
 
-    float new_SWR;
+    uint32_t new_SWR_scaled;
     if (avg_fwd <= avg_ref) {
-      new_SWR = 99.99;
+      new_SWR_scaled = 9999;
     } else {
       uint32_t swr_num = avg_fwd + avg_ref;
       uint32_t swr_den = avg_fwd - avg_ref;
-      new_SWR = (float)swr_num / (float)swr_den;
+      new_SWR_scaled = (swr_num * 100) / swr_den;
     }
 
-    if (new_SWR > 99.99) new_SWR = 99.99;
-    if (new_SWR < 1.0) new_SWR = 1.0;
+    if (new_SWR_scaled > 9999) new_SWR_scaled = 9999;
+    if (new_SWR_scaled < 100) new_SWR_scaled = 100;
 
-    float v_FWD = (float)avg_fwd * ref_V / 1023.0;
-    float p_FWD = v_FWD * v_FWD;
+    uint32_t v_FWD_scaled = (uint32_t)avg_fwd * ref_V_scaled / 1023;
+    uint32_t p_FWD_scaled = v_FWD_scaled * v_FWD_scaled / 100;
 
-    if (p_FWD != FWD || new_SWR != SWR) {
+    if (p_FWD_scaled != FWD_scaled || new_SWR_scaled != SWR_scaled) {
+        FWD_scaled = p_FWD_scaled;
+        SWR_scaled = new_SWR_scaled;
         lcd.noCursor();
         lcd.setCursor(0,0);
         switch(swrmeter) {
           case 1:
-            lcd.print(" "); lcd.print(floor(100*p_FWD)/100); lcd.print("W  SWR:"); lcd.print(floor(100*new_SWR)/100);
+            lcd.print(" "); lcd.print(FWD_scaled / 100); lcd.print("."); lcd.print(FWD_scaled % 100); lcd.print("W SWR:"); lcd.print(SWR_scaled / 100); lcd.print("."); lcd.print(SWR_scaled % 100);
             break;
           case 2:
             {
