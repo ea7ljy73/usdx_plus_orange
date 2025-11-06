@@ -4,5 +4,18 @@ El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings
 El fichero a optimizar es usdx_plus_orange.ino.md
 Las optimizaciones estan en el fichero optimizations.md.
 Vamos hacerlas en orden.
-Empezaremos con la optimizacion 1, solo esta de momento.
+Empezaremos con la optimizacion 3, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
+
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+El fichero a optimizar es usdx_plus_orange.ino.md
+Las optimizaciones estan en el fichero optimizations.md.
+Procederemos con la optimizacion 3, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
+
+
+
+Seguiremos con la optimizacion 3, solo esta de momento.
 Analizala y no implementes nada, muestrame un plan.

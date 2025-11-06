@@ -4838,7 +4838,8 @@ void readSWR()
       FWD = p_FWD_float;
       SWR = VSWR_float;
   }
-}#endif
+}
+#endif
 void setup()
 {
   digitalWrite(KEY_OUT, LOW);  // for safety: to prevent exploding PA MOSFETs, in case there was something still biasing them.
