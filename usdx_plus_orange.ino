@@ -90,9 +90,9 @@
 #endif //!TX_ENABLE
 
 #ifdef SWR_METER
-uint32_t FWD_scaled; // Scaled by 100
-uint32_t SWR_scaled; // Scaled by 1000
-uint16_t ref_V_scaled = 575; // Scaled by 100 (5.75 * 100)
+float FWD;
+float SWR;
+float ref_V = 5 * 1.15;
 static uint32_t stimer;
 #define PIN_FWD  A6
 #define PIN_REF  A7
@@ -1931,42 +1931,18 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);  // Actual ADC sample-ra
 #define MULTI_ADC  1  // multiple ADC conversions for more sensitive (+12dB) microphone input
 //#define QUAD  1       // invert TX signal for phase changes > 180
 
-
-const int16_t atan2_lut[256] PROGMEM = {
-  0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 43, 47, 51, 54, 58,
-  61, 65, 68, 71, 74, 77, 80, 83, 86, 89, 92, 94, 97, 100, 102, 105,
-  107, 109, 112, 114, 116, 118, 120, 122, 124, 126, 128, 130, 131, 133, 135, 136,
-  138, 139, 141, 142, 143, 144, 146, 147, 148, 149, 150, 151, 152, 153, 153, 154,
-  155, 156, 156, 157, 158, 158, 159, 159, 160, 160, 161, 161, 161, 162, 162, 162,
-  162, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163, 163,
-  162, 162, 162, 162, 161, 161, 161, 160, 160, 159, 159, 158, 158, 157, 156, 156,
-  155, 154, 153, 153, 152, 151, 150, 149, 148, 147, 146, 144, 143, 142, 141, 139,
-  138, 136, 135, 133, 131, 130, 128, 126, 124, 122, 120, 118, 116, 114, 112, 109,
-  107, 105, 102, 100, 97, 94, 92, 89, 86, 83, 80, 77, 74, 71, 68, 65,
-  61, 58, 54, 51, 47, 43, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4,
-  0, -4, -8, -12, -16, -20, -24, -28, -32, -36, -40, -43, -47, -51, -54, -58,
-  -61, -65, -68, -71, -74, -77, -80, -83, -86, -89, -92, -94, -97, -100, -102, -105,
-  -107, -109, -112, -114, -116, -118, -120, -122, -124, -126, -128, -130, -131, -133, -135, -136,
-  -138, -139, -141, -142, -143, -144, -146, -147, -148, -149, -150, -151, -152, -153, -153, -154,
-  -155, -156, -156, -157, -158, -158, -159, -159, -160, -160, -161, -161, -161, -162, -162, -162
-};
-
-inline int16_t arctan3(int16_t q, int16_t i)
-{
+inline int16_t arctan3(int16_t q, int16_t i)  // error ~ 0.8 degree
+{ // source: [1] http://www-labs.iro.umontreal.ca/~mignotte/IFT2425/Documents/EfficientApproximationArctgFunction.pdf
+//#define _atan2(z)  (_UA/8 + _UA/44) * z  // very much of a simplification...not accurate at all, but fast
+#define _atan2(z)  (_UA/8 + _UA/22 - _UA/22 * z) * z  //derived from (5) [1]   note that atan2 can overflow easily so keep _UA low
+//#define _atan2(z)  (_UA/8 + _UA/24 - _UA/24 * z) * z  //derived from (7) [1]
   int16_t r;
-  if (abs(q) > abs(i)) {
-    uint8_t index = (uint8_t)(((uint32_t)abs(i) << 8) / abs(q));
-    r = _UA / 4 - (int16_t)pgm_read_word_near(atan2_lut + index);
-  } else {
-    if (i == 0) {
-      r = 0;
-    } else {
-      uint8_t index = (uint8_t)(((uint32_t)abs(q) << 8) / abs(i));
-      r = (int16_t)pgm_read_word_near(atan2_lut + index);
-    }
-  }
-  r = (i < 0) ? _UA / 2 - r : r;
-  return (q < 0) ? -r : r;
+  if(abs(q) > abs(i))
+    r = _UA / 4 - _atan2(abs(i) / abs(q));        // arctan(z) = 90-arctan(1/z)
+  else
+    r = (i == 0) ? 0 : _atan2(abs(q) / abs(i));   // arctan(z)
+  r = (i < 0) ? _UA / 2 - r : r;                  // arctan(-z) = -arctan(z)
+  return (q < 0) ? -r : r;                        // arctan(-z) = -arctan(z)
 }
 
 #define magn(i, q) (abs(i) > abs(q) ? abs(i) + abs(q) / 4 : abs(q) + abs(i) / 4) // approximation of: magnitude = sqrt(i*i + q*q); error 0.95dB
@@ -2005,9 +1981,7 @@ inline int16_t ssb(int16_t in)
   v[15] = (ac - dc);               // hpf (dc decoupling)
 #endif //DIG_MODE
   i = v[7] * 2;  // 6dB gain for i, q  (to prevent quanitization issues in hilbert transformer and phase calculation, corrected for magnitude calc)
-  int16_t v4_10 = v[4] - v[10];
-  q = (((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + ((v4_10 << 4) + (v4_10 << 2) + v4_10) + ((v[6] - v[8]) << 4)) >> 6;
-  q += (v[6] - v[8]);
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 64 + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i / 2, q / 2);  // -6dB gain (correction)
 #else  // !MORE_MIC_GAIN
@@ -2019,10 +1993,7 @@ inline int16_t ssb(int16_t in)
   z1 = ac;
 
   i = v[7];
-  int16_t v4_10 = v[4] - v[10];
-  int16_t v6_8 = v[6] - v[8];
-  q = (((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + ((v4_10 << 4) + (v4_10 << 2) + v4_10) + ((v6_8 << 4) - v6_8)) >> 7;
-  q += v6_8 >> 1;
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i, q);
 #endif  // MORE_MIC_GAIN
@@ -2058,7 +2029,7 @@ inline int16_t ssb(int16_t in)
   }
 #endif
   if(mode == USB)
-    return dp << 3; // calculate frequency-difference based on phase-difference
+    return dp * ( _F_SAMP_TX / _UA); // calculate frequency-difference based on phase-difference
   else
     return dp * (-_F_SAMP_TX / _UA);
 }
@@ -2128,9 +2099,9 @@ volatile int8_t p_sin = 0;     // initialized with A*sin(0) = 0
 volatile int8_t n_cos = 448/4; // initialized with A*cos(t) = A
 inline void process_minsky() // Minsky circle sample [source: https://www.cl.cam.ac.uk/~am21/hakmemc.html, ITEM 149]: p_sin+=n_cos*2*PI*f/fs; n_cos-=p_sin*2*PI*f/fs;
 {
-  int16_t alpha = (tones[cw_tone] * 804) / _F_SAMP_TX;
-  p_sin += (alpha * n_cos) >> 7;
-  n_cos -= (alpha * p_sin) >> 7;
+  int8_t alpha127 = tones[cw_tone]/*cw_offset*/ * 798 / _F_SAMP_TX;  // alpha = f_tone * 2 * pi / fs
+  p_sin += alpha127 * n_cos / 127;
+  n_cos -= alpha127 * p_sin / 127;
 }
 
 // CW Key-click shaping, ramping up/down amplitude with sample-interval of 60us. Tnx: Yves HB9EWY https://groups.io/g/ucx/message/5107
@@ -2615,96 +2586,141 @@ uint8_t prev_filt[] = { 0 , 4 }; // default filter for modes resp. CW, SSB
   out=zc0/8
 */
 inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
-{
+{ 
   static int16_t za1,za2;
   static int16_t zb0,zb1,zb2;
   static int16_t zc0,zc1,zc2;
-
+  
   if(filt < 4)
   {  // for SSB filters
     // 1st Order (SR=8kHz) IIR in Direct Form I, 8x8:16
+    // M0PUB: There was a bug here, since za1 == zz1 at this point in the code, and the old algorithm for the 300Hz high-pass was:
+    //    za0=(29*(za0-zz1)+50*za1)/64;
+    //    zz2=zz1;
+    //    zz1=za0;
+    // After correction, this filter still introduced almost 6dB attenuation, so I adjusted the coefficients
     static int16_t zz1,zz2;
+    //za0=(29*(za0-zz1)+50*za1)/64;                                //300-Hz
     zz2=zz1;
     zz1=za0;
-    // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-    za0=((((za0-zz2) << 5) - ((za0-zz2) << 1))+((zz1 << 4) + (zz1 << 3) + zz1)) >> 5;                                  //300-Hz
+    //za0=(30*(za0-zz2)+0*zz1)/32;                                 //300-Hz with very steep roll-off down to 0 Hz
+    za0=(30*(za0-zz2)+25*zz1)/32;                                  //300-Hz
 
     // 4th Order (SR=8kHz) IIR in Direct Form I, 8x8:16
     switch(filt){
-      case 1: zb0=((za0+(za1<<1)+za2) >> 1)-((((zb1 << 3) + (zb1 << 2) + zb1) + ((zb2 << 3) + (zb2 << 1) + zb2)) >> 4); break;   // 0-2900Hz filter, first biquad section
-      case 2: zb0=((za0+(za1<<1)+za2) >> 1)-(((zb1<<1)+(zb2<<3)) >> 4); break;     // 0-2400Hz filter, first biquad section
-      case 3: zb0=((za0+(za1<<1)+za2) >> 1)-(zb2 >> 2); break;     //0-1800Hz  elliptic
+      case 1: zb0=(za0+2*za1+za2)/2-(13*zb1+11*zb2)/16; break;   // 0-2900Hz filter, first biquad section
+      case 2: zb0=(za0+2*za1+za2)/2-(2*zb1+8*zb2)/16; break;     // 0-2400Hz filter, first biquad section
+      //case 3: zb0=(za0+2*za1+za2)/2-(4*zb1+2*zb2)/16; break;     // 0-2400Hz filter, first biquad section
+      case 3: zb0=(za0+2*za1+za2)/2-(0*zb1+4*zb2)/16; break;     //0-1800Hz  elliptic
+      //case 3: zb0=(za0+7*za1+za2)/16-(-24*zb1+9*zb2)/16; break;  //0-1700Hz  elliptic with slope
     }
-
+  
     switch(filt){
-      // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-      case 1: zc0=((zb0+(zb1<<1)+zb2) >> 1)-((((zc1 << 4) + (zc1 << 1)) + ((zc2 << 3) + (zc2 << 1) + zc2)) >> 4); break;     // 0-2900Hz filter, second biquad section
-      case 2: zc0=((zb0+(zb1<<1)+zb2) >> 2)-(((zc1<<2)+(zc2<<3)) >> 4); break;       // 0-2400Hz filter, second biquad section
-      case 3: zc0=((zb0+(zb1<<1)+zb2) >> 2)-(zc2 >> 2); break;       //0-1800Hz  elliptic
+      case 1: zc0=(zb0+2*zb1+zb2)/2-(18*zc1+11*zc2)/16; break;     // 0-2900Hz filter, second biquad section
+      case 2: zc0=(zb0+2*zb1+zb2)/4-(4*zc1+8*zc2)/16; break;       // 0-2400Hz filter, second biquad section
+      //case 3: zc0=(zb0+2*zb1+zb2)/4-(1*zc1+9*zc2)/16; break;       // 0-2400Hz filter, second biquad section
+      case 3: zc0=(zb0+2*zb1+zb2)/4-(0*zc1+4*zc2)/16; break;       //0-1800Hz  elliptic
+      //case 3: zc0=(zb0+zb1+zb2)/16-(-22*zc1+47*zc2)/64; break;   //0-1700Hz  elliptic with slope
     }
-
+   /*switch(filt){
+      case 1: zb0=za0; break; //0-4000Hz (pass-through)
+      case 2: zb0=(10*(za0+2*za1+za2)+16*zb1-17*zb2)/32; break;    //0-2500Hz  elliptic -60dB@3kHz
+      case 3: zb0=(7*(za0+2*za1+za2)+48*zb1-18*zb2)/32; break;     //0-1700Hz  elliptic
+    }
+  
+    switch(filt){
+      case 1: zc0=zb0; break; //0-4000Hz (pass-through)
+      case 2: zc0=(8*(zb0+zb2)+13*zb1-43*zc1-52*zc2)/64; break;   //0-2500Hz  elliptic -60dB@3kHz
+      case 3: zc0=(4*(zb0+zb1+zb2)+22*zc1-47*zc2)/64; break;   //0-1700Hz  elliptic
+    }*/
+  
     zc2=zc1;
     zc1=zc0;
-
+  
     zb2=zb1;
     zb1=zb0;
-
+  
     za2=za1;
     za1=za0;
-
+    
     return zc0;
   } else { // for CW filters
+    //   (2nd Order (SR=4465Hz) IIR in Direct Form I, 8x8:16), adding 64x front-gain (to deal with later division)
+//#define FILTER_700HZ   1
 #ifdef FILTER_700HZ
     if(cw_tone == 0){
       switch(filt){
-        case 4: zb0=((za0+(za1<<1)+za2) >> 1)+((((zb1 << 5) + (zb1 << 3) + zb1) - ((zb2 << 4) + (zb2 << 2) + (zb2 << 1) + zb2)) >> 5); break;   //500-1000Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 5: zb0=(((za0-(za1<<1)+za2) << 2) + (za0-(za1<<1)+za2))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 1))) >> 6); break;   //650-840Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 6: zb0=(((za0-(za1<<1)+za2) << 1) + (za0-(za1<<1)+za2))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 2)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + zb2)) >> 6); break;   //650-750Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 7: zb0=((za0<<1)-((za1 << 1) + za1)+(za2<<1))+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + (zb2 << 1))) >> 6); break; //630-680Hz
+        case 4: zb0=(za0+2*za1+za2)/2+(41L*zb1-23L*zb2)/32; break;   //500-1000Hz
+        case 5: zb0=5*(za0-2*za1+za2)+(105L*zb1-58L*zb2)/64; break;   //650-840Hz
+        case 6: zb0=3*(za0-2*za1+za2)+(108L*zb1-61L*zb2)/64; break;   //650-750Hz
+        case 7: zb0=(2*za0-3*za1+2*za2)+(111L*zb1-62L*zb2)/64; break; //630-680Hz       
+        //case 4: zb0=(0*za0+1*za1+0*za2)+(28*zb1-14*zb2)/16; break; //600Hz+-250Hz
+        //case 5: zb0=(0*za0+1*za1+0*za2)+(28*zb1-15*zb2)/16; break; //600Hz+-100Hz
+        //case 6: zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //600Hz+-50Hz
+        //case 7: zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //630Hz+-18Hz
       }
-
+    
       switch(filt){
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 4: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6); break;      //500-1000Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 5: zc0=((zb0+(zb1<<1)+zb2)+((zc1 << 6) + (zc1 << 5) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + zc2)) >> 6; break;      //650-840Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 6: zc0=(zb0+zb1+zb2+((zc1 << 6) + (zc1 << 5) + (zc1 << 3))-((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6; break;       //650-750Hz
-        case 7: zc0=(zb1 + (((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + (zc1 << 2) + zc1)) - (((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1)))) >> 6; break;               //630-680Hz
+        case 4: zc0=(zb0-2*zb1+zb2)/4+(105L*zc1-52L*zc2)/64; break;      //500-1000Hz
+        case 5: zc0=((zb0+2*zb1+zb2)+97L*zc1-57L*zc2)/64; break;      //650-840Hz
+        case 6: zc0=((zb0+zb1+zb2)+104L*zc1-60L*zc2)/64; break;       //650-750Hz
+        case 7: zc0=((zb1)+109L*zc1-62L*zc2)/64; break;               //630-680Hz
+        //case 4: zc0=(zb0-2*zb1+zb2)/1+(24*zc1-13*zc2)/16; break; //600Hz+-250Hz
+        //case 5: zc0=(zb0-2*zb1+zb2)/4+(26*zc1-14*zc2)/16; break; //600Hz+-100Hz
+        //case 6: zc0=(zb0-2*zb1+zb2)/16+(28*zc1-15*zc2)/16; break; //600Hz+-50Hz
+        //case 7: zc0=(zb0-2*zb1+zb2)/32+(27*zc1-15*zc2)/16; break; //630Hz+-18Hz
       }
     }
     if(cw_tone == 1)
 #endif
     {
       switch(filt){
-        case 4: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 4) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + zb2)) >> 6); break; //600Hz+-250Hz
-        case 5: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 4) + zb1) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2))) >> 6); break; //600Hz+-100Hz
-        case 6: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + (zb2 << 1))) >> 6); break; //600Hz+-50Hz
-        case 7: zb0=za1+((((zb1 << 6) + (zb1 << 5) + (zb1 << 3) + (zb1 << 2) + (zb1 << 1)) - ((zb2 << 5) + (zb2 << 4) + (zb2 << 3) + (zb2 << 2) + zb2)) >> 6); break; //600Hz+-18Hz
-      }
+        //case 4: zb0=(1*za0+2*za1+1*za2)+(90L*zb1-38L*zb2)/64; break; //600Hz+-250Hz
+        //case 5: zb0=(1*za0+2*za1+1*za2)/2+(102L*zb1-52L*zb2)/64; break; //600Hz+-100Hz
+        //case 6: zb0=(1*za0+2*za1+1*za2)/2+(107L*zb1-57L*zb2)/64; break; //600Hz+-50Hz
+        //case 7: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-61L*zb2)/64; break; //600Hz+-25Hz
+        
+        case 4: zb0=(0*za0+1*za1+0*za2)+(114L*zb1-57L*zb2)/64; break; //600Hz+-250Hz
+        case 5: zb0=(0*za0+1*za1+0*za2)+(113L*zb1-60L*zb2)/64; break; //600Hz+-100Hz
+        case 6: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-62L*zb2)/64; break; //600Hz+-50Hz
+        case 7: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-61L*zb2)/64; break; //600Hz+-18Hz
+        //case 8: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-60L*zb2)/64; break; //591Hz+-12Hz
 
-      switch(filt){
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 4: zc0=(zb0-(zb1<<1)+zb2)+(((((zc1 << 6) + (zc1 << 5)) - zc1)-((zc2 << 5) + (zc2 << 4) + (zc2 << 2))) >> 6); break; //600Hz+-250Hz
-        case 5: zc0=((zb0-(zb1<<1)+zb2) >> 2)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 3) + (zc1 << 1)) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 1) + zc2)) >> 6); break; //600Hz+-100Hz
-        case 6: zc0=((zb0-(zb1<<1)+zb2) >> 4)+((((zc1 << 6) + (zc1 << 5) + (zc1 << 4) + zc1) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1))) >> 6); break; //600Hz+-50Hz
-        // Opt: Reemplaza multiplicación por desplazamiento de bits para mayor eficiencia
-        case 7: zc0=((zb0-(zb1<<1)+zb2) >> 5)+(((((zc1 << 6) + (zc1 << 5) + (zc1 << 4))) - ((zc2 << 5) + (zc2 << 4) + (zc2 << 3) + (zc2 << 2) + (zc2 << 1))) >> 6); break; //600Hz+-18Hz
+        /*case 4: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+7L*zb2)/64; break; //600Hz+-250Hz
+        case 5: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-15L*zb1+4L*zb2)/64; break; //600Hz+-100Hz
+        case 6: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+2L*zb2)/64; break; //600Hz+-50Hz
+        case 7: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+3L*zb2)/64; break; //600Hz+-18Hz*/
       }
+    
+      switch(filt){
+        //case 4: zc0=(zb0-2*zb1+zb2)/4+(95L*zc1-44L*zc2)/64; break; //600Hz+-250Hz
+        //case 5: zc0=(zb0-2*zb1+zb2)/8+(104L*zc1-53L*zc2)/64; break; //600Hz+-100Hz
+        //case 6: zc0=(zb0-2*zb1+zb2)/16+(106L*zc1-56L*zc2)/64; break; //600Hz+-50Hz
+        //case 7: zc0=(zb0-2*zb1+zb2)/32+(112L*zc1-62L*zc2)/64; break; //600Hz+-25Hz
+        
+        case 4: zc0=(zb0-2*zb1+zb2)/1+(95L*zc1-52L*zc2)/64; break; //600Hz+-250Hz
+        case 5: zc0=(zb0-2*zb1+zb2)/4+(106L*zc1-59L*zc2)/64; break; //600Hz+-100Hz
+        case 6: zc0=(zb0-2*zb1+zb2)/16+(113L*zc1-62L*zc2)/64; break; //600Hz+-50Hz
+        case 7: zc0=(zb0-2*zb1+zb2)/32+(112L*zc1-62L*zc2)/64; break; //600Hz+-18Hz
+        //case 8: zc0=(zb0-2*zb1+zb2)/64+(113L*zc1-63L*zc2)/64; break; //591Hz+-12Hz
+        
+        /*case 4: zc0=(zb0-2*zb1+zb2)/1+zc1-zc2+(31L*zc1+12L*zc2)/64; break; //600Hz+-250Hz
+        case 5: zc0=(zb0-2*zb1+zb2)/4+2*zc1-zc2+(-22L*zc1+5L*zc2)/64; break; //600Hz+-100Hz
+        case 6: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-15L*zc1+2L*zc2)/64; break; //600Hz+-50Hz
+        case 7: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-16L*zc1+2L*zc2)/64; break; //600Hz+-18Hz*/
+      } 
     }
     zc2=zc1;
     zc1=zc0;
-
+  
     zb2=zb1;
     zb1=zb0;
-
+  
     za2=za1;
     za1=za0;
-
-    return zc0 >> 3; // compensate the front-end gain
+    
+    //return zc0 / 64; // compensate the 64x front-end gain
+    return zc0 / 8; // compensate the front-end gain
   }
 }
 
@@ -3621,43 +3637,23 @@ volatile int16_t rit = 0;
 // We measure the average amplitude of the signal (see slow_dsp()) but the S-meter should be based on RMS value.
 // So we multiply by 0.707/0.639 in an attempt to roughly compensate, although that only really works if the input
 // is a sine wave
-uint8_t smode = 2;
+uint8_t smode = 1;
 uint32_t max_absavg256 = 0;
 int16_t dbm;
 
 static int16_t smeter_cnt = 0;
-
-
-// Función auxiliar para el cálculo del logaritmo
-uint8_t log2_32(uint32_t x) {
-  uint8_t r = 0;
-  if (x == 0) return 0;
-  while (x >>= 1) {
-    r++;
-  }
-  return r;
-}
 
 int16_t smeter(int16_t ref = 0)
 {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
 
   if((smode) && ((++smeter_cnt % 2048) == 0)){   // slowed down display slightly
+    float rms = (float)max_absavg256 * (float)(1 << att2);
+    if(dsp_cap == SDR) rms /= (256.0 * 1024.0 * (float)R * 8.0 * 500.0 * 1.414 / (0.707 * 1.1));   // = -98.8dB  1 rx gain stage: rmsV = ADC value * AREF / [ADC DR * processing gain * receiver gain * "RMS compensation"]
+    else               rms /= (256.0 * 1024.0 * (float)R * 2.0 * 100.0 * 120.0 / (1.750 * 5.0));   // = -94.6dB
+    dbm = 10 * log10((rms * rms) / 50) + 30 - ref; //from rmsV to dBm at 50R
 
-    if (max_absavg256 > 0) {
-        // Formula optimizada: dbm = 6*log2(signal) + 6*att - C
-        int16_t db_signal = 6 * log2_32(max_absavg256);
-        int16_t db_gain = 6 * att2;
-
-        // Constante de calibración precalculada para evitar floats
-        int16_t db_cal = (dsp_cap == SDR) ? 185 : 176;
-
-        dbm = db_signal + db_gain - db_cal - ref;
-    } else {
-        dbm = -130; // Valor mínimo si no hay señal
-    }
-
-    lcd.noCursor();
+    lcd.noCursor(); 
     if(smode == 1){ // dBm meter
       lcd.setCursor(9, 0); lcd.print((int16_t)dbm); lcd.print(F("dBm "));
     }
@@ -4011,13 +4007,14 @@ void show_banner(){
   const char* cap_label[] = { "SSB", "DSP", "SDR" };
   if(ssb_cap || dsp_cap){ lcd.print('-'); lcd.print(cap_label[dsp_cap]); }
 #else
-  lcd.print(F("EA7LJY"));
+  //lcd.print(F("uSDX"));
+  lcd.print(F(ARID));
 #endif //QCX
   lcd.print('\x01'); lcd_blanks(); lcd_blanks();
 }
 
-const char* const vfosel_label[] PROGMEM = { "A", "B"/*, "Split"*/ };
-const char* const mode_label[5] PROGMEM = { "LSB", "USB", "CW ", "FM ", "AM " };
+const char* vfosel_label[] = { "A", "B"/*, "Split"*/ };
+const char* mode_label[5] = { "LSB", "USB", "CW ", "FM ", "AM " };
 
 inline void display_vfo(int32_t f){
   lcd.setCursor(0, 1);
@@ -4043,18 +4040,6 @@ inline void display_vfo(int32_t f){
 volatile uint8_t event;
 //volatile uint8_t menumode = 0;  // 0=not in menu, 1=selects menu item, 2=selects parameter value
 volatile uint8_t prev_menumode = 0;
-volatile uint32_t display_timer = 0;
-
-enum ptt_state_t { PTT_IDLE, PTT_DEBOUNCE, PTT_PRESSED };
-uint8_t ptt_state = PTT_IDLE;
-uint32_t ptt_timer = 0;
-
-enum swr_state_t { SWR_IDLE, SWR_READING, SWR_CALCULATE };
-uint8_t swr_state = SWR_IDLE;
-uint8_t swr_sample_count = 0;
-uint32_t swr_fwd_sum = 0;
-uint32_t swr_ref_sum = 0;
-uint32_t swr_timer = 0;
 volatile int8_t menu = 0;  // current parameter id selected in menu
 
 #define pgm_cache_item(addr, sz) byte _item[sz]; memcpy_P(_item, addr, sz);  // copy array item from PROGMEM to SRAM
@@ -4114,7 +4099,7 @@ void actionCommon(uint8_t action, uint8_t *ptr, uint8_t size){
   eeprom_addr += size;
 }
 
-template<typename T> void paramAction(uint8_t action, volatile T& value, uint8_t menuid, const __FlashStringHelper* label, const char* const enumArray[], int32_t _min, int32_t _max, bool continuous){
+template<typename T> void paramAction(uint8_t action, volatile T& value, uint8_t menuid, const __FlashStringHelper* label, const char* enumArray[], int32_t _min, int32_t _max, bool continuous){
   switch(action){
     case UPDATE:
     case UPDATE_MENU:
@@ -4129,9 +4114,7 @@ template<typename T> void paramAction(uint8_t action, volatile T& value, uint8_t
         if((_min < 0) && (value >= 0)) lcd.print('+');  // add + sign for positive values, in case negative values are supported
         lcd.print(value);
       } else {
-        char buffer[16];
-        strcpy_P(buffer, (PGM_P)pgm_read_word(&(enumArray[value])));
-        lcd.print(buffer);
+        lcd.print(enumArray[value]);
       }
       lcd_blanks(); lcd_blanks(); //lcd.setCursor(0, 1);
       //if(action == UPDATE) paramAction(SAVE, value, menuid, label, enumArray, _min, _max, continuous, init_val);
@@ -4554,13 +4537,8 @@ void Command_UK(char k1, char k2)
   cat_key = ((k1 - '0') << 4) | (k2 - '0');
   if(cat_key & 0x40){ encoder_val--; cat_key &= 0x3f; }
   if(cat_key & 0x80){ encoder_val++; cat_key &= 0x3f; }
-  char Catbuffer[6];
-  Catbuffer[0] = 'U';
-  Catbuffer[1] = 'K';
-  Catbuffer[2] = k1;
-  Catbuffer[3] = k2;
-  Catbuffer[4] = ';';
-  Catbuffer[5] = '\0';
+  char Catbuffer[16];
+  sprintf(Catbuffer, "UK%c%c;", k1, k2);
   Serial.print(Catbuffer);
 }
 
@@ -4573,12 +4551,8 @@ void Command_UD()
 
 void Command_UA(char en)
 {
-  char Catbuffer[5];
-  Catbuffer[0] = 'U';
-  Catbuffer[1] = 'A';
-  Catbuffer[2] = (_cat_streaming = (en == '1')) + '0';
-  Catbuffer[3] = ';';
-  Catbuffer[4] = '\0';
+  char Catbuffer[16];
+  sprintf(Catbuffer, "UA%01u;", (_cat_streaming = (en == '1')));
   Serial.print(Catbuffer);
   if(_cat_streaming){ Serial.print("US"); cat_streaming = true; }
 }
@@ -4736,12 +4710,8 @@ void Command_RS()
 
 void Command_VX(char mode)
 {
-  char Catbuffer[5];
-  Catbuffer[0] = 'V';
-  Catbuffer[1] = 'X';
-  Catbuffer[2] = mode;
-  Catbuffer[3] = ';';
-  Catbuffer[4] = '\0';
+  char Catbuffer[16];
+  sprintf(Catbuffer, "VX%c;",mode);
   Serial.print(Catbuffer);
 }
 
@@ -4783,75 +4753,54 @@ void build_lut()
 }
 
 #ifdef SWR_METER
-void readSWR() {
-  if (swr_state == SWR_IDLE) {
-    swr_state = SWR_READING;
-    swr_sample_count = 0;
-    swr_fwd_sum = 0;
-    swr_ref_sum = 0;
-    swr_timer = millis();
+void readSWR()
+// reads FWD / REF values from A6 and A7 and computes SWR
+// credit Duwayne, KV4QB
+/* This should similar as PE1DDA's (more direct) approach:
+    busvoltage = ina219.getBusVoltage_V();
+    current_mA = ina219.getCurrent_mA();
+    power_mW = ina219.getPower_mW();
+    Vinc = analogRead(3);
+    Vref = analogRead(2);
+    SWR = (Vinc + Vref) / (Vinc - Vref);
+    Vinc = ((Vinc * 5.0) / 1024.0) + 0.5;
+    pwr = ((((Vinc) * (Vinc)) - 0.25 ) * k);
+    Eff = (pwr) / ((power_mW) / 1000) * 100; */
+{
+  float v_FWD = 0;
+  float v_REF = 0;
+  for (int i = 0; i <= 7; i++) {
+    v_FWD = v_FWD + (ref_V / 1023) * (int) analogRead(PIN_FWD);
+    v_REF = v_REF + (ref_V / 1023) * (int) analogRead(PIN_REF);
+    delay(5);
   }
-}
+  v_FWD = v_FWD / 8;
+  v_REF = v_REF / 8;
 
-void handle_swr() {
-  if (swr_state == SWR_READING) {
-    if (millis() - swr_timer > 5) {
-      swr_fwd_sum += analogRead(PIN_FWD);
-      swr_ref_sum += analogRead(PIN_REF);
-      swr_sample_count++;
-      swr_timer = millis();
-      if (swr_sample_count >= 8) {
-        swr_state = SWR_CALCULATE;
+  float p_FWD = sq(v_FWD);
+  float p_REV = sq(v_REF);
+
+  float vRatio = v_REF / v_FWD;
+  float VSWR = (1 + vRatio) / (1 - vRatio);
+
+  if ((VSWR > 9.99) || (VSWR < 1) )VSWR = 9.99;
+
+  if (p_FWD != FWD || VSWR != SWR) {
+      lcd.noCursor();
+      lcd.setCursor(0,0);
+      switch(swrmeter) {
+        case 1:
+          lcd.print(" "); lcd.print(floor(100*p_FWD)/100); lcd.print("W  SWR:"); lcd.print(floor(100*VSWR)/100);
+          break;
+        case 2:
+          lcd.print(" F:"); lcd.print(floor(100*p_FWD)/100); lcd.print("W R:"); lcd.print(floor(100*p_REV)/100); lcd.print("W");
+          break;
+        case 3:
+          lcd.print(" F:"); lcd.print(floor(100*v_FWD)/100); lcd.print("V R:"); lcd.print(floor(100*v_REF)/100); lcd.print("V");
+          break;
       }
-    }
-  }
-
-  if (swr_state == SWR_CALCULATE) {
-    uint16_t avg_fwd = swr_fwd_sum >> 3;
-    uint16_t avg_ref = swr_ref_sum >> 3;
-
-    uint32_t new_SWR_scaled;
-    if (avg_fwd <= avg_ref) {
-      new_SWR_scaled = 9999;
-    } else {
-      uint32_t swr_num = avg_fwd + avg_ref;
-      uint32_t swr_den = avg_fwd - avg_ref;
-      new_SWR_scaled = (swr_num * 100) / swr_den;
-    }
-
-    if (new_SWR_scaled > 9999) new_SWR_scaled = 9999;
-    if (new_SWR_scaled < 100) new_SWR_scaled = 100;
-
-    uint32_t v_FWD_scaled = (uint32_t)avg_fwd * ref_V_scaled / 1023;
-    uint32_t p_FWD_scaled = v_FWD_scaled * v_FWD_scaled / 100;
-
-    if (p_FWD_scaled != FWD_scaled || new_SWR_scaled != SWR_scaled) {
-        FWD_scaled = p_FWD_scaled;
-        SWR_scaled = new_SWR_scaled;
-        lcd.noCursor();
-        lcd.setCursor(0,0);
-        switch(swrmeter) {
-          case 1:
-            lcd.print(" "); lcd.print(FWD_scaled / 100); lcd.print("."); lcd.print(FWD_scaled % 100); lcd.print("W SWR:"); lcd.print(SWR_scaled / 100); lcd.print("."); lcd.print(SWR_scaled % 100);
-            break;
-          case 2:
-            {
-              float v_REF = (float)avg_ref * ref_V / 1023.0;
-              float p_REV = v_REF * v_REF;
-              lcd.print(" F:"); lcd.print(floor(100*p_FWD)/100); lcd.print("W R:"); lcd.print(floor(100*p_REV)/100); lcd.print("W");
-            }
-            break;
-          case 3:
-            {
-              float v_REF = (float)avg_ref * ref_V / 1023.0;
-              lcd.print(" F:"); lcd.print(floor(100*v_FWD)/100); lcd.print("V R:"); lcd.print(floor(100*v_REF)/100); lcd.print("V");
-            }
-            break;
-        }
-      FWD = p_FWD;
-      SWR = new_SWR;
-    }
-    swr_state = SWR_IDLE;
+    FWD = p_FWD;
+    SWR = VSWR;
   }
 }
 #endif
@@ -5153,134 +5102,10 @@ void setup()
   for(; !_digitalRead(DIT) || ((mode == CW && keyer_mode != SINGLE) && (!_digitalRead(DAH)));){ fatal(F("Check PTT/key")); }// wait until DIH/DAH/PTT is released to prevent TX on startup
 }
 
-
-// --- Non-blocking button handling state machine ---
-enum event_t { BL=0x10, BR=0x20, BE=0x30, SC=0x01, DC=0x02, PL=0x04, PLC=0x05, PT=0x0C }; // button-left, button-right and button-encoder; single-click, double-click, push-long, push-and-turn
-enum button_state_t { BTN_IDLE, BTN_DEBOUNCE, BTN_PRESSED, BTN_LONG_PRESS, BTN_DCLICK_WAIT, BTN_WAIT_RELEASE };
-uint8_t button_state = BTN_IDLE;
-uint32_t button_timer = 0;
-uint8_t button_event_type = 0; // Stores the button type (BL, BR, BE) during a press sequence
-#define DEBOUNCE_TIME 50
-#define LONG_PRESS_TIME 300
-#define DCLICK_TIME 500
-
-void checkButtons() {
-  bool pressed = inv ^ _digitalRead(BUTTONS);
-  uint16_t v = 0;
-
-  switch (button_state) {
-    case BTN_IDLE:
-      if (pressed) {
-        button_timer = millis();
-        button_state = BTN_DEBOUNCE;
-      }
-      break;
-
-    case BTN_DEBOUNCE:
-      if ((millis() - button_timer) > DEBOUNCE_TIME) {
-        if (pressed) {
-          button_state = BTN_PRESSED;
-          button_timer = millis(); // Reset timer for long press detection
-          v = analogSafeRead(BUTTONS);
-#ifdef CAT_EXT
-          if(cat_key){ v = (cat_key&0x04) ? 512 : (cat_key&0x01) ? 870 : (cat_key&0x02) ? 1024 : 0; }
-#endif
-          button_event_type = (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR : BE;
-        } else {
-          button_state = BTN_IDLE; // It was just noise
-        }
-      }
-      break;
-
-    case BTN_PRESSED:
-      if (!pressed) { // Button released
-        button_state = BTN_DCLICK_WAIT;
-        button_timer = millis(); // Reset timer for double click detection
-      } else if ((millis() - button_timer) > LONG_PRESS_TIME) {
-        event = button_event_type | PL;
-        button_state = BTN_LONG_PRESS;
-      }
-      break;
-
-    case BTN_LONG_PRESS:
-      // Handle encoder turn during long press
-      if (encoder_val) {
-        event = button_event_type | PT;
-      }
-      if (!pressed) {
-        button_state = BTN_IDLE;
-        event = 0; // Clear event on release
-      }
-      break;
-
-    case BTN_DCLICK_WAIT:
-      if (pressed) { // Pressed again for a double click
-        event = button_event_type | DC;
-        button_state = BTN_WAIT_RELEASE; // Go to a state that waits for the release
-      } else if ((millis() - button_timer) > DCLICK_TIME) { // Timeout, it was a single click
-        event = button_event_type | SC;
-        button_state = BTN_IDLE;
-      }
-      break;
-
-    case BTN_WAIT_RELEASE:
-      if (!pressed) {
-        button_state = BTN_IDLE;
-      }
-      break;
-  }
-}
-
 static int32_t _step = 0;
-
-void handle_ptt() {
-  uint8_t pin = ((mode == CW) && (keyer_swap)) ? DAH : DIT;
-  bool ptt_pressed = !_digitalRead(pin);
-
-  switch (ptt_state) {
-    case PTT_IDLE:
-      if (ptt_pressed && !vox_tx) {
-        ptt_state = PTT_DEBOUNCE;
-        ptt_timer = millis();
-      }
-      break;
-    case PTT_DEBOUNCE:
-      if (millis() - ptt_timer > ((mode == CW) ? 10 : 100)) {
-        if (ptt_pressed) {
-          ptt_state = PTT_PRESSED;
-#ifdef CW_MESSAGE
-          cw_msg_event = 0;
-#endif
-          switch_rxtx(1);
-        } else {
-          ptt_state = PTT_IDLE;
-        }
-      }
-      break;
-    case PTT_PRESSED:
-      if (!ptt_pressed) {
-        ptt_state = PTT_IDLE;
-        switch_rxtx(0);
-      } else {
-#ifdef SWR_METER
-        if(smeter > 0 && mode == CW && millis() >= stimer) { readSWR(); stimer = millis() + 500; }
-#endif
-        if(inv ^ _digitalRead(BUTTONS)) { // break if button is pressed
-          ptt_state = PTT_IDLE;
-          switch_rxtx(0);
-        }
-      }
-      break;
-  }
-}
 
 void loop()
 {
-  if (menumode == 4 && millis() > display_timer) {
-    menumode = 0;
-    change = true;
-  }
-  handle_swr();
 #ifdef VOX_ENABLE
   if((vox) && ((mode == LSB) || (mode == USB))){  // If VOX enabled (and in LSB/USB mode), then take mic samples and feed ssb processing function, to derive amplitude, and potentially detect cross vox_threshold to detect a TX or RX event: this is expressed in tx variable
     if(!vox_tx){ // VOX not active
@@ -5407,7 +5232,23 @@ void loop()
 #endif //KEYER
 
 #ifdef TX_ENABLE
-  handle_ptt();
+  uint8_t pin = ((mode == CW) && (keyer_swap)) ? DAH : DIT;
+  if(!vox_tx)  //  ONLY if VOX not active, then check DIT/DAH (fix for VOX to prevent RFI feedback through EMI on DIT or DAH line)
+   if(!_digitalRead(pin)){  // PTT/DIT keys transmitter
+#ifdef CW_MESSAGE
+    cw_msg_event = 0;  // clear cw message event
+#endif //CW_MESSAGE
+    switch_rxtx(1);
+    do {
+      wdt_reset();
+      delay((mode == CW) ? 10 : 100);  // keep the tx keyed for a while before sensing (helps against RFI issues on DAH/DAH line)
+#ifdef SWR_METER
+      if(smeter > 0 && mode == CW && millis() >= stimer) { readSWR(); stimer = millis() + 500; }
+#endif
+      if(inv ^ _digitalRead(BUTTONS)) break;  // break if button is pressed (to prevent potential lock-up)
+    } while(!_digitalRead(pin)); // until released
+    switch_rxtx(0);
+   }
 #endif //TX_ENABLE
 #ifdef KEYER
   }
@@ -5416,9 +5257,35 @@ void loop()
 #ifdef SEMI_QSK
   if((semi_qsk_timeout) && (millis() > semi_qsk_timeout)){ switch_rxtx(0); }  // delayed QSK RX
 #endif
-  checkButtons();
-
-  if(event){
+  enum event_t { BL=0x10, BR=0x20, BE=0x30, SC=0x01, DC=0x02, PL=0x04, PLC=0x05, PT=0x0C }; // button-left, button-right and button-encoder; single-click, double-click, push-long, push-and-turn
+  if(inv ^ _digitalRead(BUTTONS)){   // Left-/Right-/Rotary-button (while not already pressed)
+    if(!((event & PL) || (event & PLC))){  // hack: if there was long-push before, then fast forward
+      uint16_t v = analogSafeRead(BUTTONS);
+#ifdef CAT_EXT
+      if(cat_key){ v = (cat_key&0x04) ? 512 : (cat_key&0x01) ? 870 : (cat_key&0x02) ? 1024 : 0; }  // override analog value exercised by BUTTONS press
+#endif //CAT_EXT
+      event = SC;
+      int32_t t0 = millis();
+      for(; inv ^ _digitalRead(BUTTONS);){ // until released or long-press
+        if((millis() - t0) > 300){ event = PL; break; }
+        wdt_reset();
+      }
+      delay(10); //debounce
+      for(; (event != PL) && ((millis() - t0) < 500);){ // until 2nd press or timeout
+        if(inv ^ _digitalRead(BUTTONS)){ event = DC; break; }
+        wdt_reset();
+      }
+      for(; inv ^ _digitalRead(BUTTONS);){ // until released, or encoder is turned while longpress
+        if(encoder_val && event == PL){ event = PT; break; }
+#ifdef ONEBUTTON
+        if(event == PL) break;  // do not lock on longpress, so that L and R buttons can be used for tuning
+#endif
+        wdt_reset();
+      }  // Max. voltages at ADC3 for buttons L,R,E: 3.76V;4.55V;5V, thresholds are in center
+      event |= (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR : BE; // determine which button pressed based on threshold levels
+    } else {  // hack: fast forward handling
+      event = (event&0xf0) | ((encoder_val) ? PT : PLC/*PL*/);  // only alternate between push-long/turn when applicable
+    }
     switch(event){
 #ifndef ONEBUTTON
       case BL|PL:  // Called when menu button pressed
@@ -5491,8 +5358,8 @@ void loop()
         encoder_val = 0; 
         paramAction(UPDATE, FILTER);
         paramAction(SAVE, FILTER);
-        menumode = 4; // Temporary display mode
-        display_timer = millis() + 1500;
+        wdt_reset(); delay(1500); wdt_reset();
+        change = true; // refresh display
         break;
       case BR|PL:
 #ifdef SIMPLE_RX
@@ -5649,8 +5516,7 @@ void loop()
         break;
 #endif //ONEBUTTON
     }
-    event = 0;
-  }
+  } else event = 0;  // no button pressed: reset event
 
   if((menumode) || (prev_menumode != menumode)){  // Show parameter and value
     int8_t encoder_change = encoder_val;
