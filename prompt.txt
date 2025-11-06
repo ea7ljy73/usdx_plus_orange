@@ -4,5 +4,5 @@ El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings
 El fichero a optimizar es usdx_plus_orange.ino.md
 Las optimizaciones estan en el fichero optimizations.md.
 Vamos hacerlas en orden.
-Empezaremos co la 1.
-Antes de hacerla analizala y muestrame un plan.
+Empezaremos con la optimizacion 1, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
