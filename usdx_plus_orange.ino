@@ -2437,7 +2437,7 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr = 0;
+volatile uint8_t nr = 2;
 volatile uint8_t att = 0;
 volatile uint8_t att2 = 2;  // Minimum att2 increased, to prevent numeric overflow on strong signals
 volatile uint8_t _init = 0;
@@ -3651,7 +3651,7 @@ volatile int16_t rit = 0;
 // We measure the average amplitude of the signal (see slow_dsp()) but the S-meter should be based on RMS value.
 // So we multiply by 0.707/0.639 in an attempt to roughly compensate, although that only really works if the input
 // is a sine wave
-uint8_t smode = 1;
+uint8_t smode = 2;
 uint32_t max_absavg256 = 0;
 int16_t dbm;
 
