@@ -1981,7 +1981,7 @@ inline int16_t ssb(int16_t in)
   v[15] = (ac - dc);               // hpf (dc decoupling)
 #endif //DIG_MODE
   i = v[7] * 2;  // 6dB gain for i, q  (to prevent quanitization issues in hilbert transformer and phase calculation, corrected for magnitude calc)
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 64 + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
+  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >> 6) + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i / 2, q / 2);  // -6dB gain (correction)
 #else  // !MORE_MIC_GAIN
@@ -1993,7 +1993,7 @@ inline int16_t ssb(int16_t in)
   z1 = ac;
 
   i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
+  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + (((v[6] - v[8]) << 4) - (v[6] - v[8]))) >> 7) + ((v[6] - v[8]) >> 1); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i, q);
 #endif  // MORE_MIC_GAIN
