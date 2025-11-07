@@ -1931,30 +1931,16 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);  // Actual ADC sample-ra
 #define MULTI_ADC  1  // multiple ADC conversions for more sensitive (+12dB) microphone input
 //#define QUAD  1       // invert TX signal for phase changes > 180
 
-#define ATAN2_LUT_SIZE 256
-int16_t atan2_lut[ATAN2_LUT_SIZE + 1];
-
-void init_atan2_lut() {
-  for (int i = 0; i <= ATAN2_LUT_SIZE; i++) {
-    float z = (float)i / ATAN2_LUT_SIZE;
-    atan2_lut[i] = (int16_t)((_UA/8.0 + _UA/22.0 - _UA/22.0 * z) * z);
-  }
-}
-
-inline int16_t _atan2_lut(int16_t x, int16_t y) {
-  if (y == 0) return 0;
-  long index = (long)x * ATAN2_LUT_SIZE / y;
-  if (index > ATAN2_LUT_SIZE) index = ATAN2_LUT_SIZE;
-  return atan2_lut[index];
-}
-
 inline int16_t arctan3(int16_t q, int16_t i)  // error ~ 0.8 degree
 { // source: [1] http://www-labs.iro.umontreal.ca/~mignotte/IFT2425/Documents/EfficientApproximationArctgFunction.pdf
+//#define _atan2(z)  (_UA/8 + _UA/44) * z  // very much of a simplification...not accurate at all, but fast
+#define _atan2(z)  (_UA/8 + _UA/22 - _UA/22 * z) * z  //derived from (5) [1]   note that atan2 can overflow easily so keep _UA low
+//#define _atan2(z)  (_UA/8 + _UA/24 - _UA/24 * z) * z  //derived from (7) [1]
   int16_t r;
   if(abs(q) > abs(i))
-    r = _UA / 4 - _atan2_lut(abs(i), abs(q));        // arctan(z) = 90-arctan(1/z)
+    r = _UA / 4 - _atan2(abs(i) / abs(q));        // arctan(z) = 90-arctan(1/z)
   else
-    r = (i == 0) ? 0 : _atan2_lut(abs(q), abs(i));   // arctan(z)
+    r = (i == 0) ? 0 : _atan2(abs(q) / abs(i));   // arctan(z)
   r = (i < 0) ? _UA / 2 - r : r;                  // arctan(-z) = -arctan(z)
   return (q < 0) ? -r : r;                        // arctan(-z) = -arctan(z)
 }
@@ -4856,7 +4842,7 @@ void readSWR()
 #endif
 void setup()
 {
-  init_atan2_lut();
+  
   digitalWrite(KEY_OUT, LOW);  // for safety: to prevent exploding PA MOSFETs, in case there was something still biasing them.
   si5351.powerDown();  // disable all CLK outputs (especially needed for si5351 variants that has CLK2 enabled by default, such as Si5351A-B04486-GT)
 
@@ -5118,7 +5104,8 @@ void setup()
   change = true;
   prev_bandval = bandval;
   vox = false;  // disable VOX
-  nr = 0; // disable NR
+  nr = 2; // disable NR
+  smode = 2; // SMeter
   rit = false;  // disable RIT
   freq = vfo[vfosel%2];
   mode = vfomode[vfosel%2];
