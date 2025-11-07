@@ -1958,6 +1958,7 @@ volatile uint8_t vox_thresh = (1 << 1); //(1 << 2);
 volatile uint8_t drive = 2;   // hmm.. drive>2 impacts cpu load..why?
 
 volatile uint8_t quad = 0;
+volatile bool dig_mode = false;
 
 inline int16_t ssb(int16_t in)
 {
@@ -1969,17 +1970,17 @@ inline int16_t ssb(int16_t in)
   for(j = 0; j != 15; j++) v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
 //#define DIG_MODE  // optimization for digital modes: for super flat TX spectrum, (only down < 100Hz to cut-off DC components)
-#ifdef DIG_MODE
-  int16_t ac = in;
-  dc = (ac + (7) * dc) / (7 + 1);  // hpf: slow average
-  v[15] = (ac - dc) / 2;           // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
-#else
-  int16_t ac = in * 2;             //   6dB gain (justified since lpf/hpf is losing -3dB)
-  ac = ac + z1;                    // lpf
-  z1 = (in - (2) * z1) / (2 + 1);  // lpf: notch at Fs/2 (alias rejecting)
-  dc = (ac + (2) * dc) / (2 + 1);  // hpf: slow average
-  v[15] = (ac - dc);               // hpf (dc decoupling)
-#endif //DIG_MODE
+  if(dig_mode){
+    int16_t ac = in;
+    dc = (ac + (7) * dc) / (7 + 1);  // hpf: slow average
+    v[15] = (ac - dc) / 2;           // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
+  } else {
+    int16_t ac = in * 2;             //   6dB gain (justified since lpf/hpf is losing -3dB)
+    ac = ac + z1;                    // lpf
+    z1 = (in - (2) * z1) / (2 + 1);  // lpf: notch at Fs/2 (alias rejecting)
+    dc = (ac + (2) * dc) / (2 + 1);  // hpf: slow average
+    v[15] = (ac - dc);               // hpf (dc decoupling)
+  }
   i = v[7] * 2;  // 6dB gain for i, q  (to prevent quanitization issues in hilbert transformer and phase calculation, corrected for magnitude calc)
   q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >> 6) + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
@@ -2218,6 +2219,11 @@ int cw_tx(char* msg){
 #endif // CW_MESSAGE
 
 volatile uint8_t menumode = 0;  // 0=not in menu, 1=selects menu item, 2=selects parameter value
+volatile uint8_t ft8mode = 0;
+volatile uint8_t prev_mode_ft8 = 0;
+volatile uint8_t prev_filt_ft8 = 0;
+volatile uint8_t prev_agc_ft8 = 0;
+volatile uint8_t prev_nr_ft8 = 0;
 
 #ifdef CW_DECODER
 volatile uint8_t cwdec = 1;
@@ -4231,7 +4237,7 @@ const char* agc_label[] = { "OFF", "Fast", "Slow" };
 
 #define N_ALL_PARAMS (N_PARAMS+5)  // number of parameters
 
-enum params_t {_NULL, VOLUME, MODE, FILTER, BAND, STEP, VFOSEL, RIT, AGC, NR, ATT, ATT2, SMETER, SWRMETER, CWDEC, CWTONE, CWOFF, SEMIQSK, KEY_WPM, KEY_MODE, KEY_PIN, KEY_TX, VOX, VOXGAIN, DRIVE, TXDELAY, MOX, CWINTERVAL, CWMSG1, CWMSG2, CWMSG3, CWMSG4, CWMSG5, CWMSG6, PWM_MIN, PWM_MAX, SIFXTAL, IQ_ADJ, CALIB, SR, CPULOAD, PARAM_A, PARAM_B, PARAM_C, BACKL, FREQA, FREQB, MODEA, MODEB, VERS, ALL=0xff};
+enum params_t {_NULL, VOLUME, MODE, FILTER, BAND, STEP, VFOSEL, RIT, AGC, NR, ATT, ATT2, SMETER, SWRMETER, CWDEC, CWTONE, CWOFF, SEMIQSK, KEY_WPM, KEY_MODE, KEY_PIN, KEY_TX, VOX, VOXGAIN, DRIVE, TXDELAY, MOX, FT8MODE, CWINTERVAL, CWMSG1, CWMSG2, CWMSG3, CWMSG4, CWMSG5, CWMSG6, PWM_MIN, PWM_MAX, SIFXTAL, IQ_ADJ, CALIB, SR, CPULOAD, PARAM_A, PARAM_B, PARAM_C, BACKL, FREQA, FREQB, MODEA, MODEB, VERS, ALL=0xff};
 
 int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 {
@@ -4293,6 +4299,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 #endif
 #ifdef MOX_ENABLE
     case MOX:     paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false); break;
+#endif
+#ifdef FT8_MODE
+    case FT8MODE: paramAction(action, ft8mode, 0x36, F("FT8 Mode"), offon_label, 0, 1, false); break;
 #endif
 #ifdef CW_MESSAGE
     case CWINTERVAL: paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false); break;
@@ -5583,6 +5592,26 @@ void loop()
           if(mode == CW) { filt = 4; nr = 0; } else filt = 0;
         }
         if(menu == BAND){
+          change = true;
+        }
+        if(menu == FT8MODE){
+          if(ft8mode){
+            prev_mode_ft8 = mode;
+            prev_filt_ft8 = filt;
+            prev_agc_ft8 = agc;
+            prev_nr_ft8 = nr;
+            mode = USB;
+            filt = 1;
+            agc = 0;
+            nr = 0;
+            dig_mode = true;
+          } else {
+            mode = prev_mode_ft8;
+            filt = prev_filt_ft8;
+            agc = prev_agc_ft8;
+            nr = prev_nr_ft8;
+            dig_mode = false;
+          }
           change = true;
         }
         //if(menu == NR){ if(mode == CW) nr = false; }

@@ -53,6 +53,8 @@
 #define ARID "EA7LJY"
 #define MYNAME "JULIAN"
 
+#define FT8_MODE 1
+
 // predefined CW messages
 #define CW_MSG1 "CQ " ARID " +"
 // CW_MSG2-5 are used only when CW_MESSAGE_EXT is set
