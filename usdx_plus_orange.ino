@@ -2109,13 +2109,13 @@ volatile uint32_t cw_offset;
 volatile uint8_t cw_tone = 1;
 const uint32_t tones[] = { F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000, F_MCU * 700ULL / 20000000};
 
-volatile int8_t p_sin = 0;     // initialized with A*sin(0) = 0
-volatile int8_t n_cos = 448/4; // initialized with A*cos(t) = A
+volatile int16_t p_sin = 0;
+volatile int16_t n_cos = 20000;
 inline void process_minsky() // Minsky circle sample [source: https://www.cl.cam.ac.uk/~am21/hakmemc.html, ITEM 149]: p_sin+=n_cos*2*PI*f/fs; n_cos-=p_sin*2*PI*f/fs;
 {
-  int8_t alpha127 = tones[cw_tone]/*cw_offset*/ * 798 / _F_SAMP_TX;  // alpha = f_tone * 2 * pi / fs
-  p_sin += alpha127 * n_cos / 127;
-  n_cos -= alpha127 * p_sin / 127;
+  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
+  p_sin += (int32_t)alpha * n_cos >> 8;
+  n_cos -= (int32_t)alpha * p_sin >> 8;
 }
 
 // CW Key-click shaping, ramping up/down amplitude with sample-interval of 60us. Tnx: Yves HB9EWY https://groups.io/g/ucx/message/5107
@@ -2128,7 +2128,7 @@ void dummy()
 void dsp_tx_cw()
 { // jitter dependent things first
 #ifdef KEY_CLICK
-  if(OCR1BL < lut[255]) { //check if already ramped up: ramp up of amplitude 
+  if(OCR1BL < lut[255]) { //check if already ramped up: ramp up of amplitude
      for(uint16_t i = 31; i != 0; i--) {   // soft rising slope against key-clicks
         OCR1BL = lut[pgm_read_byte_near(&ramp[i-1])];
         delayMicroseconds(60);
@@ -2136,9 +2136,9 @@ void dsp_tx_cw()
   }
 #endif // KEY_CLICK
   OCR1BL = lut[255];
-  
+
   process_minsky();
-  OCR1AL = (p_sin >> (16 - volume)) + 128;
+  OCR1AL = (p_sin >> (8 + (16 - volume))) + 128;
 }
 
 void dsp_tx_am()
