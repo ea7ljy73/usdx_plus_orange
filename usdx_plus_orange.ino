@@ -12,6 +12,7 @@
 #define VERSION   "1.03x"
 
 #include "usdx_settings.h"
+#include <EEPROM.h>
 
 // QCX pin defintions
 #define LCD_D4  0         //PD0    (pin 2)
@@ -4077,6 +4078,11 @@ volatile int8_t menu = 0;  // current parameter id selected in menu
 
 uint8_t eeprom_version;
 #define EEPROM_OFFSET 0x150  // avoid collision with QCX settings, overwrites text settings though
+#define FT8_EEPROM_ADDR (EEPROM_OFFSET + N_ALL_PARAMS + 2)
+#define PREV_MODE_FT8_EEPROM_ADDR (FT8_EEPROM_ADDR + 1)
+#define PREV_FILT_FT8_EEPROM_ADDR (PREV_MODE_FT8_EEPROM_ADDR + 1)
+#define PREV_AGC_FT8_EEPROM_ADDR (PREV_FILT_FT8_EEPROM_ADDR + 1)
+#define PREV_NR_FT8_EEPROM_ADDR (PREV_AGC_FT8_EEPROM_ADDR + 1)
 int eeprom_addr;
 
 // Support functions for parameter and menu handling
@@ -4301,7 +4307,37 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
     case MOX:     paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false); break;
 #endif
 #ifdef FT8_MODE
-    case FT8MODE: paramAction(action, ft8mode, 0x36, F("FT8 Mode"), offon_label, 0, 1, false); break;
+    case FT8MODE:
+      {
+        uint8_t prev_ft8mode = ft8mode;
+        paramAction(action, ft8mode, 0x36, F("FT8 Mode"), offon_label, 0, 1, false);
+        if(action == UPDATE_MENU && prev_ft8mode != ft8mode) {
+          EEPROM.write(FT8_EEPROM_ADDR, ft8mode);
+          if(ft8mode){
+            prev_mode_ft8 = mode;
+            prev_filt_ft8 = filt;
+            prev_agc_ft8 = agc;
+            prev_nr_ft8 = nr;
+            EEPROM.write(PREV_MODE_FT8_EEPROM_ADDR, prev_mode_ft8);
+            EEPROM.write(PREV_FILT_FT8_EEPROM_ADDR, prev_filt_ft8);
+            EEPROM.write(PREV_AGC_FT8_EEPROM_ADDR, prev_agc_ft8);
+            EEPROM.write(PREV_NR_FT8_EEPROM_ADDR, prev_nr_ft8);
+            mode = USB;
+            filt = 1;
+            agc = 0;
+            nr = 0;
+            dig_mode = true;
+          } else {
+            mode = prev_mode_ft8;
+            filt = prev_filt_ft8;
+            agc = prev_agc_ft8;
+            nr = prev_nr_ft8;
+            dig_mode = false;
+          }
+          change = true;
+        }
+      }
+      break;
 #endif
 #ifdef CW_MESSAGE
     case CWINTERVAL: paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false); break;
@@ -5107,6 +5143,19 @@ void setup()
     delay(500); wdt_reset();
   } else {
     paramAction(LOAD);  // load all parameters
+    ft8mode = EEPROM.read(FT8_EEPROM_ADDR);
+    if(ft8mode > 1) ft8mode = 0;
+    prev_mode_ft8 = EEPROM.read(PREV_MODE_FT8_EEPROM_ADDR);
+    prev_filt_ft8 = EEPROM.read(PREV_FILT_FT8_EEPROM_ADDR);
+    prev_agc_ft8 = EEPROM.read(PREV_AGC_FT8_EEPROM_ADDR);
+    prev_nr_ft8 = EEPROM.read(PREV_NR_FT8_EEPROM_ADDR);
+    if (ft8mode) {
+      mode = USB;
+      filt = 1;
+      agc = 0;
+      nr = 0;
+      dig_mode = true;
+    }
   }
   //if(abs((int32_t)F_XTAL - (int32_t)si5351.fxtal) > 50000){ si5351.fxtal = F_XTAL; }  // if F_XTAL frequency deviates too much with actual setting -> use default
   si5351.iqmsa = 0;  // enforce PLL reset
@@ -5594,26 +5643,7 @@ void loop()
         if(menu == BAND){
           change = true;
         }
-        if(menu == FT8MODE){
-          if(ft8mode){
-            prev_mode_ft8 = mode;
-            prev_filt_ft8 = filt;
-            prev_agc_ft8 = agc;
-            prev_nr_ft8 = nr;
-            mode = USB;
-            filt = 1;
-            agc = 0;
-            nr = 0;
-            dig_mode = true;
-          } else {
-            mode = prev_mode_ft8;
-            filt = prev_filt_ft8;
-            agc = prev_agc_ft8;
-            nr = prev_nr_ft8;
-            dig_mode = false;
-          }
-          change = true;
-        }
+
         //if(menu == NR){ if(mode == CW) nr = false; }
         if(menu == VFOSEL){
           freq = vfo[vfosel%2];
