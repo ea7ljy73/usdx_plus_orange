@@ -1,0 +1,53 @@
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+El fichero a optimizar es usdx_plus_orange.ino.md
+Las optimizaciones estan en el fichero optimizations.md.
+Vamos hacerlas en orden.
+Empezaremos con la optimizacion 3, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
+
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+El fichero a optimizar es usdx_plus_orange.ino.md
+Las optimizaciones estan en el fichero optimizations.md.
+Procederemos con la optimizacion 5, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
+
+
+
+Seguiremos con la optimizacion 5, solo esta de momento.
+Analizala y no implementes nada, muestrame un plan.
+
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+El fichero a optimizar es usdx_plus_orange.ino.md
+Las optimizaciones estan en el fichero optimizations.md.
+A raiz de aplicar las optimizaciones 3, 4 y 5 se ha quedado sin memoria disponible y me da problemas de estabilidad, analiza que ha pasado.
+Te voy a poner el fichero original usdx.ino
+
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+
+
+Revisa el proyecto y me gustaria meter una nueva opcion en menu para Digital FT8.
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+Queri añadir una nueva opcion de menu FT8 Mode. (On/Off)
+En este modo de habilita el modo digital con todas las opciones optimizadas para realizar FT8.
+Muestrame un plan.
+
+
+Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
+Se ha introducido una opcion de menu FT8 Mode. (On/Off)
+Hay un problema, cuando lo cambias dentro de menu si pone y quita las opciones por defecto.
+Cuando te sales del menu y vuelves a entrar ya no tienes los anteriores valores y no funciona el cambio.
+Revisa que esta pasando y muestrame un plan, no implementes nada.
+Para solucionarlo, propongo el siguiente plan:
+Utilizar la EEPROM: Almacenaré el estado del "FT8 Mode" en la EEPROM. Esto asegurará que el ajuste se conserve incluso después de apagar y encender el dispositivo.
+Leer el estado al arrancar: En la función setup(), leeré el valor de la EEPROM para inicializar el modo FT8 con el último estado guardado.
+Guardar el estado al modificar: Cada vez que se cambie el ajuste en el menú, guardaré el nuevo valor en la EEPROM.
+De esta manera, el estado del "FT8 Mode" será persistente y no se perderá al navegar por los menús o reiniciar el equipo.
+
