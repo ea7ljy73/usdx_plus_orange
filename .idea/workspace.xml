@@ -5,9 +5,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="complete version ft8">
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/prompt.txt" beforeDir="false" afterPath="$PROJECT_DIR$/prompt.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_config.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_dsp.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_dsp.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_i2c.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_i2c.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_plus_orange.ino" beforeDir="false" afterPath="$PROJECT_DIR$/usdx_plus_orange.ino" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_rf.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_rf.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/usdx_settings.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_ui.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_ui.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_utils.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/usdx_utils.h" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -47,6 +59,7 @@
   &quot;keyToString&quot;: {
     &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
     &quot;git-widget-placeholder&quot;: &quot;dev&quot;,
     &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
@@ -54,6 +67,11 @@
     &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="" />

@@ -51,24 +51,3 @@ Leer el estado al arrancar: En la función setup(), leeré el valor de la EEPROM
 Guardar el estado al modificar: Cada vez que se cambie el ajuste en el menú, guardaré el nuevo valor en la EEPROM.
 De esta manera, el estado del "FT8 Mode" será persistente y no se perderá al navegar por los menús o reiniciar el equipo.
 
-Analiza el plan de refactorización segun el fichero implementation_plan.md
-Vamos a ir modulo a modulo.
-Al finalizar cada modulo comprobamos que el proyecto compila y funciona correctamente.
-Se pedirá confirmación por parte del usuario para continuar con el siguiente modulo.
-Preserva siempre la funcionalidad inicial.
-En la carpeta Ft8-menu tienes el proyecto completo monolitico inicial por si tienes que consultar algo.
-No toques nada de la carpeta Ft8-menu.
-Ten en cuenta las optimizaciones para que el proyecto funcione correctamente y los limites de memoria.
-No hagas nada y pregunta el modulo a refactorizar.
-En un fichero refactorizacion_status.md ve a anotando los modulos actualizados
-
-Analiza el plan de refactorización segun el fichero implementation_plan.md
-Vamos a ir modulo a modulo.
-Al finalizar cada modulo comprobamos que el proyecto compila y funciona correctamente.
-Se pedirá confirmación por parte del usuario para continuar con el siguiente modulo.
-Preserva siempre la funcionalidad inicial.
-En la carpeta Ft8-menu tienes el proyecto completo monolitico inicial por si tienes que consultar algo.
-No toques nada de la carpeta Ft8-menu.
-Ten en cuenta las optimizaciones para que el proyecto funcione correctamente y los limites de memoria.
-No hagas nada y pregunta el modulo a refactorizar.
-En un fichero refactorizacion_status.md ve a anotando los modulos actualizados
