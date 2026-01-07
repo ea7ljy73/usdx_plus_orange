@@ -1,4 +1,4 @@
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
+en en cuenta las especificiones ubicadas en el fichero GEMINI.md
 No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
 El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
 El fichero a optimizar es usdx_plus_orange.ino.md
