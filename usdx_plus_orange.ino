@@ -19,6 +19,7 @@
 #include "src/hal/gpio.h"
 #include "src/hal/i2c.h"
 #include "src/hal/adc.h"
+#include "src/hal/timer.h"
 
 // Drivers
 #include "src/drivers/si5351.h"
@@ -88,6 +89,7 @@ volatile uint8_t vox_thresh = (1 << 2);
 
 uint8_t band = 0;
 uint8_t bandval = 3;
+uint8_t prev_bandval = 3;
 
 volatile uint8_t ssb_cap = 1;
 volatile uint8_t dsp_cap = SDR;
@@ -119,6 +121,8 @@ volatile uint8_t practice = 0;
 
 // Variables de audio
 uint8_t lut[256];
+static uint8_t pwm_min = 115;
+static uint8_t pwm_max = 220;
 volatile uint8_t amp;
 volatile int8_t volume = DEFAULT_VOLUME;
 volatile int8_t mox = 0;
@@ -128,10 +132,59 @@ volatile uint8_t _init = 0;
 volatile bool change = true;
 volatile uint16_t numSamples = 0;
 
+// ============ VARIABLES DSP ============
+volatile int16_t i = 0, q = 0;
+volatile int16_t ocomb = 0;
+volatile uint32_t _absavg256 = 0;
+volatile int16_t p_sin = 0;
+volatile int16_t n_cos = 20000;
+const uint32_t tones[] = { 700, 600, 700 };
+volatile uint16_t acc = 0;
+static int16_t _adc = 0;
+uint8_t admux[3];
+
+// CIC filter variables for I/Q processing (legacy compatible)
+int16_t i_s0za1 = 0, i_s0zb0 = 0, i_s0zb1 = 0, i_s1za1 = 0, i_s1zb0 = 0, i_s1zb1 = 0;
+int16_t q_s0za1 = 0, q_s0zb0 = 0, q_s0zb1 = 0, q_s1za1 = 0, q_s1zb0 = 0, q_s1zb1 = 0, q_ac2 = 0;
+int16_t ozi1 = 0, ozi2 = 0;
+int16_t qh = 0;
+volatile bool quad = false;
+
+#define M_SR 1  // CIC decimation factor
+
+// Puntero a función para DSP (selecciona entre RX y TX)
+void (*func_ptr)() = NULL;
+
+// Variables CW adicionales
+uint8_t ramp[] = { 255, 254, 252, 249, 245, 239, 233, 226, 217, 208, 198, 187, 176, 164, 152, 139, 127, 115, 102, 90, 78, 67, 56, 46, 37, 28, 21, 15, 9, 5, 2 };
+volatile uint8_t keyerControl = 0;
+volatile uint8_t keyerState = 0;
+volatile uint32_t ktimer = 0;
+volatile int Key_state = HIGH;
+
+// TX delay
+uint8_t txdelay = 0;
+uint8_t semi_qsk = false;
+uint32_t semi_qsk_timeout = 0;
+
+// EEPROM save event
+uint32_t save_event_time = 0;
+
+// SWR Meter
+#ifdef SWR_METER
+volatile uint8_t swrmeter = 1;
+#endif
+
+// CW Message
+#ifdef CW_MESSAGE
+uint32_t cw_msg_event = 0;
+#endif
+
 // S-meter
 uint8_t smode = 2;
 uint32_t max_absavg256 = 0;
 int16_t dbm = 0;
+uint8_t rx_ph_q = 90;
 
 // Variables CAT
 volatile uint8_t cat_active = 0;
@@ -152,6 +205,7 @@ const uint32_t stepsizes[N_STEPSIZES] = {
 };
 
 volatile uint8_t stepsize = STEP_1k;
+uint8_t step_index = 0;
 uint8_t prev_stepsize[] = { STEP_1k, STEP_500 };
 
 // ========================================================================
@@ -222,6 +276,11 @@ void change_band(uint8_t new_band) {
   bandval = band;
 }
 
+void build_lut() {
+  for(uint16_t i = 0; i != 256; i++)
+    lut[i] = (i * (pwm_max - pwm_min)) / 255 + pwm_min;
+}
+
 // ========================================================================
 // SETUP
 // ========================================================================
@@ -245,12 +304,28 @@ void setup() {
   pinMode(ROT_A, INPUT_PULLUP);
   pinMode(ROT_B, INPUT_PULLUP);
   pinMode(BUTTONS, INPUT_PULLUP);
+#ifdef DIT
+  pinMode(DIT, INPUT_PULLUP);
+#endif
+#ifdef DAH
+  pinMode(DAH, INPUT_PULLUP);
+#endif
 
   pinMode(RX, OUTPUT);
   digitalWrite(RX, HIGH);
 
+  pinMode(KEY_OUT, OUTPUT);
+  digitalWrite(KEY_OUT, LOW);
+
   si5351.init(SI5351_CRYSTAL_LOAD_10PF, F_XTAL, 0);
   si5351.freq(freq, 0, 90);
+
+  build_lut();
+  encoder_init();
+  rx_tx_init();
+
+  interrupts();
+  start_rx();
 }
 
 // ========================================================================
@@ -258,5 +333,116 @@ void setup() {
 // ========================================================================
 
 void loop() {
+  if(menumode == 0) {
+    if(encoder_val) {
+      vfo_tune(encoder_val);
+      encoder_val = 0;
+    }
+  }
+
+  if(encoder_button_pressed()) {
+    delay(20);
+    while(encoder_button_pressed());
+    delay(20);
+    if(menumode == 0) {
+      menu_enter();
+    } else {
+      menu_exit();
+    }
+  }
+
+  if(menumode != 0) {
+    menu_process();
+  }
+
+#ifdef CAT
+  analyseCATcmd();
+#endif
+
+  if(menumode == 0) {
+    display_vfo(freq);
+  }
+
+  if(change) {
+    change = false;
+    if(prev_bandval != bandval) {
+      freq = band_freqs[bandval] * 1000UL;
+      prev_bandval = bandval;
+    }
+    vfo[vfosel % 2] = freq;
+    save_event_time = millis() + 1000;
+
+    if(menumode == 0) {
+      display_vfo(freq);
+    }
+
+    uint8_t f = freq / 1000000UL;
+    lpf::set_by_frequency(freq);
+    bandval = (f > 32) ? 10 : (f > 26) ? 9 : (f > 22) ? 8 : (f > 20) ? 7 : (f > 16) ? 6 : (f > 12) ? 5 : (f > 8) ? 4 : (f > 6) ? 3 : (f > 4) ? 2 : (f > 2) ? 1 : 0;
+    prev_bandval = bandval;
+
+    if(mode == CW) {
+      si5351.freq(freq + cw_offset, rx_ph_q, 0);
+    } else if(mode == LSB) {
+      si5351.freq(freq, rx_ph_q, 0);
+    } else {
+      si5351.freq(freq, 0, rx_ph_q);
+    }
+#ifdef RIT_ENABLE
+    if(rit) {
+      si5351.freq_calc_fast(rit);
+      si5351.SendPLLRegisterBulk();
+    }
+#endif
+  }
+
+#ifdef CLOCK
+  static uint32_t clock_prev = 0;
+  if((smode == 6) && (millis() - clock_prev > 1000)) {
+    clock_prev = millis();
+    display_clock();
+  }
+#endif
+
+#ifdef SWR_METER
+  static uint32_t swr_prev = 0;
+  if((swrmeter != 1) && (millis() - swr_prev > 250)) {
+    swr_prev = millis();
+    display_swr();
+  }
+#endif
+
+  static uint32_t smeter_prev = 0;
+  if(millis() - smeter_prev > 250) {
+    smeter_prev = millis();
+    display_smeter(smode);
+  }
+
+#ifdef CW_DECODER
+  if((cwdec) && (mode == CW)) {
+    cw_decode();
+  }
+#endif
+
+#ifdef KEYER
+  keyer();
+#endif
+
+#ifdef SEMI_QSK
+  if((semi_qsk_timeout) && (millis() > semi_qsk_timeout)) {
+    semi_qsk_timeout = 0;
+    func_ptr = sdr_rx_00;
+  }
+#endif
+
+  if((save_event_time) && (millis() > save_event_time)) {
+    save_event_time = 0;
+  }
+
+#ifdef CW_MESSAGE
+  if((mode == CW) && (cw_msg_event) && (millis() > cw_msg_event)) {
+    cw_msg_event = 0;
+  }
+#endif
 }
 

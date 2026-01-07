@@ -12,6 +12,10 @@ extern volatile int16_t i, q;
 extern volatile int16_t ocomb;
 extern volatile uint32_t _absavg256;
 extern volatile uint8_t _init;
+extern int16_t qh;
+extern uint8_t admux[3];
+extern void (*func_ptr)();
+extern volatile uint8_t att2;
 
 inline int16_t slow_dsp(int16_t ac)
 {
@@ -65,6 +69,9 @@ inline int16_t slow_dsp(int16_t ac)
 
 void process(int16_t i_ac2, int16_t q_ac2);
 void sdr_rx();
+void sdr_rx_q();
 void sdr_rx_common();
+inline int16_t sdr_rx_common_i();
+inline int16_t sdr_rx_common_q();
 
 #endif

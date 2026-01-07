@@ -1,8 +1,29 @@
 #include "ssb.h"
 #include "../hal/gpio.h"
 #include "../drivers/si5351.h"
+#include "agc.h"
+#include "nr.h"
+#include "filters.h"
+#include "slow_dsp.h"
 
 #define MIC_ATTEN  0
+
+extern uint8_t admux[3];
+
+extern volatile int16_t p_sin;
+extern volatile int16_t n_cos;
+extern const uint32_t tones[];
+extern inline void process_minsky();
+
+extern int16_t i_s0za1, i_s0zb0, i_s0zb1, i_s1za1, i_s1zb0, i_s1zb1;
+extern int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
+
+inline void process_minsky()
+{
+  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
+  p_sin += (int32_t)alpha * n_cos >> 8;
+  n_cos -= (int32_t)alpha * p_sin >> 8;
+}
 
 static int16_t _adc;
 
@@ -52,18 +73,6 @@ void dsp_tx()
 #endif
 }
 
-const uint32_t tones[] = { F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000, F_MCU * 700ULL / 20000000};
-
-volatile int16_t p_sin = 0;
-volatile int16_t n_cos = 20000;
-
-inline void process_minsky()
-{
-  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
-  p_sin += (int32_t)alpha * n_cos >> 8;
-  n_cos -= (int32_t)alpha * p_sin >> 8;
-}
-
 void dsp_tx_cw()
 {
 #ifdef KEY_CLICK
@@ -102,4 +111,77 @@ void dsp_tx_fm()
   in = in << (drive);
   int16_t df = in;
   si5351.freq_calc_fast(df);
+}
+
+// RX Functions - CIC filter implementation from legacy
+
+void sdr_rx_00()
+{
+  int16_t ac = sdr_rx_common_i();
+  func_ptr = sdr_rx_01;
+  int16_t i_s1za0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
+  i_s0za1 = ac;
+  int16_t ac2 = (i_s1za0 + (i_s1za1 + i_s1zb0) * 3 + i_s1zb1);
+  i_s1za1 = i_s1za0;
+  process(ac2, q_ac2);
+}
+
+void sdr_rx_02()
+{
+  int16_t ac = sdr_rx_common_i();
+  func_ptr = sdr_rx_03;
+  i_s0zb1 = i_s0zb0;
+  i_s0zb0 = ac;
+}
+
+void sdr_rx_04()
+{
+  int16_t ac = sdr_rx_common_i();
+  func_ptr = sdr_rx_05;
+  i_s1zb1 = i_s1zb0;
+  i_s1zb0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
+  i_s0za1 = ac;
+}
+
+void sdr_rx_06()
+{
+  int16_t ac = sdr_rx_common_i();
+  func_ptr = sdr_rx_07;
+  i_s0zb1 = i_s0zb0;
+  i_s0zb0 = ac;
+}
+
+void sdr_rx_01()
+{
+  int16_t ac = sdr_rx_common_q();
+  func_ptr = sdr_rx_02;
+  q_s0zb1 = q_s0zb0;
+  q_s0zb0 = ac;
+}
+
+void sdr_rx_03()
+{
+  int16_t ac = sdr_rx_common_q();
+  func_ptr = sdr_rx_04;
+  q_s1zb1 = q_s1zb0;
+  q_s1zb0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
+  q_s0za1 = ac;
+}
+
+void sdr_rx_05()
+{
+  int16_t ac = sdr_rx_common_q();
+  func_ptr = sdr_rx_06;
+  q_s0zb1 = q_s0zb0;
+  q_s0zb0 = ac;
+}
+
+void sdr_rx_07()
+{
+  int16_t ac = sdr_rx_common_q();
+  func_ptr = sdr_rx_00;
+  int16_t q_s1za0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
+  q_s0za1 = ac;
+  q_ac2 = (q_s1za0 + (q_s1za1 + q_s1zb0) * 3 + q_s1zb1);
+  q_s1za1 = q_s1za0;
 }

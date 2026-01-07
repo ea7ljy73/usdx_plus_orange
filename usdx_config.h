@@ -35,11 +35,11 @@
 // ============================================================================
 
 #ifndef F_MCU
-#define F_MCU 20000000  // 20MHz ATMEGA328P crystal
+#define F_MCU 27000000  // 27MHz ATMEGA328P crystal (same as F_XTAL)
 #endif
 
-// Ajuste para frecuencia real del cristal (varía ligeramente de 20MHz)
-#define F_XTAL 20000000
+// Ajuste para frecuencia real del cristal (varía ligeramente de 27MHz)
+#define F_XTAL 27000000
 #define F_CPU F_XTAL
 
 // ============================================================================

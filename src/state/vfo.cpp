@@ -12,13 +12,25 @@ void vfo_init()
 void vfo_tune(int8_t direction)
 {
   int32_t step = stepsizes[step_index];
+#ifdef RIT_ENABLE
+  if(rit){
+    rit += direction * step;
+    rit = max(-9999, min(9999, rit));
+    frequency_update(freq);
+  } else {
+    int32_t new_freq = freq + (direction * step);
+    if(new_freq < 100000UL) new_freq = 100000UL;
+    if(new_freq > 30000000UL) new_freq = 30000000UL;
+    freq = new_freq;
+    frequency_update(freq);
+  }
+#else
   int32_t new_freq = freq + (direction * step);
-
   if(new_freq < 100000UL) new_freq = 100000UL;
   if(new_freq > 30000000UL) new_freq = 30000000UL;
-
   freq = new_freq;
   frequency_update(freq);
+#endif
 }
 
 void vfo_step_size(uint8_t step)

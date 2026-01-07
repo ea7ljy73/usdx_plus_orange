@@ -15,6 +15,7 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 #define MAX_DP  ((filt == 0) ? _UA : (filt == 3) ? _UA/4 : _UA/2)
 #define CARRIER_COMPLETELY_OFF_ON_LOW  1
 #define MULTI_ADC  1
+#define M_SR  1  // CIC decimation factor
 
 #define magn(i, q) (abs(i) > abs(q) ? abs(i) + abs(q) / 4 : abs(q) + abs(i) / 4)
 
@@ -101,5 +102,14 @@ void dsp_tx();
 void dsp_tx_cw();
 void dsp_tx_am();
 void dsp_tx_fm();
+
+void sdr_rx_00();
+void sdr_rx_01();
+void sdr_rx_02();
+void sdr_rx_03();
+void sdr_rx_04();
+void sdr_rx_05();
+void sdr_rx_06();
+void sdr_rx_07();
 
 #endif
