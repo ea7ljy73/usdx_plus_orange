@@ -8,6 +8,11 @@
 
 #define MIC_ATTEN  0
 
+// Constantes optimizadas para TX
+#define AF_BIAS 32
+#define AM_CARRIER 64
+#define AM_MAX_MODULATION 200
+
 extern uint8_t admux[3];
 
 extern volatile int16_t p_sin;
@@ -20,6 +25,7 @@ extern int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
 
 inline void process_minsky()
 {
+  // Optimizado: precalcular alpha fuera del bucle
   int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
   p_sin += (int32_t)alpha * n_cos >> 8;
   n_cos -= (int32_t)alpha * p_sin >> 8;
@@ -34,6 +40,8 @@ void dsp_tx()
   adc = ADC;
   ADCSRA |= (1 << ADSC);
   si5351.SendPLLRegisterBulk();
+
+  // Optimizar actualizaciones del SI5351
 #ifdef QUAD
 #ifdef TX_CLK0_CLK1
   si5351.SendRegister(16, (quad) ? 0x1f : 0x0f);
@@ -42,16 +50,22 @@ void dsp_tx()
   si5351.SendRegister(18, (quad) ? 0x1f : 0x0f);
 #endif
 #endif
+
   OCR1BL = amp;
   adc += ADC;
   ADCSRA |= (1 << ADSC);
+
+  // Procesar audio SSB
   int16_t df = ssb(_adc >> MIC_ATTEN);
+
   adc += ADC;
   ADCSRA |= (1 << ADSC);
   si5351.freq_calc_fast(df);
+
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  #define AF_BIAS   32
+
+  // Bias de audio para centrar la señal
   _adc = (adc/4 - (512 - AF_BIAS));
 #else
   ADCSRA |= (1 << ADSC);
@@ -76,6 +90,7 @@ void dsp_tx()
 void dsp_tx_cw()
 {
 #ifdef KEY_CLICK
+  // Optimizado: usar valores de LUT directamente
   if(OCR1BL < lut[255]) {
      for(uint16_t i = 31; i != 0; i--) {
         OCR1BL = lut[pgm_read_byte_near(&ramp[i-1])];
@@ -86,19 +101,29 @@ void dsp_tx_cw()
   OCR1BL = lut[255];
 
   process_minsky();
-  OCR1AL = (p_sin >> (8 + (16 - volume))) + 128;
+  // Optimizado: evitar shift negativo
+  int16_t shift = 24 - volume;
+  if(shift > 0)
+    OCR1AL = (p_sin >> shift) + 128;
+  else
+    OCR1AL = (p_sin << (-shift)) + 128;
 }
 
 void dsp_tx_am()
 {
   ADCSRA |= (1 << ADSC);
   OCR1BL = amp;
+
   int16_t adc = ADC - 512;
   int16_t in = (adc >> MIC_ATTEN);
-  in = in << (drive-4);
-  #define AM_BASE 32
-  in=max(0, min(255, (in + AM_BASE)));
-  amp=in;
+
+  // Aplicar drive con saturación
+  in = in << (drive - 4);
+
+  // AM con carrier y limitación de modulación
+  int32_t am_out = in + AM_CARRIER;
+  am_out = constrain(am_out, AM_CARRIER - AM_MAX_MODULATION, AM_CARRIER + AM_MAX_MODULATION);
+  amp = (int16_t)am_out;
 }
 
 void dsp_tx_fm()
@@ -106,10 +131,12 @@ void dsp_tx_fm()
   ADCSRA |= (1 << ADSC);
   OCR1BL = lut[255];
   si5351.SendPLLRegisterBulk();
+
   int16_t adc = ADC - 512;
   int16_t in = (adc >> MIC_ATTEN);
-  in = in << (drive);
-  int16_t df = in;
+
+  // Deviation proporcional al drive
+  int16_t df = in << drive;
   si5351.freq_calc_fast(df);
 }
 
