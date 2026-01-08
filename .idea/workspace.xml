@@ -4,23 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="complete version ft8">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/prompt.txt" beforeDir="false" afterPath="$PROJECT_DIR$/prompt.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_config.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_dsp.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_dsp.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_i2c.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_i2c.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_plus_orange.ino" beforeDir="false" afterPath="$PROJECT_DIR$/usdx_plus_orange.ino" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_rf.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_rf.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_settings.h" beforeDir="false" afterPath="$PROJECT_DIR$/usdx_settings.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_ui.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_ui.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_utils.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/usdx_utils.h" beforeDir="false" />
-    </list>
+    <list default="true" id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="complete version ft8" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -71,6 +55,13 @@
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$" />
     </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-26cb7f24e5b0-intellij.indexing.shared.core-IU-253.29346.138" />
+      </set>
+    </attachedChunks>
   </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">

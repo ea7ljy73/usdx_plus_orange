@@ -72,3 +72,31 @@ No toques nada de la carpeta Ft8-menu.
 Ten en cuenta las optimizaciones para que el proyecto funcione correctamente y los limites de memoria.
 No hagas nada y pregunta el modulo a refactorizar.
 En un fichero refactorizacion_status.md ve a anotando los modulos actualizados
+
+Eres un especialista en aplicaciones de arduinio y atmega
+En la carpeta Ft8-menu tienes el proyecto completo monolitico del firmware de un uSDX totalmente funcional.
+Anliza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
+La idea es generar un nuevo proyecto modular desde cero que mantenga la misma funcionalidad que el inicial pero todalmente limpio y bien organizado.
+No inventes nada, inicialmemte las funciones serán copiadas tal cual sin modificar.
+Vamos a ir paso a paso, inicalmente generaremos lo basico para cargar en el uSDX e ir avanzando, primero todo la UI e ir añadiendo funcionalidad.
+Genera un fichero .md con todo el plan y un status de generacion.
+
+Eres un especialista en aplicaciones de arduinio y atmega
+En la carpeta Ft8-menu tienes el proyecto completo monolitico legazy del firmware de un uSDX totalmente funcional, no debees modificar nada de aqui.
+Anliza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
+No debes crear nada nuevo solo refactorizar prservando siempre exactamente la funcionalidad, muy importante.
+Lo primero que vamos hacer es organizarlo según modulos sin modificar nada de funcionalidad, seguirá siendo monolitico pero ordenado y comentado.
+Genera un fichero md con el plan y un status de generacion.
+
+Eres un especialista en aplicaciones de arduinio y atmega
+En la carpeta Ft8-menu tienes el proyecto completo monolitico legazy del firmware de un uSDX totalmente funcional, no debees modificar nada de aqui.
+El objetivo inicial es crear en la carpeta principal un nuevo usdx_plus_orange.ino y usdx_settings.h. eliminando codigo muerto, añadir comentarios y organizar por funcionalidad.
+No modifiques nada de funcionalidad, debe quedar intacta.
+Comprobar que la compilacion con la aplicacion legazy es exacatamente la misma que la nueva generada.
+Genera un fichero md con el plan y un status de generacion.
+
+Analiza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
+No debes crear nada nuevo solo refactorizar prservando siempre exactamente la funcionalidad, muy importante.
+En el fichero PLAN_REORGANIZACION.md tienes la descripcion de los pasos a seguir.
+
+
