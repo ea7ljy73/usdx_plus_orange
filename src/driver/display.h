@@ -409,7 +409,6 @@ const uint8_t font[] PROGMEM = {
 static const uint8_t oled_init_sequence[] PROGMEM = {
     // Initialization Sequence
     // https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf
-    // 0xAE,       // Display OFF (sleep mode)
     0xD5,
     0x80, // 0x01--set display clock divide ratio/oscillator frequency   OK?
           // (0x80 (or >=0x10) needed when multiplex ration set to 0x3F)
@@ -547,7 +546,6 @@ public:
         newLine();
       return 1;
     }
-    // if(oledY > OLED_PAGES - FONT_H) return; //needed?
     c = ((c < 9) ? (c + '~') : c) - ' ';
 
     uint16_t offset = ((uint16_t)c) * FONT_W / (FONT_STRETCHH + 1) * FONT_H;
@@ -624,9 +622,7 @@ public:
     if ((x < 16) && (y < 2)) {
       text[y * 16 + x] =
           ((b < 9)
-               ? "> :*#AB"[b - 1] /*(b + 0x80 - 1)*/ /*(uint8_t[]){ 0xAF, 0x20,
-                                                        0xB0, 0xB1, 0xB2, 0xA6,
-                                                        0xE1, 0x20 }[b-1]*/
+               ? "> :*#AB"[b - 1]
                : b);
       x++;
     }

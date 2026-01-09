@@ -170,10 +170,8 @@ inline int16_t ssb(int16_t in) {
 
   uint16_t _amp = magn(i / 2, q / 2); // -6dB gain (correction)
 #else                                 // !MORE_MIC_GAIN
-  // dc += (in - dc) / 2;       // fast moving average
   dc = (in + dc) / 2;     // average
   int16_t ac = (in - dc); // DC decoupling
-  // v[15] = ac;// - z1;        // high-pass (emphasis) filter
   v[15] = (ac + z1); // / 2;           // low-pass filter with notch at Fs/2
   z1 = ac;
 
@@ -196,9 +194,6 @@ inline int16_t ssb(int16_t in) {
   if (vox)
     _vox(_amp > vox_thresh);
 #endif
-  //_amp = (_amp > vox_thresh) ? _amp : 0;   // vox_thresh = 4 is a good setting
-  // if(!(_amp > vox_thresh)) return 0;
-
   _amp = _amp << (drive);
   _amp = ((_amp > 255) || (drive == 8))
              ? 255
@@ -209,7 +204,6 @@ inline int16_t ssb(int16_t in) {
   int16_t phase = arctan3(q, i);
 
   int16_t dp = phase - prev_phase; // phase difference and restriction
-  // dp = (amp) ? dp : 0;  // dp = 0 when amp = 0
   prev_phase = phase;
 
   if (dp < 0)
@@ -391,9 +385,6 @@ void dsp_tx_am() {       // jitter dependent things first
                            // first ADCL, then ADCH
   int16_t in = (adc >> MIC_ATTEN);
   in = in << (drive - 4);
-// static int16_t dc;
-// dc += (in - dc) / 2;
-// in = in - dc;     // DC decoupling
 #define AM_BASE 32
   in = max(0, min(255, (in + AM_BASE)));
   amp = in; // lut[in];
@@ -747,11 +738,7 @@ void dec2() {
   }
 
   if (((millis() - startttimelow) > hightimesavg * (6)) && (sym > 1)) {
-    // if(((millis() - startttimelow) > hightimesavg*(12)) && (sym > 1)){
-    // if(sym == 2) sym = 1; else // skip E E E E E
     printsym(); // write if no more letters
-    // sym=0; printsym(); // print special char
-    // startttimelow = millis();
   }
 
   filteredstatebefore = filteredstate;
@@ -873,77 +860,15 @@ inline int16_t process_nr_old2(int16_t ac) {
 }
 
 inline int16_t process_nr(int16_t in) {
-  /*
-    static int16_t avg;
-    avg = EA(avg, abs(in), 64); // alpha=1/64=0.0156
-  param_c = avg;
-  */
-
-  /*
-    int32_t _avg = 64 * avg;
-  //  if(_avg > 4) _avg = 4;  // clip
-  //  uint16_t brs_avgsq = 1 << (_avg * _avg);
-    if(_avg > 14) _avg = 14;  // clip
-    uint16_t brs_avgsq = 1 << (_avg);
-
-
-    int16_t inv_gain;
-    if(brs_avgsq > 1) inv_gain = brs_avgsq / (brs_avgsq - 1);  // = 1 / (1 -
-  1/(1 << (1*avg*avg)) ); else inv_gain = 32768;*/
-
   static int16_t ea1;
   ea1 = EA(ea1, in, 1 << (nr - 1));
-  // static int16_t ea2;
-  // ea2 = EA(ea2, ea1, inv_gain);
-
   return ea1;
 }
-/*
-inline int16_t process_nr(int16_t in)
-{
-  // Exponential moving average and variance (Lyons 13.36.2)
-  param_b = EA(param_b, in, 1 << 4);  // avg
-  param_c = EA(param_c, (in - param_b) * (in - param_b), 1 << 4);  // variance
-}
-*/
 
 #define N_FILT 7
-// volatile uint8_t filt = 0;
+
 uint8_t prev_filt[] = {0, 4}; // default filter for modes resp. CW, SSB
 
-/* basicdsp filter simulation:
-  samplerate=7812
-  za0=in
-  p1=slider1*10
-  p2=slider2*10
-  p3=slider3*10
-  p4=slider4*10
-  zb0=(za0+2*za1+za2)/2-(p1*zb1+p2*zb2)/16
-  zc0=(zb0+2*zb1+zb2)/4-(p3*zc1+p4*zc2)/16
-  zc2=zc1
-  zc1=zc0
-  zb2=zb1
-  zb1=zb0
-  za2=za1
-  za1=za0
-  out=zc0
-
-  samplerate=7812
-  za0=in
-  p1=slider1*100+100
-  p2=slider2*100
-  p3=slider3*100+100
-  p4=slider4*100
-  zb0=(za0+2*za1+za2)-(-p1*zb1+p2*zb2)/64
-  zc0=(zb0-2*zb1+zb2)/8-(-p3*zc1+p4*zc2)/64
-  zc2=zc1
-  zc1=zc0
-  zb2=zb1
-  zb1=zb0
-  za2=za1
-  za1=za0
-  out=zc0/8
-*/
 inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
 {
   static int16_t za1, za2;
@@ -960,16 +885,12 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
     // After correction, this filter still introduced almost 6dB attenuation, so
     // I adjusted the coefficients
     static int16_t zz1, zz2;
-    // za0=(29*(za0-zz1)+50*za1)/64;                                //300-Hz
     zz2 = zz1;
     zz1 = za0;
-    // za0=(30*(za0-zz2)+0*zz1)/32;                                 //300-Hz
-    // with very steep roll-off down to 0 Hz
     za0 = ((((za0 - zz2) << 5) - ((za0 - zz2) << 1)) +
            (((zz1) << 4) + ((zz1) << 3) + zz1)) >>
           5; // 300-Hz
 
-    // 4th Order (SR=8kHz) IIR in Direct Form I, 8x8:16
     switch (filt) {
     case 1:
       zb0 = ((za0 + 2 * za1 + za2) >> 1) - ((((zb1 << 3) + (zb1 << 2) + zb1) +
@@ -979,13 +900,9 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
     case 2:
       zb0 = ((za0 + 2 * za1 + za2) >> 1) - (((zb1 << 1) + (zb2 << 3)) >> 4);
       break; // 0-2400Hz filter, first biquad section
-    // case 3: zb0=(za0+2*za1+za2)/2-(4*zb1+2*zb2)/16; break;     // 0-2400Hz
-    // filter, first biquad section
     case 3:
       zb0 = ((za0 + 2 * za1 + za2) >> 1) - ((zb2 << 2) >> 4);
       break; // 0-1800Hz  elliptic
-      // case 3: zb0=(za0+7*za1+za2)/16-(-24*zb1+9*zb2)/16; break;  //0-1700Hz
-      // elliptic with slope
     }
 
     switch (filt) {
@@ -997,27 +914,10 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
     case 2:
       zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - (((zc1 << 2) + (zc2 << 3)) >> 4);
       break; // 0-2400Hz filter, second biquad section
-    // case 3: zc0=(zb0+2*zb1+zb2)/4-(1*zc1+9*zc2)/16; break;       // 0-2400Hz
-    // filter, second biquad section
     case 3:
       zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - ((zc2 << 2) >> 4);
       break; // 0-1800Hz  elliptic
-      // case 3: zc0=(zb0+zb1+zb2)/16-(-22*zc1+47*zc2)/64; break;   //0-1700Hz
-      // elliptic with slope
     }
-    /*switch(filt){
-       case 1: zb0=za0; break; //0-4000Hz (pass-through)
-       case 2: zb0=(10*(za0+2*za1+za2)+16*zb1-17*zb2)/32; break;    //0-2500Hz
-     elliptic -60dB@3kHz case 3: zb0=(7*(za0+2*za1+za2)+48*zb1-18*zb2)/32;
-     break;     //0-1700Hz  elliptic
-     }
-
-     switch(filt){
-       case 1: zc0=zb0; break; //0-4000Hz (pass-through)
-       case 2: zc0=(8*(zb0+zb2)+13*zb1-43*zc1-52*zc2)/64; break;   //0-2500Hz
-     elliptic -60dB@3kHz case 3: zc0=(4*(zb0+zb1+zb2)+22*zc1-47*zc2)/64; break;
-     //0-1700Hz  elliptic
-     }*/
 
     zc2 = zc1;
     zc1 = zc0;
@@ -1048,11 +948,6 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       case 7:
         zb0 = (2 * za0 - 3 * za1 + 2 * za2) + (111L * zb1 - 62L * zb2) / 64;
         break; // 630-680Hz
-        // case 4: zb0=(0*za0+1*za1+0*za2)+(28*zb1-14*zb2)/16; break;
-        // //600Hz+-250Hz case 5: zb0=(0*za0+1*za1+0*za2)+(28*zb1-15*zb2)/16;
-        // break; //600Hz+-100Hz case 6:
-        // zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //600Hz+-50Hz case
-        // 7: zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //630Hz+-18Hz
       }
 
       switch (filt) {
@@ -1068,25 +963,12 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       case 7:
         zc0 = ((zb1) + 109L * zc1 - 62L * zc2) / 64;
         break; // 630-680Hz
-        // case 4: zc0=(zb0-2*zb1+zb2)/1+(24*zc1-13*zc2)/16; break;
-        // //600Hz+-250Hz case 5: zc0=(zb0-2*zb1+zb2)/4+(26*zc1-14*zc2)/16;
-        // break; //600Hz+-100Hz case 6:
-        // zc0=(zb0-2*zb1+zb2)/16+(28*zc1-15*zc2)/16; break; //600Hz+-50Hz case
-        // 7: zc0=(zb0-2*zb1+zb2)/32+(27*zc1-15*zc2)/16; break; //630Hz+-18Hz
       }
     }
     if (cw_tone == 1)
 #endif
     {
       switch (filt) {
-        // case 4: zb0=(1*za0+2*za1+1*za2)+(90L*zb1-38L*zb2)/64; break;
-        // //600Hz+-250Hz case 5:
-        // zb0=(1*za0+2*za1+1*za2)/2+(102L*zb1-52L*zb2)/64; break;
-        // //600Hz+-100Hz case 6:
-        // zb0=(1*za0+2*za1+1*za2)/2+(107L*zb1-57L*zb2)/64; break; //600Hz+-50Hz
-        // case 7: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-61L*zb2)/64; break;
-        // //600Hz+-25Hz
-
       case 4:
         zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (114L * zb1 - 57L * zb2) / 64;
         break; // 600Hz+-250Hz
@@ -1099,27 +981,9 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       case 7:
         zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (110L * zb1 - 61L * zb2) / 64;
         break; // 600Hz+-18Hz
-        // case 8: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-60L*zb2)/64; break;
-        // //591Hz+-12Hz
-
-        /*case 4: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+7L*zb2)/64; break;
-        //600Hz+-250Hz case 5:
-        zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-15L*zb1+4L*zb2)/64; break;
-        //600Hz+-100Hz case 6:
-        zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+2L*zb2)/64; break;
-        //600Hz+-50Hz case 7:
-        zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+3L*zb2)/64; break;
-        //600Hz+-18Hz*/
       }
 
       switch (filt) {
-        // case 4: zc0=(zb0-2*zb1+zb2)/4+(95L*zc1-44L*zc2)/64; break;
-        // //600Hz+-250Hz case 5: zc0=(zb0-2*zb1+zb2)/8+(104L*zc1-53L*zc2)/64;
-        // break; //600Hz+-100Hz case 6:
-        // zc0=(zb0-2*zb1+zb2)/16+(106L*zc1-56L*zc2)/64; break; //600Hz+-50Hz
-        // case 7: zc0=(zb0-2*zb1+zb2)/32+(112L*zc1-62L*zc2)/64; break;
-        // //600Hz+-25Hz
-
       case 4:
         zc0 = (zb0 - 2 * zb1 + zb2) / 1 + (95L * zc1 - 52L * zc2) / 64;
         break; // 600Hz+-250Hz
@@ -1132,17 +996,6 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       case 7:
         zc0 = (zb0 - 2 * zb1 + zb2) / 32 + (112L * zc1 - 62L * zc2) / 64;
         break; // 600Hz+-18Hz
-        // case 8: zc0=(zb0-2*zb1+zb2)/64+(113L*zc1-63L*zc2)/64; break;
-        // //591Hz+-12Hz
-
-        /*case 4: zc0=(zb0-2*zb1+zb2)/1+zc1-zc2+(31L*zc1+12L*zc2)/64; break;
-        //600Hz+-250Hz case 5:
-        zc0=(zb0-2*zb1+zb2)/4+2*zc1-zc2+(-22L*zc1+5L*zc2)/64; break;
-        //600Hz+-100Hz case 6:
-        zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-15L*zc1+2L*zc2)/64; break;
-        //600Hz+-50Hz case 7:
-        zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-16L*zc1+2L*zc2)/64; break;
-        //600Hz+-18Hz*/
       }
     }
     zc2 = zc1;
@@ -1198,14 +1051,6 @@ inline int16_t slow_dsp(int16_t ac) {
     static int16_t zi;
     ac = ((ac + i) * zi); // -qh = ac + i
     zi = i;
-    /*int16_t z0 = _arctan3(q, i);
-    static int16_t z1;
-    ac = z0 - z1; // Differentiator
-    z1 = z0;*/
-    /*static int16_t _q;
-    _q = (_q + q) / 2;
-    ac = i * _q;  // quadrature detector */
-    // ac = ((q > 0) == !(i > 0)) ? 128 : -128; // XOR I/Q zero-cross detector
   } // needs: p.12
     // https://www.veron.nl/wp-content/uploads/2014/01/FmDemodulator.pdf
   else {
@@ -1234,20 +1079,9 @@ inline int16_t slow_dsp(int16_t ac) {
   if (nr)
     ac = process_nr(ac);
 
-  //  if(filt) ac = filt_var(ac) << 2;
   if (filt)
     ac = filt_var(ac);
-/*
-  if(mode == CW){
-    if(cwdec){  // CW decoder enabled?
-      char ch = cw(ac >> 0);
-      if(ch){
-        for(int i=0; i!=15;i++) out[i]=out[i+1];
-        out[15] = ch;
-        cw_event = true;
-      }
-    }
-  }*/
+
 #ifdef CW_DECODER
   if (!(absavg256cnt % 64)) {
     _amp32 = amp32;
@@ -1255,17 +1089,7 @@ inline int16_t slow_dsp(int16_t ac) {
   } else
     amp32 += abs(ac);
 #endif // CW_DECODER
-  // if(!(absavg256cnt--)){ _absavg256 = absavg256; absavg256 = 0; } else
-  // absavg256 += abs(ac);  //hack
-
-  // static int16_t dc;
-  // dc += (ac - dc) / 2;
-  // dc = (15*dc + ac)/16;
-  // dc = (15*dc + (ac - dc))/16;
-  // ac = ac - dc;    // DC decoupling
-
   ac = min(max(ac, -512), 511);
-  // ac = min(max(ac, -128), 127);
 #ifdef QCX
   if (!dsp_cap)
     return 0; // in QCX-SSB mode (no DSP), slow_dsp() should return 0 (in order
@@ -1286,14 +1110,6 @@ const int8_t sine[] = {
     -11,  -22,  -33,  -43,  -54,  -64,  -73,  -82,  -90,  -97,  -104, -110,
     -115, -119, -123, -125, -127, -127, -127, -125, -123, -119, -115, -110,
     -104, -97,  -90,  -82,  -73,  -64,  -54,  -43,  -33,  -22,  -11,  0};
-
-// Short Sine table with 36 entries results in 1736Hz sine wave at effective
-// sampling rate of 62500 SPS.
-/* const int8_t sine[] = {
-  22, 43, 64, 82, 97, 110, 119, 125, 127, 125, 119, 110, 97, 82, 64, 43, 22, 0,
--22, -43, -64, -82, -97, -110, -119, -125, -127, -125, -119, -110, -97, -82,
--64, -43, -22, 0
-}; */
 
 uint8_t ncoIdx = 0;
 int16_t NCO_Q() {
@@ -1334,35 +1150,6 @@ volatile uint8_t rx_state = 0;
 #pragma GCC push_options
 #pragma GCC optimize("Ofast") // compiler-optimization for speed
 
-// Non-recursive CIC Filter (M=2, R=4) implementation, so two-stages of
-// (followed by down-sampling with factor 2): H1(z) = (1 + z^-1)^2 = 1 + 2*z^-1
-// + z^-2 = (1 + z^-2) + (2) * z^-1 = FA(z) + FB(z) * z^-1; with down-sampling
-// before stage translates into poly-phase components: FA(z) = 1 + z^-1, FB(z) =
-// 2 Non-recursive CIC Filter (M=4) implementation (for second-stage only):
-// H1(z) = (1 + z^-1)^4 = 1 + 4*z^-1 + 6*z^-2 + 4*z^-3 + z^-4 = 1 + 6*z^-2 +
-// z^-4 + (4 + 4*z^-2) * z^-1 = FA(z) + FB(z) * z^-1; with down-sampling before
-// stage translates into poly-phase components: FA(z) = 1 + 6*z^-1 + z^-2, FB(z)
-// = 4 + 4*z^-1 M=3 FA(z) = 1 + 3*z^-1, FB(z) = 3 + z^-1 source: Lyons
-// Understanding Digital Signal Processing 3rd edition 13.24.1
-
-/* Basicdsp simulation:
-# M=2 FA(z) = 1 + z^-1, FB(z) = 2
-# M=3 FA(z) = 1 + 3*z^-1, FB(z) = 3 + z^-1
-# M=4 FA(z) = 1 + 6*z^-1 + z^-2, FB(z) = 4 + 4*z^-1
-samplerate=28000
-x=x+1
-clk1=mod1(x/2)*2
-y=y+clk1
-clk2=mod1(y/2)*2
-#s1=clk1*fir(in, 1, 2, 1, 0)/16
-#s2=clk2*fir(s1, 1, 0, 2, 0, 1, 0, 0)/16
-#s1=clk1*fir(in, 1, 3, 3, 1, 0)/16
-#s2=clk2*fir(s1, 1, 0, 3, 0, 3, 0, 1, 0, 0)/16
-s1=clk1*fir(in, 1, 4, 6, 4, 1, 0)/16
-s2=clk2*fir(s1, 1, 0, 4, 0, 6, 0, 4, 0, 1, 0, 0)/16
-out=s2
- */
-
 #define NEW_RX                                                                 \
   1 // Faster (3rd-order) CIC stage, with simultanuous processing capability
 #ifdef NEW_RX
@@ -1374,8 +1161,6 @@ static uint8_t tc = 0;
 void process(int16_t i_ac2, int16_t q_ac2) {
   static int16_t ac3;
 #ifdef CAT_STREAMING
-  // UCSR0B &= ~(TXCIE0);  // disable USART TX interrupts
-  // while (!( UCSR0A & (1<<UDRE0)));  // wait for empty buffer
   if (cat_streaming) {
     uint8_t out = ac3 + 128;
     if (out == ';')
@@ -1399,7 +1184,6 @@ void process(int16_t i_ac2, int16_t q_ac2) {
 #define OUTLET 1
 #ifdef OUTLET
   if (tc++ == 0) // prevent recursion
-  // if(tc++ > 16)   // prevent recursion
 #endif
     interrupts(); // hack, since slow_dsp process exceeds rx sample-time, allow
                   // subsequent 7 interrupts for further rx sampling while
@@ -1527,9 +1311,6 @@ inline int16_t sdr_rx_common_q() {
   ADMUX = admux[0];
   ADCSRA |= (1 << ADSC);
   int16_t ac = ADC - 511;
-  /*ozi2 = ozi1 + ozi2;          // Integrator section - needed?
-    ozi1 = ocomb + ozi1;
-    OCR1AL = min(max(128 - (ozi2>>5) + 128, 0), 255); */
   return ac;
 }
 
@@ -1553,152 +1334,6 @@ inline int16_t sdr_rx_common_i() {
   return ac;
 }
 
-/*
-#define M_SR  2  // CIC N=3
-static uint8_t nested = false;
-
-void sdr_rx()
-{
-#ifdef TESTBENCH
- int16_t adc = NCO_I();
-#else
- ADMUX = admux[1];  // set MUX for next conversion
- ADCSRA |= (1 << ADSC);    // start next ADC conversion
- int16_t adc = ADC - 511; // current ADC sample 10-bits analog input, NOTE:
-first ADCL, then ADCH #endif func_ptr = sdr_rx_q;    // processing function for
-next conversion sdr_rx_common();
-
- static int16_t prev_adc;
- int16_t corr_adc = (prev_adc + adc) / 2;  // Only for I: correct I/Q sample
-delay by means of linear interpolation prev_adc = adc; adc = corr_adc;
- //static int16_t dc;
- //dc += (adc - dc) / 2;  // we lose LSB with this method
- //dc = (3*dc + adc)/4;
- //int16_t ac = adc - dc;     // DC decoupling
- int16_t ac = adc;
-
- static int16_t s0zb0, s0zb1;
- if(rx_state == 0 || rx_state == 4){  // stage s0: down-sample by 2
-   static int16_t s0za1, s0za2;
-   int16_t s1za0 = (ac + (s0za1 + s0zb0) * 3 + s0zb1) >> M_SR;           // FA +
-FB
-   //int16_t s1za0 = (ac + s0za1 * 6 + s0za2 + s0zb0 + s0zb1);
-   //s0za2 = s0za1;
-   s0za1 = ac;
-   static int16_t s1zb0, s1zb1;
-   if(rx_state == 0){                   // stage s1: down-sample by 2
-     static int16_t s1za1, s1za2;
-     int16_t ac2 = (s1za0 + (s1za1 + s1zb0) * 3 + s1zb1) >> M_SR; // FA + FB $
-     //int16_t ac2 = (s1za0 + s1za1 * 6 + s1za2 + s1zb0 + s1zb1); // FA + FB $
-     //s1za2 = s1za1; // $
-     s1za1 = s1za0;
-     {
-       rx_state++;
-
-       static int16_t ac3;
-       static int16_t ozd1, ozd2;  // Output stage
-       if(_init){ ac3 = 0; ozd1 = 0; ozd2 = 0; _init = 0; } // hack: on first
-sample init accumlators of further stages (to prevent instability) int16_t od1 =
-ac3 - ozd1; // Comb section ocomb = od1 - ozd2; interrupts(); ozd2 = od1; ozd1 =
-ac3;
-
-       //if(nested){ return; } // fuse for too many nested interrupts (prevent
-stack overflow)
-       //nested++;
-       //interrupts();  // hack: post processing may be extend until next sample
-time: allow next sample to be processed while postprocessing
-
-       {
-         q_ac2 >>= att2;  // digital gain control
-         static int16_t v[14];  // Process Q (down-sampled) samples
-         q = v[7];
-         // Hilbert transform, BasicDSP model:  outi= fir(inl,  0, 0, 0, 0, 0,
-0,  0, 1,   0, 0,   0, 0,  0, 0, 0, 0); outq = fir(inr, 2, 0, 8, 0, 21, 0, 79,
-0, -79, 0, -21, 0, -8, 0, -2, 0) / 128; qh = ((v[0] - q_ac2) + (v[2] - v[12]) *
-4) / 64 + ((v[4] - v[10]) + (v[6] - v[8])) / 8 + ((v[4] - v[10]) * 5 - (v[6] -
-v[8]) ) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 43dB side-band
-rejection in 650..3400Hz (@8kSPS) when used in image-rejection scenario;
-(Hilbert transform require 4 additional bits)
-         //qh = ((v[0] - q_ac2) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 +
-(v[6] - v[8]) * 15) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB
-side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection
-scenario; (Hilbert transform require 5 additional bits) v[0] = v[1]; v[1] =
-v[2]; v[2] = v[3]; v[3] = v[4]; v[4] = v[5]; v[5] = v[6]; v[6] = v[7]; v[7] =
-v[8]; v[8] = v[9]; v[9] = v[10]; v[10] = v[11]; v[11] = v[12]; v[12] = v[13];
-v[13] = q_ac2;
-       }
-       ac2 >>= att2;  // digital gain control
-       static int16_t v[7];  // Post processing I and Q (down-sampled) results
-       i = v[0]; v[0] = v[1]; v[1] = v[2]; v[2] = v[3]; v[3] = v[4]; v[4] =
-v[5]; v[5] = v[6]; v[6] = ac2;  // Delay to match Hilbert transform on Q branch
-       ac3 = slow_dsp(i + qh);
-
-       //nested--;
-       return;
-     }
-   } else { s1zb1 = s1zb0; s1zb0 = s1za0; } // rx_state == 4 // *4
- } else { s0zb1 = s0zb0; s0zb0 = ac; }  // rx_state == 2 || rx_state == 6  // *4
-
- rx_state++;
-}
-
-void sdr_rx_q()
-{
-#ifdef TESTBENCH
- int16_t adc = NCO_Q();
-#else
- ADMUX = admux[0];  // set MUX for next conversion
- ADCSRA |= (1 << ADSC);    // start next ADC conversion
- int16_t adc = ADC - 511; // current ADC sample 10-bits analog input, NOTE:
-first ADCL, then ADCH #endif func_ptr = sdr_rx;    // processing function for
-next conversion
- //sdr_rx_common();  //necessary? YES!... Maybe NOT!
-
- //static int16_t dc;
- //dc += (adc - dc) / 2;  // we lose LSB with this method
- //dc = (3*dc + adc)/4;
- //int16_t ac = adc - dc;     // DC decoupling
- int16_t ac = adc;
-
- static int16_t s0zb0, s0zb1;
- if(rx_state == 3 || rx_state == 7){  // stage s0: down-sample by 2
-   static int16_t s0za1, s0za2;
-   int16_t s1za0 = (ac + (s0za1 + s0zb0) * 3 + s0zb1) >> M_SR;           // FA +
-FB
-   //int16_t s1za0 = (ac + s0za1 * 6 + s0za2 + s0zb0 + s0zb1);
-   //s0za2 = s0za1;
-   s0za1 = ac;
-   static int16_t s1zb0, s1zb1;
-   if(rx_state == 7){                   // stage s1: down-sample by 2
-     static int16_t s1za1, s1za2;
-     q_ac2 = (s1za0 + (s1za1 + s1zb0) * 3 + s1zb1) >> M_SR; // FA + FB $
-     //q_ac2 = (s1za0 + s1za1 * 6 + s1za2 + s1zb0 + s1zb1); // FA + FB $
-     //s1za2 = s1za1; // $
-     s1za1 = s1za0;
-     rx_state = 0; return;
-   } else { s1zb1 = s1zb0; s1zb0 = s1za0; } // rx_state == 3  // *4
- } else { s0zb1 = s0zb0; s0zb0 = ac; }  // rx_state == 1 || rx_state == 5  // *4
-
- rx_state++;
-}
-
-inline void sdr_rx_common()
-{
- static int16_t ozi1, ozi2;
- if(_init){ ocomb=0; ozi1 = 0; ozi2 = 0; } // hack
- // Output stage [25% CPU@R=4;Fs=62.5k]
-#ifdef SECOND_ORDER_DUC
- ozi2 = ozi1 + ozi2;          // Integrator section
-#endif
- ozi1 = ocomb + ozi1;
-#ifdef SECOND_ORDER_DUC
- OCR1AL = min(max((ozi2>>5) + 128, 0), 255);  // OCR1AL = min(max((ozi2>>5) +
-ICR1L/2, 0), ICR1L);  // center and clip wrt PWM working range #else OCR1AL =
-(ozi1>>5) + 128;
- // OCR1AL = min(max((ozi1>>5) + 128, 0), 255);  // OCR1AL = min(max((ozi2>>5) +
-ICR1L/2, 0), ICR1L);  // center and clip wrt PWM working range #endif
-}
-*/
 
 #else // OLD_RX    //Orginal 2nd-order CIC:
 // #define M4  1  // Enable to enable M=4 on second-stage (better alias
@@ -1720,10 +1355,6 @@ void sdr_rx() {
   prev_adc = adc;
   adc = corr_adc;
 
-  // static int16_t dc;
-  // dc += (adc - dc) / 2;  // we lose LSB with this method
-  // dc = (3*dc + adc)/4;
-  // int16_t ac = adc - dc;     // DC decoupling
   int16_t ac = adc;
 
   int16_t ac2;
@@ -1796,10 +1427,6 @@ void sdr_rx_q() {
 //  sdr_rx_common();  //necessary? YES!... Maybe NOT!
 #endif
 
-  // static int16_t dc;
-  // dc += (adc - dc) / 2;  // we lose LSB with this method
-  // dc = (3*dc + adc)/4;
-  // int16_t ac = adc - dc;     // DC decoupling
   int16_t ac = adc;
 
   int16_t ac2;
@@ -1921,8 +1548,6 @@ void sdr_rx() {
                        // center and clip wrt PWM working range
 #else
     OCR1AL = (ozi1 >> 5) + 128;
-// OCR1AL = min(max((ozi1>>5) + 128, 0), 255);  // OCR1AL = min(max((ozi2>>5) +
-// ICR1L/2, 0), ICR1L);  // center and clip wrt PWM working range
 #endif
     // Only for I: correct I/Q sample delay by means of linear interpolation
     static int16_t prev_adc;

@@ -4,7 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="complete version ft8" />
+    <list default="true" id="b413de77-b7f4-4d02-97ab-d3493e828a5e" name="Changes" comment="complete version ft8">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/driver/display.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/display.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/driver/si5351.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/driver/si5351.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dsp/dsp.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/dsp.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/hardware/soft_i2c.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/hardware/soft_i2c.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/interface/cat.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/interface/cat.h" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

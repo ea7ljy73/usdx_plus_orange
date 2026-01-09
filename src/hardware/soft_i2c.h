@@ -78,19 +78,6 @@ public:
   }                                                                            \
   I2C_SCL_HI();                                                                \
   I2C_SCL_LO();
-  /*#define SendByte(data) \
-    SendBit(data, 1 << 7) \
-    SendBit(data, 1 << 6) \
-    SendBit(data, 1 << 5) \
-    SendBit(data, 1 << 4) \
-    SendBit(data, 1 << 3) \
-    SendBit(data, 1 << 2) \
-    SendBit(data, 1 << 1) \
-    SendBit(data, 1 << 0) \
-    I2C_SDA_HI();  // recv ACK \
-    DELAY(I2C_DELAY);     \
-    I2C_SCL_HI();         \
-    I2C_SCL_LO();*/
   inline void SendByte(uint8_t data) {
     SendBit(data, 1 << 7);
     SendBit(data, 1 << 6);
