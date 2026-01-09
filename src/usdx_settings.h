@@ -17,7 +17,7 @@
 // (PCF8574 module          ), connect SDA (PD2), SCL (PD3), NOTE that this
 // display is pretty slow
 #define LPF_SWITCHING_DL2MAN_USDX_REV3                                         \
-  1 // Enable 8-band filter bank switching:     latching relays wired to a
+  1 // Enable 8-band filter bank switching: latching relays wired to a
     // TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.0
     // as common (ground), IO1.0..7 used by the individual latches K0-7
     // switching respectively LPFs for 10m, 15m, 17m, 20m, 30m, 40m, 60m, 80m
@@ -62,6 +62,8 @@
 // Advanced configuration switches
 // #define CONDENSED      1   // Display in 4 line mode (for OLED and LCD2004
 // modules) #define CAT_EXT        1   // Extended CAT support: remote button
+#define MENU_STR 1 // Enable menu system
+
 // and screen control commands over CAT #define CAT_STREAMING  1   // Extended
 // CAT support: audio streaming over CAT, once enabled and triggered with CAT
 // cmd, samplerate 7812Hz, 8-bit unsigned audio is sent over UART. The ";" is
@@ -134,3 +136,78 @@
 #define CW_MSG4 "FB RPTR TX 5W 5W ANT INV V 73 CUAGN"
 #define CW_MSG5 "73 TU E E"
 #define CW_MSG6 ARID
+
+// =========================================================================================
+// Hardware Definitions (Moved from .ino)
+// =========================================================================================
+#ifndef F_MCU
+#define F_MCU F_CPU
+#endif
+
+// QCX pin defintions
+#define LCD_D4 0       // PD0    (pin 2)
+#define LCD_D5 1       // PD1    (pin 3)
+#define LCD_D6 2       // PD2    (pin 4)
+#define LCD_D7 3       // PD3    (pin 5)
+#define LCD_EN 4       // PD4    (pin 6)
+#define FREQCNT 5      // PD5    (pin 11)
+#define ROT_A 6        // PD6    (pin 12)
+#define ROT_B 7        // PD7    (pin 13)
+#define RX 8           // PB0    (pin 14)
+#define SIDETONE 9     // PB1    (pin 15)
+#define KEY_OUT 10     // PB2    (pin 16)
+#define SIG_OUT 11     // PB3    (pin 17)
+#define DAH 12         // PB4    (pin 18)
+#define DIT 13         // PB5    (pin 19)
+#define AUDIO1 14      // PC0/A0 (pin 23)
+#define AUDIO2 15      // PC1/A1 (pin 24)
+#define DVM 16         // PC2/A2 (pin 25)
+#define BUTTONS 17     // PC3/A3 (pin 26)
+#define LCD_RS 18      // PC4    (pin 27)
+#define I2C_SDA_PIN 18 // PC4    (pin 27)
+#define I2C_SCL_PIN 19 // PC5    (pin 28)
+// #define NTX   11        //PB3    (pin 17)
+// #define PTX   11        //PB3    (pin 17)
+
+#ifdef SWAP_ROTARY
+#undef ROT_A
+#undef ROT_B
+#define ROT_A 7 // PD7    (pin 13)
+#define ROT_B 6 // PD6    (pin 12)
+#endif
+
+#if (defined(OLED_SSD1306) || defined(OLED_SH1106))
+#define OLED 1
+#endif
+
+#if (defined(CAT) || defined(TESTBENCH)) && !(OLED)
+#define _SERIAL                                                                \
+  1 // Coexistence support for serial port and LCD on the same pins
+#endif
+
+#ifdef LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH
+#define LPF_SWITCHING_DL2MAN_USDX_REV3 1
+#endif
+
+#ifdef TX_CLK0_CLK1
+#ifdef F_CLK2
+#define TX1RX0 0b11111000
+#define TX1RX1 0b11111000
+#define TX0RX1 0b11111000
+#define TX0RX0 0b11111011
+#else //! F_CLK2
+#define TX1RX0 0b11111100
+#define TX1RX1 0b11111100
+#define TX0RX1 0b11111100
+#define TX0RX0 0b11111111
+#endif // F_CLK2
+#else  //! TX_CLK0_CLK1
+#define TX1RX0 0b11111011
+#define TX1RX1 0b11111000
+#define TX0RX1 0b11111100
+#define TX0RX0 0b11111111
+#endif // TX_CLK0_CLK1
+
+#if defined(F_CLK2) && !defined(TX_CLK0_CLK1)
+#error "TX_CLK0_CLK1 must be enabled in order to use F_CLK2."
+#endif
