@@ -1,102 +1,19 @@
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
-No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-El fichero a optimizar es usdx_plus_orange.ino.md
-Las optimizaciones estan en el fichero optimizations.md.
-Vamos hacerlas en orden.
-Empezaremos con la optimizacion 3, solo esta de momento.
-Analizala y no implementes nada, muestrame un plan.
+Eres un especialista en aplicaciones de arduino.
+Este proyecto es un el firmware de un receptor de radio uSDX.
+En la carpeta usdx-legazy tenemos la primera implementación para tenerla como referencia, esta va a ser de solo lectura, nunca se modificará nada ahi.
+En primer lugar vamos a analizar profundamente el proyecto y generar un fichero .md con las descripciones principales para tenerlas como contexto inicial.
 
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
-No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-El fichero a optimizar es usdx_plus_orange.ino.md
-Las optimizaciones estan en el fichero optimizations.md.
-Procederemos con la optimizacion 5, solo esta de momento.
-Analizala y no implementes nada, muestrame un plan.
+Eres un especialista en aplicaciones de arduino.
+Este proyecto es un el firmware de un receptor de radio uSDX.
+En la carpeta usdx-legazy tenemos la primera implementación para tenerla como referencia, esta va a ser de solo lectura, nunca se modificará nada ahi.
+Analiza profunadmente los ficheros usdx_plus_orange.ino de funcionalidad y usdx_settings.h de configuración.
+Siempre debemos de optimizar el uso de memoria y almacenamiento pues es limitado para Atmega.
+Genera un fichero md de backlog analizando las posibles mejoras y optimizaciones basado en el codigo y funcionalidades implementadas en proyectos similare.
+Iremos paso a paso compilando la aplicacion siempre y comprobando en hardware.
+El objetivo siempre es mejorar la recepción RX y la transmisión TX reduciendo al maximo el ruido.
 
 
 
-Seguiremos con la optimizacion 5, solo esta de momento.
-Analizala y no implementes nada, muestrame un plan.
 
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
-No modifiques nada de funcionalidad, solo vamos a optimizar y debes siempre preservar la funcionalidad actual.
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-El fichero a optimizar es usdx_plus_orange.ino.md
-Las optimizaciones estan en el fichero optimizations.md.
-A raiz de aplicar las optimizaciones 3, 4 y 5 se ha quedado sin memoria disponible y me da problemas de estabilidad, analiza que ha pasado.
-Te voy a poner el fichero original usdx.ino
-
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-
-
-Revisa el proyecto y me gustaria meter una nueva opcion en menu para Digital FT8.
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-Queri añadir una nueva opcion de menu FT8 Mode. (On/Off)
-En este modo de habilita el modo digital con todas las opciones optimizadas para realizar FT8.
-Muestrame un plan.
-
-
-Ten en cuenta las especificiones ubicadas en el fichero GEMINI.md
-El proyecto esta compuesto por dos ficheros usdx_plus_orange.ino y usdx_settings.h.
-Se ha introducido una opcion de menu FT8 Mode. (On/Off)
-Hay un problema, cuando lo cambias dentro de menu si pone y quita las opciones por defecto.
-Cuando te sales del menu y vuelves a entrar ya no tienes los anteriores valores y no funciona el cambio.
-Revisa que esta pasando y muestrame un plan, no implementes nada.
-Para solucionarlo, propongo el siguiente plan:
-Utilizar la EEPROM: Almacenaré el estado del "FT8 Mode" en la EEPROM. Esto asegurará que el ajuste se conserve incluso después de apagar y encender el dispositivo.
-Leer el estado al arrancar: En la función setup(), leeré el valor de la EEPROM para inicializar el modo FT8 con el último estado guardado.
-Guardar el estado al modificar: Cada vez que se cambie el ajuste en el menú, guardaré el nuevo valor en la EEPROM.
-De esta manera, el estado del "FT8 Mode" será persistente y no se perderá al navegar por los menús o reiniciar el equipo.
-
-Analiza el plan de refactorización segun el fichero implementation_plan.md
-Vamos a ir modulo a modulo.
-Al finalizar cada modulo comprobamos que el proyecto compila y funciona correctamente.
-Se pedirá confirmación por parte del usuario para continuar con el siguiente modulo.
-Preserva siempre la funcionalidad inicial.
-En la carpeta Ft8-menu tienes el proyecto completo monolitico inicial por si tienes que consultar algo.
-No toques nada de la carpeta Ft8-menu.
-Ten en cuenta las optimizaciones para que el proyecto funcione correctamente y los limites de memoria.
-No hagas nada y pregunta el modulo a refactorizar.
-En un fichero refactorizacion_status.md ve a anotando los modulos actualizados
-
-Analiza el plan de refactorización segun el fichero implementation_plan.md
-Vamos a ir modulo a modulo.
-Al finalizar cada modulo comprobamos que el proyecto compila y funciona correctamente.
-Se pedirá confirmación por parte del usuario para continuar con el siguiente modulo.
-Preserva siempre la funcionalidad inicial.
-En la carpeta Ft8-menu tienes el proyecto completo monolitico inicial por si tienes que consultar algo.
-No toques nada de la carpeta Ft8-menu.
-Ten en cuenta las optimizaciones para que el proyecto funcione correctamente y los limites de memoria.
-No hagas nada y pregunta el modulo a refactorizar.
-En un fichero refactorizacion_status.md ve a anotando los modulos actualizados
-
-Eres un especialista en aplicaciones de arduinio y atmega
-En la carpeta Ft8-menu tienes el proyecto completo monolitico del firmware de un uSDX totalmente funcional.
-Anliza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
-La idea es generar un nuevo proyecto modular desde cero que mantenga la misma funcionalidad que el inicial pero todalmente limpio y bien organizado.
-No inventes nada, inicialmemte las funciones serán copiadas tal cual sin modificar.
-Vamos a ir paso a paso, inicalmente generaremos lo basico para cargar en el uSDX e ir avanzando, primero todo la UI e ir añadiendo funcionalidad.
-Genera un fichero .md con todo el plan y un status de generacion.
-
-Eres un especialista en aplicaciones de arduinio y atmega
-En la carpeta Ft8-menu tienes el proyecto completo monolitico legazy del firmware de un uSDX totalmente funcional, no debees modificar nada de aqui.
-Anliza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
-No debes crear nada nuevo solo refactorizar prservando siempre exactamente la funcionalidad, muy importante.
-Lo primero que vamos hacer es organizarlo según modulos sin modificar nada de funcionalidad, seguirá siendo monolitico pero ordenado y comentado.
-Genera un fichero md con el plan y un status de generacion.
-
-Eres un especialista en aplicaciones de arduinio y atmega
-En la carpeta Ft8-menu tienes el proyecto completo monolitico legazy del firmware de un uSDX totalmente funcional, no debees modificar nada de aqui.
-El objetivo inicial es crear en la carpeta principal un nuevo usdx_plus_orange.ino y usdx_settings.h. eliminando codigo muerto, añadir comentarios y organizar por funcionalidad.
-No modifiques nada de funcionalidad, debe quedar intacta.
-Comprobar que la compilacion con la aplicacion legazy es exacatamente la misma que la nueva generada.
-Genera un fichero md con el plan y un status de generacion.
-
-Analiza profundamente este proyecto monolitico para poder realizar un plan de nueva implementacion.
-No debes crear nada nuevo solo refactorizar prservando siempre exactamente la funcionalidad, muy importante.
-En el fichero PLAN_REORGANIZACION.md tienes la descripcion de los pasos a seguir.
 
 

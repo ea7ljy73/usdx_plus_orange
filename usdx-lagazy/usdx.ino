@@ -1,18 +1,14 @@
 //  QCX-SSB.ino - https://github.com/threeme3/QCX-SSB
 //
-//  Copyright 2019, 2020, 2021   Guido PE1NNZ <pe1nnz@qsl.net>
+//  Copyright 2019, 2020, 2021, 2022, 2023, 2024, 2025   Guido PE1NNZ
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//  Modifications by  EA7LJY - 02112025
-//  1. F_XTAL : 27000000
-//  2. S-Meter mode : 2 (S-Meter)
-//  3. Noise Reduce: default 2
-//  4. Change version 1.03x
 
-#define VERSION   "1.03x"
+#define VERSION   "1.02x"
 
+
+/* NOTE: configure your radio in usdx_settings.h , not here */
 #include "usdx_settings.h"
-#include <EEPROM.h>
 
 // QCX pin defintions
 #define LCD_D4  0         //PD0    (pin 2)
@@ -164,6 +160,21 @@ uint8_t _digitalRead(uint8_t pin){  // reads pin or (via CAT) artificially overr
   uint8_t inv = 1;
 #else
   uint8_t inv = 0;
+#endif
+
+#ifdef THREEBUTTONROT
+// --- Timing values ---
+const unsigned long debounceDelay = 50;   // debounce time (ms)
+const unsigned long initialDelay  = 400;  // delay before repeating starts
+const unsigned long repeatDelay   = 150;  // repeat rate (ms)
+
+// --- Internal state ---
+unsigned int buttonState = 3;        // current state (using INPUT_PULLUP)
+unsigned int lastButtonState = 3;    // previous state
+
+unsigned long lastDebounceTime = 0;
+unsigned long lastRepeatTime = 0;
+bool repeating = false;
 #endif
 
 //#ifdef KEYER
@@ -1129,6 +1140,59 @@ ISR(PCINT2_vect){  // Interrupt on rotary encoder turn
   //PCMSK2 |= (1 << PCINT22) | (1 << PCINT23);  // allow ROT_A, ROT_B interrupts
   //interrupts();
 }
+
+#ifdef THREEBUTTONROT
+void encoder_setup()
+{
+	pinMode(ROT_A, INPUT_PULLUP);
+	pinMode(ROT_B, INPUT_PULLUP);
+}
+void CheckRotButton() {
+  unsigned int reading = digitalRead(ROT_B) << 1 | digitalRead(ROT_A);
+
+  // --- Debounce ---
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == 2 | buttonState == 1 ) {
+        // Button just pressed
+        if (buttonState == 2 ) encoder_val++;
+        else encoder_val--;
+        //Serial.print("Pressed: ");
+        //Serial.println(encoder_val);
+        lastRepeatTime = millis();
+        repeating = false;
+      } 
+      else {
+        // Button released
+        repeating = false;
+      }
+    }
+  }
+
+  // --- Handle repeating ---
+  if (buttonState == 2 | buttonState == 1) {  // still held
+    unsigned long now = millis();
+    if (!repeating && (now - lastRepeatTime > initialDelay)) {
+      repeating = true;
+      lastRepeatTime = now;
+    }
+
+    if (repeating && (now - lastRepeatTime > repeatDelay)) {
+      if (buttonState == 2 ) encoder_val++;
+      else encoder_val--;
+      //Serial.print("Repeat: ");
+      //Serial.println(encoder_val);
+      lastRepeatTime = now;
+    }
+  }
+
+  lastButtonState = reading;
+}
+#else
 void encoder_setup()
 {
   pinMode(ROT_A, INPUT_PULLUP);
@@ -1138,6 +1202,8 @@ void encoder_setup()
   last_state = (_digitalRead(ROT_B) << 1) | _digitalRead(ROT_A);
   interrupts();
 }
+#endif
+
 /*
 class Encoder {
 public:
@@ -1273,13 +1339,15 @@ public:
     data |= RecvBit(1 << 0);
     if(last){
       I2C_SDA_HI();  // NACK
+      DELAY(I2C_DELAY);
+      I2C_SCL_LO();
     } else {
       I2C_SDA_LO();  // ACK
+      I2C_SCL_HI();
+      DELAY(I2C_DELAY);
+      I2C_SCL_LO(); // DELAY(I2C_DELAY);
+      I2C_SDA_HI(); 
     }
-    DELAY(I2C_DELAY);
-    I2C_SCL_HI();
-    I2C_SDA_HI();    // restore SDA for read
-    I2C_SCL_LO();
     return data;
   }
   inline void resume(){
@@ -1959,7 +2027,6 @@ volatile uint8_t vox_thresh = (1 << 1); //(1 << 2);
 volatile uint8_t drive = 2;   // hmm.. drive>2 impacts cpu load..why?
 
 volatile uint8_t quad = 0;
-volatile bool dig_mode = false;
 
 inline int16_t ssb(int16_t in)
 {
@@ -1971,19 +2038,27 @@ inline int16_t ssb(int16_t in)
   for(j = 0; j != 15; j++) v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
 //#define DIG_MODE  // optimization for digital modes: for super flat TX spectrum, (only down < 100Hz to cut-off DC components)
-  if(dig_mode){
-    int16_t ac = in;
-    dc = (ac + (7) * dc) / (7 + 1);  // hpf: slow average
-    v[15] = (ac - dc) / 2;           // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
-  } else {
-    int16_t ac = in * 2;             //   6dB gain (justified since lpf/hpf is losing -3dB)
-    ac = ac + z1;                    // lpf
-    z1 = (in - (2) * z1) / (2 + 1);  // lpf: notch at Fs/2 (alias rejecting)
-    dc = (ac + (2) * dc) / (2 + 1);  // hpf: slow average
-    v[15] = (ac - dc);               // hpf (dc decoupling)
+#ifdef DIG_MODE
+  int16_t ac = in;
+  dc = (ac + (7) * dc) / (7 + 1);  // hpf: slow average
+  v[15] = (ac - dc) / 2;           // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
+#else
+  int16_t ac = in * 2; //   6dB gain (justified since lpf/hpf is losing -3dB)
+  ac = ac + z1;        // lpf
+  z1 = (in - (8) * z1) / (8 + 1); // lpf
+
+  // smooth clipping limiter 
+  if (ac > 250) {
+    ac = 250 + (ac - 250) / 2; 
+  } else if (ac < -250) {
+    ac = -250 - (-250 - ac) / 2;
   }
+
+  dc = (ac + (2) * dc) / (2 + 1);
+  v[15] = (ac - dc);
+#endif //DIG_MODE
   i = v[7] * 2;  // 6dB gain for i, q  (to prevent quanitization issues in hilbert transformer and phase calculation, corrected for magnitude calc)
-  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >> 6) + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 64 + (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i / 2, q / 2);  // -6dB gain (correction)
 #else  // !MORE_MIC_GAIN
@@ -1995,7 +2070,7 @@ inline int16_t ssb(int16_t in)
   z1 = ac;
 
   i = v[7];
-  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) + (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + (((v[6] - v[8]) << 4) - (v[6] - v[8]))) >> 7) + ((v[6] - v[8]) >> 1); // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i, q);
 #endif  // MORE_MIC_GAIN
@@ -2097,13 +2172,13 @@ volatile uint32_t cw_offset;
 volatile uint8_t cw_tone = 1;
 const uint32_t tones[] = { F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000, F_MCU * 700ULL / 20000000};
 
-volatile int16_t p_sin = 0;
-volatile int16_t n_cos = 20000;
+volatile int8_t p_sin = 0;     // initialized with A*sin(0) = 0
+volatile int8_t n_cos = 448/4; // initialized with A*cos(t) = A
 inline void process_minsky() // Minsky circle sample [source: https://www.cl.cam.ac.uk/~am21/hakmemc.html, ITEM 149]: p_sin+=n_cos*2*PI*f/fs; n_cos-=p_sin*2*PI*f/fs;
 {
-  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
-  p_sin += (int32_t)alpha * n_cos >> 8;
-  n_cos -= (int32_t)alpha * p_sin >> 8;
+  int8_t alpha127 = tones[cw_tone]/*cw_offset*/ * 798 / _F_SAMP_TX;  // alpha = f_tone * 2 * pi / fs
+  p_sin += alpha127 * n_cos / 127;
+  n_cos -= alpha127 * p_sin / 127;
 }
 
 // CW Key-click shaping, ramping up/down amplitude with sample-interval of 60us. Tnx: Yves HB9EWY https://groups.io/g/ucx/message/5107
@@ -2116,7 +2191,7 @@ void dummy()
 void dsp_tx_cw()
 { // jitter dependent things first
 #ifdef KEY_CLICK
-  if(OCR1BL < lut[255]) { //check if already ramped up: ramp up of amplitude
+  if(OCR1BL < lut[255]) { //check if already ramped up: ramp up of amplitude 
      for(uint16_t i = 31; i != 0; i--) {   // soft rising slope against key-clicks
         OCR1BL = lut[pgm_read_byte_near(&ramp[i-1])];
         delayMicroseconds(60);
@@ -2124,9 +2199,9 @@ void dsp_tx_cw()
   }
 #endif // KEY_CLICK
   OCR1BL = lut[255];
-
+  
   process_minsky();
-  OCR1AL = (p_sin >> (8 + (16 - volume))) + 128;
+  OCR1AL = (p_sin >> (16 - volume)) + 128;
 }
 
 void dsp_tx_am()
@@ -2220,11 +2295,6 @@ int cw_tx(char* msg){
 #endif // CW_MESSAGE
 
 volatile uint8_t menumode = 0;  // 0=not in menu, 1=selects menu item, 2=selects parameter value
-volatile uint8_t ft8mode = 0;
-volatile uint8_t prev_mode_ft8 = 0;
-volatile uint8_t prev_filt_ft8 = 0;
-volatile uint8_t prev_agc_ft8 = 0;
-volatile uint8_t prev_nr_ft8 = 0;
 
 #ifdef CW_DECODER
 volatile uint8_t cwdec = 1;
@@ -2430,9 +2500,17 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr = 2;
+volatile uint8_t nr = 0;
 volatile uint8_t att = 0;
 volatile uint8_t att2 = 2;  // Minimum att2 increased, to prevent numeric overflow on strong signals
+
+#ifdef SWR_METER
+volatile uint8_t calpwr = PWR_CALIBRATION_CONSTANT;
+#ifdef INA219_POWER_METER
+volatile uint16_t calshunt = CURRENT_SHUNT_CALIBRATION_CONSTANT;
+#endif
+#endif
+
 volatile uint8_t _init = 0;
 
 // Old AGC algorithm which only increases gain, but does not decrease it for very strong signals.
@@ -2555,181 +2633,10 @@ inline int16_t process_nr(int16_t in)
 }
 */
 
-#define N_FILT 7
-//volatile uint8_t filt = 0;
+
 uint8_t prev_filt[] = { 0 , 4 }; // default filter for modes resp. CW, SSB
 
-/* basicdsp filter simulation:
-  samplerate=7812
-  za0=in
-  p1=slider1*10
-  p2=slider2*10
-  p3=slider3*10
-  p4=slider4*10
-  zb0=(za0+2*za1+za2)/2-(p1*zb1+p2*zb2)/16
-  zc0=(zb0+2*zb1+zb2)/4-(p3*zc1+p4*zc2)/16
-  zc2=zc1
-  zc1=zc0
-  zb2=zb1
-  zb1=zb0
-  za2=za1
-  za1=za0
-  out=zc0
-
-  samplerate=7812
-  za0=in
-  p1=slider1*100+100
-  p2=slider2*100
-  p3=slider3*100+100
-  p4=slider4*100
-  zb0=(za0+2*za1+za2)-(-p1*zb1+p2*zb2)/64
-  zc0=(zb0-2*zb1+zb2)/8-(-p3*zc1+p4*zc2)/64
-  zc2=zc1
-  zc1=zc0
-  zb2=zb1
-  zb1=zb0
-  za2=za1
-  za1=za0
-  out=zc0/8
-*/
-inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
-{ 
-  static int16_t za1,za2;
-  static int16_t zb0,zb1,zb2;
-  static int16_t zc0,zc1,zc2;
-  
-  if(filt < 4)
-  {  // for SSB filters
-    // 1st Order (SR=8kHz) IIR in Direct Form I, 8x8:16
-    // M0PUB: There was a bug here, since za1 == zz1 at this point in the code, and the old algorithm for the 300Hz high-pass was:
-    //    za0=(29*(za0-zz1)+50*za1)/64;
-    //    zz2=zz1;
-    //    zz1=za0;
-    // After correction, this filter still introduced almost 6dB attenuation, so I adjusted the coefficients
-    static int16_t zz1,zz2;
-    //za0=(29*(za0-zz1)+50*za1)/64;                                //300-Hz
-    zz2=zz1;
-    zz1=za0;
-    //za0=(30*(za0-zz2)+0*zz1)/32;                                 //300-Hz with very steep roll-off down to 0 Hz
-    za0=((((za0-zz2) << 5) - ((za0-zz2) << 1)) + (((zz1) << 4) + ((zz1) << 3) + zz1)) >> 5;                                  //300-Hz
-
-    // 4th Order (SR=8kHz) IIR in Direct Form I, 8x8:16
-    switch(filt){
-      case 1: zb0=((za0+2*za1+za2)>>1)-((((zb1 << 3) + (zb1 << 2) + zb1) + ((zb2 << 3) + (zb2 << 1) + zb2))>>4); break;   // 0-2900Hz filter, first biquad section
-      case 2: zb0=((za0+2*za1+za2)>>1)-(((zb1<<1)+(zb2<<3))>>4); break;     // 0-2400Hz filter, first biquad section
-      //case 3: zb0=(za0+2*za1+za2)/2-(4*zb1+2*zb2)/16; break;     // 0-2400Hz filter, first biquad section
-      case 3: zb0=((za0+2*za1+za2)>>1)-((zb2<<2)>>4); break;     //0-1800Hz  elliptic
-      //case 3: zb0=(za0+7*za1+za2)/16-(-24*zb1+9*zb2)/16; break;  //0-1700Hz  elliptic with slope
-    }
-  
-    switch(filt){
-      case 1: zc0=((zb0+2*zb1+zb2)>>1)-((((zc1 << 4) + (zc1 << 1)) + ((zc2 << 3) + (zc2 << 1) + zc2))>>4); break;     // 0-2900Hz filter, second biquad section
-      case 2: zc0=((zb0+2*zb1+zb2)>>2)-(((zc1<<2)+(zc2<<3))>>4); break;       // 0-2400Hz filter, second biquad section
-      //case 3: zc0=(zb0+2*zb1+zb2)/4-(1*zc1+9*zc2)/16; break;       // 0-2400Hz filter, second biquad section
-      case 3: zc0=((zb0+2*zb1+zb2)>>2)-((zc2<<2)>>4); break;       //0-1800Hz  elliptic
-      //case 3: zc0=(zb0+zb1+zb2)/16-(-22*zc1+47*zc2)/64; break;   //0-1700Hz  elliptic with slope
-    }
-   /*switch(filt){
-      case 1: zb0=za0; break; //0-4000Hz (pass-through)
-      case 2: zb0=(10*(za0+2*za1+za2)+16*zb1-17*zb2)/32; break;    //0-2500Hz  elliptic -60dB@3kHz
-      case 3: zb0=(7*(za0+2*za1+za2)+48*zb1-18*zb2)/32; break;     //0-1700Hz  elliptic
-    }
-  
-    switch(filt){
-      case 1: zc0=zb0; break; //0-4000Hz (pass-through)
-      case 2: zc0=(8*(zb0+zb2)+13*zb1-43*zc1-52*zc2)/64; break;   //0-2500Hz  elliptic -60dB@3kHz
-      case 3: zc0=(4*(zb0+zb1+zb2)+22*zc1-47*zc2)/64; break;   //0-1700Hz  elliptic
-    }*/
-  
-    zc2=zc1;
-    zc1=zc0;
-  
-    zb2=zb1;
-    zb1=zb0;
-  
-    za2=za1;
-    za1=za0;
-    
-    return zc0;
-  } else { // for CW filters
-    //   (2nd Order (SR=4465Hz) IIR in Direct Form I, 8x8:16), adding 64x front-gain (to deal with later division)
-//#define FILTER_700HZ   1
-#ifdef FILTER_700HZ
-    if(cw_tone == 0){
-      switch(filt){
-        case 4: zb0=(za0+2*za1+za2)/2+(41L*zb1-23L*zb2)/32; break;   //500-1000Hz
-        case 5: zb0=5*(za0-2*za1+za2)+(105L*zb1-58L*zb2)/64; break;   //650-840Hz
-        case 6: zb0=3*(za0-2*za1+za2)+(108L*zb1-61L*zb2)/64; break;   //650-750Hz
-        case 7: zb0=(2*za0-3*za1+2*za2)+(111L*zb1-62L*zb2)/64; break; //630-680Hz       
-        //case 4: zb0=(0*za0+1*za1+0*za2)+(28*zb1-14*zb2)/16; break; //600Hz+-250Hz
-        //case 5: zb0=(0*za0+1*za1+0*za2)+(28*zb1-15*zb2)/16; break; //600Hz+-100Hz
-        //case 6: zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //600Hz+-50Hz
-        //case 7: zb0=(0*za0+1*za1+0*za2)+(27*zb1-15*zb2)/16; break; //630Hz+-18Hz
-      }
-    
-      switch(filt){
-        case 4: zc0=(zb0-2*zb1+zb2)/4+(105L*zc1-52L*zc2)/64; break;      //500-1000Hz
-        case 5: zc0=((zb0+2*zb1+zb2)+97L*zc1-57L*zc2)/64; break;      //650-840Hz
-        case 6: zc0=((zb0+zb1+zb2)+104L*zc1-60L*zc2)/64; break;       //650-750Hz
-        case 7: zc0=((zb1)+109L*zc1-62L*zc2)/64; break;               //630-680Hz
-        //case 4: zc0=(zb0-2*zb1+zb2)/1+(24*zc1-13*zc2)/16; break; //600Hz+-250Hz
-        //case 5: zc0=(zb0-2*zb1+zb2)/4+(26*zc1-14*zc2)/16; break; //600Hz+-100Hz
-        //case 6: zc0=(zb0-2*zb1+zb2)/16+(28*zc1-15*zc2)/16; break; //600Hz+-50Hz
-        //case 7: zc0=(zb0-2*zb1+zb2)/32+(27*zc1-15*zc2)/16; break; //630Hz+-18Hz
-      }
-    }
-    if(cw_tone == 1)
-#endif
-    {
-      switch(filt){
-        //case 4: zb0=(1*za0+2*za1+1*za2)+(90L*zb1-38L*zb2)/64; break; //600Hz+-250Hz
-        //case 5: zb0=(1*za0+2*za1+1*za2)/2+(102L*zb1-52L*zb2)/64; break; //600Hz+-100Hz
-        //case 6: zb0=(1*za0+2*za1+1*za2)/2+(107L*zb1-57L*zb2)/64; break; //600Hz+-50Hz
-        //case 7: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-61L*zb2)/64; break; //600Hz+-25Hz
-        
-        case 4: zb0=(0*za0+1*za1+0*za2)+(114L*zb1-57L*zb2)/64; break; //600Hz+-250Hz
-        case 5: zb0=(0*za0+1*za1+0*za2)+(113L*zb1-60L*zb2)/64; break; //600Hz+-100Hz
-        case 6: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-62L*zb2)/64; break; //600Hz+-50Hz
-        case 7: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-61L*zb2)/64; break; //600Hz+-18Hz
-        //case 8: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-60L*zb2)/64; break; //591Hz+-12Hz
-
-        /*case 4: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+7L*zb2)/64; break; //600Hz+-250Hz
-        case 5: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-15L*zb1+4L*zb2)/64; break; //600Hz+-100Hz
-        case 6: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+2L*zb2)/64; break; //600Hz+-50Hz
-        case 7: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+3L*zb2)/64; break; //600Hz+-18Hz*/
-      }
-    
-      switch(filt){
-        //case 4: zc0=(zb0-2*zb1+zb2)/4+(95L*zc1-44L*zc2)/64; break; //600Hz+-250Hz
-        //case 5: zc0=(zb0-2*zb1+zb2)/8+(104L*zc1-53L*zc2)/64; break; //600Hz+-100Hz
-        //case 6: zc0=(zb0-2*zb1+zb2)/16+(106L*zc1-56L*zc2)/64; break; //600Hz+-50Hz
-        //case 7: zc0=(zb0-2*zb1+zb2)/32+(112L*zc1-62L*zc2)/64; break; //600Hz+-25Hz
-        
-        case 4: zc0=(zb0-2*zb1+zb2)/1+(95L*zc1-52L*zc2)/64; break; //600Hz+-250Hz
-        case 5: zc0=(zb0-2*zb1+zb2)/4+(106L*zc1-59L*zc2)/64; break; //600Hz+-100Hz
-        case 6: zc0=(zb0-2*zb1+zb2)/16+(113L*zc1-62L*zc2)/64; break; //600Hz+-50Hz
-        case 7: zc0=(zb0-2*zb1+zb2)/32+(112L*zc1-62L*zc2)/64; break; //600Hz+-18Hz
-        //case 8: zc0=(zb0-2*zb1+zb2)/64+(113L*zc1-63L*zc2)/64; break; //591Hz+-12Hz
-        
-        /*case 4: zc0=(zb0-2*zb1+zb2)/1+zc1-zc2+(31L*zc1+12L*zc2)/64; break; //600Hz+-250Hz
-        case 5: zc0=(zb0-2*zb1+zb2)/4+2*zc1-zc2+(-22L*zc1+5L*zc2)/64; break; //600Hz+-100Hz
-        case 6: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-15L*zc1+2L*zc2)/64; break; //600Hz+-50Hz
-        case 7: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-16L*zc1+2L*zc2)/64; break; //600Hz+-18Hz*/
-      } 
-    }
-    zc2=zc1;
-    zc1=zc0;
-  
-    zb2=zb1;
-    zb1=zb0;
-  
-    za2=za1;
-    za1=za0;
-    
-    //return zc0 / 64; // compensate the 64x front-end gain
-    return zc0 / 8; // compensate the front-end gain
-  }
-}
+#include "usdx_filter.h"
 
 #define __UA   256
 inline int16_t _arctan3(int16_t q, int16_t i)
@@ -2756,21 +2663,26 @@ inline int16_t slow_dsp(int16_t ac)
 
   if(mode == AM) {
     ac = magn(i, q);
-    { static int16_t dc;   // DC decoupling
-      dc += (ac - dc) / 2;
-      ac = ac - dc; }
+    static int32_t dc_avg = 0;
+    dc_avg = (dc_avg * 63 + ac) / 64;
+    ac = ac - dc_avg;
   } else if(mode == FM){
-    static int16_t zi;
-    ac = ((ac + i) * zi);  // -qh = ac + i
-    zi =i;
-    /*int16_t z0 = _arctan3(q, i);
-    static int16_t z1;
-    ac = z0 - z1; // Differentiator
-    z1 = z0;*/
-    /*static int16_t _q;
-    _q = (_q + q) / 2;
-    ac = i * _q;  // quadrature detector */
-    //ac = ((q > 0) == !(i > 0)) ? 128 : -128; // XOR I/Q zero-cross detector
+    static int16_t prev_i = 0;
+    static int16_t prev_q = 0;
+    int32_t product = (int32_t)i * prev_q - (int32_t)q * prev_i;
+    int32_t magnitude_sq = (int32_t)i * i + (int32_t)q * q;
+    if (magnitude_sq > 1000) { 
+      ac = (product << 4) / (magnitude_sq >> 3);
+    } else {
+      ac = 0;
+    }
+
+    prev_i = i;
+    prev_q = q;
+
+    static int16_t fm_lpf = 0;
+    fm_lpf = (fm_lpf * 3 + ac) / 4; // alpha = 1/4 (~3-4 кГц)
+    ac = fm_lpf;
   }  // needs: p.12 https://www.veron.nl/wp-content/uploads/2014/01/FmDemodulator.pdf
   else { ; }  // USB, LSB, CW
 
@@ -3644,22 +3556,9 @@ volatile int16_t rit = 0;
 // We measure the average amplitude of the signal (see slow_dsp()) but the S-meter should be based on RMS value.
 // So we multiply by 0.707/0.639 in an attempt to roughly compensate, although that only really works if the input
 // is a sine wave
-uint8_t smode = 2;
+uint8_t smode = 1;
 uint32_t max_absavg256 = 0;
 int16_t dbm;
-
-const uint16_t log10_lut[] = {0, 301, 477, 602, 699, 778, 845, 903, 954};
-
-int32_t log10_fix(uint32_t n) {
-    if (n == 0) return -32768; // Represents negative infinity
-    int32_t l = 0;
-    uint32_t n_copy = n;
-    while (n_copy >= 10) {
-        n_copy /= 10;
-        l++;
-    }
-    return l * 1000 + log10_lut[n_copy-1];
-}
 
 static int16_t smeter_cnt = 0;
 
@@ -3668,21 +3567,10 @@ int16_t smeter(int16_t ref = 0)
   max_absavg256 = max(_absavg256, max_absavg256); // peak
 
   if((smode) && ((++smeter_cnt % 2048) == 0)){   // slowed down display slightly
-    
-    int32_t log_val = log10_fix(max_absavg256);
-    if (log_val > -32768) {
-        int32_t dbm_scaled;
-        if(dsp_cap == SDR) {
-            // dbm = 20 * log10(max_absavg256) + 6 * att2 - 184.6
-            dbm_scaled = (20 * log_val) / 1000 + 6 * att2 - 185;
-        } else {
-            // dbm = 20 * log10(max_absavg256) + 6 * att2 - 176.2
-            dbm_scaled = (20 * log_val) / 1000 + 6 * att2 - 176;
-        }
-        dbm = dbm_scaled - ref;
-    } else {
-        dbm = -127 - ref; // Minimum S-meter reading
-    }
+    float rms = (float)max_absavg256 * (float)(1 << att2);
+    if(dsp_cap == SDR) rms /= (256.0 * 1024.0 * (float)R * 8.0 * 500.0 * 1.414 / (0.707 * 1.1));   // = -98.8dB  1 rx gain stage: rmsV = ADC value * AREF / [ADC DR * processing gain * receiver gain * "RMS compensation"]
+    else               rms /= (256.0 * 1024.0 * (float)R * 2.0 * 100.0 * 120.0 / (1.750 * 5.0));   // = -94.6dB
+    dbm = 10 * log10((rms * rms) / 50) + 30 - ref; //from rmsV to dBm at 50R
 
     lcd.noCursor(); 
     if(smode == 1){ // dBm meter
@@ -4038,8 +3926,7 @@ void show_banner(){
   const char* cap_label[] = { "SSB", "DSP", "SDR" };
   if(ssb_cap || dsp_cap){ lcd.print('-'); lcd.print(cap_label[dsp_cap]); }
 #else
-  //lcd.print(F("uSDX"));
-  lcd.print(F(ARID));
+  lcd.print(F("uSDX"));
 #endif //QCX
   lcd.print('\x01'); lcd_blanks(); lcd_blanks();
 }
@@ -4078,11 +3965,6 @@ volatile int8_t menu = 0;  // current parameter id selected in menu
 
 uint8_t eeprom_version;
 #define EEPROM_OFFSET 0x150  // avoid collision with QCX settings, overwrites text settings though
-#define FT8_EEPROM_ADDR (EEPROM_OFFSET + N_ALL_PARAMS + 2)
-#define PREV_MODE_FT8_EEPROM_ADDR (FT8_EEPROM_ADDR + 1)
-#define PREV_FILT_FT8_EEPROM_ADDR (PREV_MODE_FT8_EEPROM_ADDR + 1)
-#define PREV_AGC_FT8_EEPROM_ADDR (PREV_FILT_FT8_EEPROM_ADDR + 1)
-#define PREV_NR_FT8_EEPROM_ADDR (PREV_AGC_FT8_EEPROM_ADDR + 1)
 int eeprom_addr;
 
 // Support functions for parameter and menu handling
@@ -4229,7 +4111,11 @@ const char* smode_label[] = { "OFF", "dBm", "S", "S-bar", "wpm" };
 #endif
 #endif
 #ifdef SWR_METER
+#ifdef INA219_POWER_METER
+const char* swr_label[] = { "OFF", "FWD-SWR", "FWD-REF", "VFWD-VREF", "PWR-EFF", "I-U-P" };
+#else
 const char* swr_label[] = { "OFF", "FWD-SWR", "FWD-REF", "VFWD-VREF" };
+#endif
 #endif
 const char* cw_tone_label[] = { "700", "600" };
 #ifdef KEYER
@@ -4239,11 +4125,12 @@ const char* agc_label[] = { "OFF", "Fast", "Slow" };
 
 #define _N(a) sizeof(a)/sizeof(a[0])
 
-#define N_PARAMS 44  // number of (visible) parameters
+//#define N_PARAMS 44  // number of (visible) parameters
+#define N_PARAMS 46  // 2 added (power and current shunt calibration)
 
 #define N_ALL_PARAMS (N_PARAMS+5)  // number of parameters
 
-enum params_t {_NULL, VOLUME, MODE, FILTER, BAND, STEP, VFOSEL, RIT, AGC, NR, ATT, ATT2, SMETER, SWRMETER, CWDEC, CWTONE, CWOFF, SEMIQSK, KEY_WPM, KEY_MODE, KEY_PIN, KEY_TX, VOX, VOXGAIN, DRIVE, TXDELAY, MOX, FT8MODE, CWINTERVAL, CWMSG1, CWMSG2, CWMSG3, CWMSG4, CWMSG5, CWMSG6, PWM_MIN, PWM_MAX, SIFXTAL, IQ_ADJ, CALIB, SR, CPULOAD, PARAM_A, PARAM_B, PARAM_C, BACKL, FREQA, FREQB, MODEA, MODEB, VERS, ALL=0xff};
+enum params_t {_NULL, VOLUME, MODE, FILTER, BAND, STEP, VFOSEL, RIT, AGC, NR, ATT, ATT2, SMETER, SWRMETER, CALPWR, CALSHUNT, CWDEC, CWTONE, CWOFF, SEMIQSK, KEY_WPM, KEY_MODE, KEY_PIN, KEY_TX, VOX, VOXGAIN, DRIVE, TXDELAY, MOX, CWINTERVAL, CWMSG1, CWMSG2, CWMSG3, CWMSG4, CWMSG5, CWMSG6, PWM_MIN, PWM_MAX, SIFXTAL, IQ_ADJ, CALIB, SR, CPULOAD, PARAM_A, PARAM_B, PARAM_C, BACKL, FREQA, FREQB, MODEA, MODEB, VERS, ALL=0xff};
 
 int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 {
@@ -4274,6 +4161,10 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
     case SMETER:  paramAction(action, smode, 0x1C, F("S-meter"), smode_label, 0, _N(smode_label) - 1, false); break;
 #ifdef SWR_METER
     case SWRMETER:  paramAction(action, swrmeter, 0x1D, F("SWR Meter"), swr_label, 0, _N(swr_label) - 1, false); break;
+    case CALPWR:  paramAction(action, calpwr, 0x1E, F("Cal. power"), NULL, 1, 255, false); break;
+#ifdef INA219_POWER_METER
+    case CALSHUNT:  paramAction(action, calshunt, 0x1F, F("Cal Current"), NULL, 100, 16384, false); break;
+#endif
 #endif
 #ifdef CW_DECODER
     case CWDEC:   paramAction(action, cwdec, 0x21, F("CW Decoder"), offon_label, 0, 1, false); break;
@@ -4305,39 +4196,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 #endif
 #ifdef MOX_ENABLE
     case MOX:     paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false); break;
-#endif
-#ifdef FT8_MODE
-    case FT8MODE:
-      {
-        uint8_t prev_ft8mode = ft8mode;
-        paramAction(action, ft8mode, 0x36, F("FT8 Mode"), offon_label, 0, 1, false);
-        if(action == UPDATE_MENU && prev_ft8mode != ft8mode) {
-          EEPROM.write(FT8_EEPROM_ADDR, ft8mode);
-          if(ft8mode){
-            prev_mode_ft8 = mode;
-            prev_filt_ft8 = filt;
-            prev_agc_ft8 = agc;
-            prev_nr_ft8 = nr;
-            EEPROM.write(PREV_MODE_FT8_EEPROM_ADDR, prev_mode_ft8);
-            EEPROM.write(PREV_FILT_FT8_EEPROM_ADDR, prev_filt_ft8);
-            EEPROM.write(PREV_AGC_FT8_EEPROM_ADDR, prev_agc_ft8);
-            EEPROM.write(PREV_NR_FT8_EEPROM_ADDR, prev_nr_ft8);
-            mode = USB;
-            filt = 1;
-            agc = 0;
-            nr = 0;
-            dig_mode = true;
-          } else {
-            mode = prev_mode_ft8;
-            filt = prev_filt_ft8;
-            agc = prev_agc_ft8;
-            nr = prev_nr_ft8;
-            dig_mode = false;
-          }
-          change = true;
-        }
-      }
-      break;
 #endif
 #ifdef CW_MESSAGE
     case CWINTERVAL: paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false); break;
@@ -4822,6 +4680,63 @@ void build_lut()
 }
 
 #ifdef SWR_METER
+
+#ifdef INA219_POWER_METER
+/* measurement using an addon INA219 board from Adafruit or one of very similar boards but without the Adafruit logo
+   all of these boards have a 0.1ohm resistor on board
+   the trace to the PA should be cut and the board shunt resistor inserted there
+   SCL/SDA go to the SCL/SDA pins on the atmega (same as SI5351, TCA9555 etc)
+   currently i've connected Vcc to the +5V trace, but it doesn't seem to do any harm to the i2c. will have to find a +3.3V trace on the board 
+
+   The current measurement can be calibrated using the "Cal Current" menu entry: 
+   - connect an ammeter in series with the PA
+   - change SWR meter to I-U-P, change mode to CW
+   - preferably transmit into a dummy load, not into an antenna
+   - press the key, change the "Cal Current" value so that the current value shown reflects the current shown by the meter
+   Ideally Cal Current should be 4096 for a 0.1ohm shunt resistor, however for mine 4010 gives same results as my meter
+   
+   later i will publish how i made this mod --sq5bpf */
+   
+#include "ina219.h"
+// TODO: try to move these into a separate library, not easy because i would also need to move the i2c stuff into a separate library too --sq5bpf 
+void ina219_write(uint8_t reg, uint16_t val) {
+  i2c.start(); 
+  i2c.SendByte(INA219_ADDR << 1);
+  i2c.SendByte(reg);
+  i2c.SendByte(val>>8);
+  i2c.SendByte(val&0xff);
+  i2c.stop();
+}
+
+uint16_t ina219_read(uint8_t reg) {
+uint16_t ret;
+   i2c.start();
+    i2c.SendByte(INA219_ADDR << 1);
+    i2c.SendByte(reg);
+    i2c.stop();
+    i2c.start(); 
+    i2c.SendByte((INA219_ADDR << 1) | 1);
+    ret = i2c.RecvByte(false)<<8;
+    ret |=  i2c.RecvByte(true);
+    i2c.stop();
+ return(ret);
+ }
+
+void ina219_init() {
+ina219_write(INA219_REG_CALIBRATION,calshunt); //actually the lowest bit is insignificant according to the INA219 docs, maybe i should &0xfffe --sq5bpf
+  /* nifty calculator in javascript here: https://forums.adafruit.com/download/file.php?id=84820 */
+ina219_write(INA219_REG_CONFIG,INA219_CONFIG_BVOLTAGERANGE_32V |
+                  INA219_CONFIG_GAIN_8_320MV |
+                  INA219_CONFIG_BADCRES_12BIT |
+                  INA219_CONFIG_SADCRES_12BIT_1S_532US |
+                  INA219_CONFIG_MODE_SANDBVOLT_CONTINUOUS); 
+
+//ina219_write(INA219_REG_CALIBRATION,4096);
+//ina219_write(INA219_REG_CALIBRATION,calshunt);
+}
+#endif //INA219_POWER_METER
+
+
 void readSWR()
 // reads FWD / REF values from A6 and A7 and computes SWR
 // credit Duwayne, KV4QB
@@ -4836,58 +4751,90 @@ void readSWR()
     pwr = ((((Vinc) * (Vinc)) - 0.25 ) * k);
     Eff = (pwr) / ((power_mW) / 1000) * 100; */
 {
-  int32_t v_FWD_raw = 0;
-  int32_t v_REF_raw = 0;
-  for (int i = 0; i <= 7; i++) {
-    v_FWD_raw += analogRead(PIN_FWD);
-    v_REF_raw += analogRead(PIN_REF);
+#define SWR_AVERAGING_NUM 8 //how much measurements to average --sq5bpf  
+
+#ifdef INA219_POWER_METER
+  float busvoltage=0;
+  float current_mA;
+  float power_mW;
+  ina219_init(); // comment in Adafruit library says to always initialize before measurement, because a current spike may reset the board --sq5bpf
+  #endif
+
+  float v_FWD = 0;
+  float v_REF = 0;
+  for (int i = 0; i < SWR_AVERAGING_NUM ; i++) {
+    v_FWD = v_FWD + (ref_V / 1023) * (int) analogRead(PIN_FWD);
+    v_REF = v_REF + (ref_V / 1023) * (int) analogRead(PIN_REF);
     delay(5);
   }
+  v_FWD = v_FWD / SWR_AVERAGING_NUM;
+  v_REF = v_REF / SWR_AVERAGING_NUM;
 
-  // v_scaled is voltage * 10000
-  int32_t v_FWD_scaled = ((int64_t)v_FWD_raw * 57500) / 8184;
-  int32_t v_REF_scaled = ((int64_t)v_REF_raw * 57500) / 8184;
+/* actually this seems a bit wrong, because we should take into account the 0.6V voltage drop accross the diode
+ * so for 0.6V voltage drop and 50 ohms load something like p_FWD=((v_FWD+0.6)/sqrt(2))^2 * some_calibration; //P=V^2/R
+ * but we'll use the original code with a calibration coefficient for now until i get a better power meter --sq5bpf 
+ * 
+ * TODO: correct the p_FWD and P_REV calculation because it seems wrong or figure out what i'm missing --sq5bpf
+ */
+  float p_FWD = sq(v_FWD);
+  float p_REV = sq(v_REF);
 
-  // p_scaled is power * 100
-  int32_t p_FWD_scaled = ((int64_t)v_FWD_scaled * v_FWD_scaled) / 1000000;
-  int32_t p_REV_scaled = ((int64_t)v_REF_scaled * v_REF_scaled) / 1000000;
+  float vRatio = v_REF / v_FWD;
+  float VSWR = (1 + vRatio) / (1 - vRatio);
 
-  int32_t VSWR_scaled;
-  if (v_FWD_scaled <= v_REF_scaled) {
-    VSWR_scaled = 9999; // Indicate infinite SWR with a large value
-  } else {
-    VSWR_scaled = ((int64_t)(v_FWD_scaled + v_REF_scaled) * 100) / (v_FWD_scaled - v_REF_scaled);
-  }
+  if ((VSWR > 9.99) || (VSWR < 1) )VSWR = 9.99;
 
-  if (VSWR_scaled > 9999) VSWR_scaled = 9999;
-  if (VSWR_scaled < 100) VSWR_scaled = 100;
+  #ifdef INA219_POWER_METER
+  busvoltage=(ina219_read(INA219_REG_BUSVOLTAGE)>>3)*0.004;
+  current_mA=(int16_t)ina219_read(INA219_REG_CURRENT)/10.0;
+  power_mW=ina219_read(INA219_REG_POWER)*2.0;
+// TODO: maybe we should disable TX when the current is over some limit or the swr is too high?
+  #endif
 
-  // To avoid changing global variable types, convert back to float at the end.
-  float p_FWD_float = (float)p_FWD_scaled / 100.0;
-  float VSWR_float = (float)VSWR_scaled / 100.0;
-
-  if (p_FWD_float != FWD || VSWR_float != SWR) {
+#ifdef INA219_POWER_METER
+  if (p_FWD != FWD || VSWR != SWR || swrmeter==4 || swrmeter==5)
+#else
+  if (p_FWD != FWD || VSWR != SWR)
+#endif
+{
       lcd.noCursor();
       lcd.setCursor(0,0);
       switch(swrmeter) {
         case 1:
-          lcd.print(" "); lcd.print(p_FWD_float, 2); lcd.print("W  SWR:"); lcd.print(VSWR_float, 2);
+        /* this used to be floor(100*p_FWD)/100, and i've just added a calibration coefficient, but it just seems wrong, see above comment --sq5bpf */
+          lcd.print(" "); lcd.print(floor(calpwr*p_FWD)/100); lcd.print("W  SWR:"); lcd.print(floor(100*VSWR)/100);
           break;
         case 2:
-          lcd.print(" F:"); lcd.print(p_FWD_float, 2); lcd.print("W R:"); lcd.print((float)p_REV_scaled/100.0, 2); lcd.print("W");
+          lcd.print(" F:"); lcd.print(floor(calpwr*p_FWD)/100); lcd.print("W R:"); lcd.print(floor(calpwr*p_REV)/100); lcd.print("W");
           break;
         case 3:
-          lcd.print(" F:"); lcd.print((float)v_FWD_scaled/10000.0, 2); lcd.print("V R:"); lcd.print((float)v_REF_scaled/10000.0, 2); lcd.print("V");
+          lcd.print(" F:"); lcd.print(floor(100*v_FWD)/100); lcd.print("V R:"); lcd.print(floor(100*v_REF)/100); lcd.print("V");
           break;
+#ifdef INA219_POWER_METER
+        case 4: //prints output power , efficiency, voltage. this just fits in 20 characters on the LCD, might have to modified for the OLED displays --sq5bpf
+        case 5: //prints output power , current, voltage. this just fits in 20 characters on the LCD, might have to modified for the OLED displays --sq5bpf
+          float eff=100.0*(calpwr*p_FWD*10.0)/power_mW;
+          lcd.print(floor(calpwr*p_FWD)/100);
+          lcd.print("W ");
+          if (swrmeter==4) {
+          lcd.print(uint8_t(eff));
+          lcd.print("% "); 
+          } else {
+          lcd.print(int16_t(current_mA));
+          lcd.print("mA"); // there is no space after mA, it looks ugly, but one more digit of voltage will fit, the V after the voltage won't fit
+          }
+          lcd.print(floor(busvoltage*100)/100); lcd.print("V "); 
+          break;
+          
+#endif
       }
-      FWD = p_FWD_float;
-      SWR = VSWR_float;
+    FWD = p_FWD;
+    SWR = VSWR;
   }
 }
 #endif
 void setup()
 {
-  
   digitalWrite(KEY_OUT, LOW);  // for safety: to prevent exploding PA MOSFETs, in case there was something still biasing them.
   si5351.powerDown();  // disable all CLK outputs (especially needed for si5351 variants that has CLK2 enabled by default, such as Si5351A-B04486-GT)
 
@@ -5143,27 +5090,13 @@ void setup()
     delay(500); wdt_reset();
   } else {
     paramAction(LOAD);  // load all parameters
-    ft8mode = EEPROM.read(FT8_EEPROM_ADDR);
-    if(ft8mode > 1) ft8mode = 0;
-    prev_mode_ft8 = EEPROM.read(PREV_MODE_FT8_EEPROM_ADDR);
-    prev_filt_ft8 = EEPROM.read(PREV_FILT_FT8_EEPROM_ADDR);
-    prev_agc_ft8 = EEPROM.read(PREV_AGC_FT8_EEPROM_ADDR);
-    prev_nr_ft8 = EEPROM.read(PREV_NR_FT8_EEPROM_ADDR);
-    if (ft8mode) {
-      mode = USB;
-      filt = 1;
-      agc = 0;
-      nr = 0;
-      dig_mode = true;
-    }
   }
   //if(abs((int32_t)F_XTAL - (int32_t)si5351.fxtal) > 50000){ si5351.fxtal = F_XTAL; }  // if F_XTAL frequency deviates too much with actual setting -> use default
   si5351.iqmsa = 0;  // enforce PLL reset
   change = true;
   prev_bandval = bandval;
   vox = false;  // disable VOX
-  nr = 2; // disable NR
-  smode = 2; // SMeter
+  nr = 0; // disable NR
   rit = false;  // disable RIT
   freq = vfo[vfosel%2];
   mode = vfomode[vfosel%2];
@@ -5202,6 +5135,11 @@ static int32_t _step = 0;
 
 void loop()
 {
+
+#ifdef THREEBUTTONROT
+CheckRotButton();
+#endif
+
 #ifdef VOX_ENABLE
   if((vox) && ((mode == LSB) || (mode == USB))){  // If VOX enabled (and in LSB/USB mode), then take mic samples and feed ssb processing function, to derive amplitude, and potentially detect cross vox_threshold to detect a TX or RX event: this is expressed in tx variable
     if(!vox_tx){ // VOX not active
@@ -5339,7 +5277,7 @@ void loop()
       wdt_reset();
       delay((mode == CW) ? 10 : 100);  // keep the tx keyed for a while before sensing (helps against RFI issues on DAH/DAH line)
 #ifdef SWR_METER
-      if(smeter > 0 && mode == CW && millis() >= stimer) { readSWR(); stimer = millis() + 500; }
+      if(swrmeter > 0 && mode == CW && millis() >= stimer) { readSWR(); stimer = millis() + 500; }
 #endif
       if(inv ^ _digitalRead(BUTTONS)) break;  // break if button is pressed (to prevent potential lock-up)
     } while(!_digitalRead(pin)); // until released
@@ -5643,7 +5581,6 @@ void loop()
         if(menu == BAND){
           change = true;
         }
-
         //if(menu == NR){ if(mode == CW) nr = false; }
         if(menu == VFOSEL){
           freq = vfo[vfosel%2];
