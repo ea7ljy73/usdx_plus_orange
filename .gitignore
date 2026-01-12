@@ -1,4 +1,5 @@
 /.idea/
+<<<<<<< HEAD
 .idea/workspace.xml
 
 # Documentación y herramientas de desarrollo (no necesarias en repositorio)
@@ -6,3 +7,5 @@
 /usdx-legazy/
 /prompt.txt
 /AGENTS.md
+=======
+>>>>>>> master
