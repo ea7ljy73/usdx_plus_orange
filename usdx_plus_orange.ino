@@ -606,7 +606,7 @@ public: // LCD1602 display in 4-bit mode, RS is pull-up and kept low when idle
   void cmd(uint8_t b) {
     nib(b >> 4);
     nib(b & 0xf);
-  }                         // Write command: send nibbles while RS low
+  } // Write command: send nibbles while RS low
   size_t write(uint8_t b) { // Write data:    send nibbles while RS high
     pre();
     // LCD_EN_HI();                                   // Complete Enable cycle
@@ -1438,10 +1438,13 @@ ISR(PCINT2_vect) { // Interrupt on rotary encoder turn
   // noInterrupts();
   // PCMSK2 &= ~((1 << PCINT22) | (1 << PCINT23));  // mask ROT_A, ROT_B
   // interrupts
-  switch (last_state = (last_state << 4) | (_digitalRead(ROT_B) << 1) |
-                       _digitalRead(ROT_A)) { // transition  (see:
-                                              // https://www.allaboutcircuits.com/projects/how-to-use-a-rotary-encoder-in-a-mcu-based-project/
-                                              // )
+  switch (
+      last_state =
+          (last_state << 4) | (_digitalRead(ROT_B) << 1) |
+          _digitalRead(
+              ROT_A)) { // transition  (see:
+                        // https://www.allaboutcircuits.com/projects/how-to-use-a-rotary-encoder-in-a-mcu-based-project/
+                        // )
 // #define ENCODER_ENHANCED_RESOLUTION  1
 #ifdef ENCODER_ENHANCED_RESOLUTION // Option: enhance encoder from 24 to 96
                                    // steps/revolution, see: appendix 1,
@@ -2654,15 +2657,15 @@ const int16_t _F_SAMP_TX =
 #endif
 #define _UA                                                                    \
   600 //=(_FSAMP_TX)/8 //(_F_SAMP_TX)      //360  // unit angle; integer
-      //representation of one full circle turn or 2pi radials or 360 degrees,
-      //should be a integer divider of F_SAMP_TX and maximized to have higest
-      //precision
+      // representation of one full circle turn or 2pi radials or 360 degrees,
+      // should be a integer divider of F_SAMP_TX and maximized to have higest
+      // precision
 #define MAX_DP                                                                 \
   ((filt == 0)   ? _UA                                                         \
    : (filt == 3) ? _UA / 4                                                     \
                  : _UA / 2) //(_UA/2) // the occupied SSB bandwidth can be
-                            //further reduced by restricting the maximum phase
-                            //change (set MAX_DP to _UA/2).
+                            // further reduced by restricting the maximum phase
+                            // change (set MAX_DP to _UA/2).
 #define CARRIER_COMPLETELY_OFF_ON_LOW                                          \
   1 // disable oscillator on low amplitudes, to prevent potential unwanted
     // biasing/leakage through PA circuit
@@ -3213,7 +3216,7 @@ int cw_tx(char ch) { // Transmit message in CW
           if (delayWithKeySense(ditTime * ((j & k) ? 3 : 1))) {
             switch_rxtx(0);
             return 1;
-          }               // symbol: dah or dih length
+          } // symbol: dah or dih length
           switch_rxtx(0); // key-off tx
           if (delayWithKeySense(ditTime))
             return 1; // add symbol space
@@ -4202,7 +4205,7 @@ inline int16_t sdr_rx_common_i() {
     ocomb = 0;
     ozi1 = 0;
     ozi2 = 0;
-  }                   // hack
+  } // hack
   ozi2 = ozi1 + ozi2; // Integrator section
   ozi1 = ocomb + ozi1;
   OCR1AL = min(max((ozi2 >> 5) + 128, 0), 255);
@@ -5536,11 +5539,11 @@ volatile int8_t menu = 0; // current parameter id selected in menu
   byte _item[sz];                                                              \
   memcpy_P(_item, addr, sz); // copy array item from PROGMEM to SRAM
 #define get_version_id()                                                       \
-  ((VERSION[0] - '1') * 2048 +                                                 \
-   ((VERSION[2] - '0') * 10 + (VERSION[3] - '0')) * 32 +                       \
-   ((VERSION[4]) ? (VERSION[4] - 'a' + 1) : 0) *                               \
-       1) // converts VERSION string with (fixed) format "9.99z" into uint16_t
-          // (max. values shown here, z may be removed)
+  (uint16_t)((uint16_t)(VERSION[0] - '1') * 2048 +                             \
+             (uint16_t)((VERSION[2] - '0') * 10 + (VERSION[3] - '0')) * 32 +   \
+             (uint16_t)((VERSION[4]) ? (VERSION[4] - 'a' + 1) : 0) *           \
+                 1) // converts VERSION string with format "X.XXx" into
+                    // uint16_t
 
 uint8_t eeprom_version;
 #define EEPROM_OFFSET                                                          \
@@ -6301,7 +6304,7 @@ void serialEvent() {
         noInterrupts();
         cat_streaming = false;
         Serial.print(';');
-      }                // terminate CAT stream
+      } // terminate CAT stream
       analyseCATcmd(); // process CAT cmd
       if (_cat_streaming) {
         Serial.print("US");
@@ -7305,7 +7308,7 @@ void loop() {
             : (cat_key & 0x02) ? 1024
                                : 0;
       } // override analog value exercised by BUTTONS press
-#endif  // CAT_EXT
+#endif // CAT_EXT
       event = SC;
       int32_t t0 = millis();
       for (; inv ^ _digitalRead(BUTTONS);) { // until released or long-press
