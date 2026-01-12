@@ -220,6 +220,10 @@ To compile:
 
 ---
 
+**Disclaimer:** The author of these modifications is not responsible for any damages or harm caused by the use of this firmware. Use at your own risk.
+
+**Contact:** ea7ljy73@gmail.com
+
 **Release Date:** January 2026
 **Author:** EA7LJY - Julian
 **License:** MIT License

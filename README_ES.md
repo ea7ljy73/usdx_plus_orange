@@ -218,6 +218,10 @@ Para compilar:
 
 ---
 
+**Aviso legal:** El autor de estas modificaciones no se hace responsable de ningún daño o perjuicio causado por el uso de este firmware. Úselo bajo su propia responsabilidad.
+
+**Contacto:** ea7ljy73@gmail.com
+
 **Fecha de Release:** Enero 2026
 **Autor:** EA7LJY - Julian
 **Licencia:** MIT License
