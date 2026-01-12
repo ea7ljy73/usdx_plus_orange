@@ -6,13 +6,19 @@ En primer lugar vamos a analizar profundamente el proyecto y generar un fichero 
 Eres un especialista en aplicaciones de arduino.
 Este proyecto es un el firmware de un receptor de radio uSDX.
 En la carpeta usdx-legazy tenemos la primera implementación para tenerla como referencia, esta va a ser de solo lectura, nunca se modificará nada ahi.
-Analiza profunadmente los ficheros usdx_plus_orange.ino de funcionalidad y usdx_settings.h de configuración.
+Analiza profunadmente los ficheros usdx_plus_orange.ino de funcionalidad y usdx_settings.h de configuración. para entender el proyecto.
 Siempre debemos de optimizar el uso de memoria y almacenamiento pues es limitado para Atmega.
 Genera un fichero md de backlog analizando las posibles mejoras y optimizaciones basado en el codigo y funcionalidades implementadas en proyectos similare.
 Iremos paso a paso compilando la aplicacion siempre y comprobando en hardware.
 El objetivo siempre es mejorar la recepción RX y la transmisión TX reduciendo al maximo el ruido.
 
 
+Eres un especialista en aplicaciones de arduino.
+Este proyecto es un el firmware de un receptor de radio uSDX.
+En la carpeta usdx-legazy tenemos la primera implementación para tenerla como referencia, esta va a ser de solo lectura, nunca se modificará nada ahi.
+Analiza profunadmente los ficheros usdx_plus_orange.ino de funcionalidad y usdx_settings.h de configuración. para entender el proyecto.
+Siempre debemos de optimizar el uso de memoria y almacenamiento pues es limitado para Atmega.
+Genera un fichero nuevo de release .md con todo lo implementado nuevo en esta version.
 
 
 

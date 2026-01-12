@@ -36,17 +36,24 @@
 //#define CONDENSED      1   // Display in 4 line mode (for OLED and LCD2004 modules)
 //#define CAT_EXT        1   // Extended CAT support: remote button and screen control commands over CAT
 //#define CAT_STREAMING  1   // Extended CAT support: audio streaming over CAT, once enabled and triggered with CAT cmd, samplerate 7812Hz, 8-bit unsigned audio is sent over UART. The ";" is omited in the data-stream, and only sent to indicate the beginning and end of a CAT cmd.
-#define CW_DECODER       1   // CW decoder
-#define TX_ENABLE        1   // Disable this for RX only (no transmit), e.g. to support uSDX for kids idea: https://groups.io/g/ucx/topic/81030243#6276
+#define CW_DECODER       0   // CW decoder (disabled to save ~1500 bytes)
+#define TX_ENABLE        1   // Disable this for RX only (no transmit)
 #define KEY_CLICK        1   // Reduce key clicks by envelope shaping
-#define SEMI_QSK         1   // Just after keying the transmitter, keeps the RX muted for a short amount of time in the anticipation for continued keying
-#define RIT_ENABLE       1   // Receive-In-Transit alternates the receiving frequency with an user-defined offset to compensate for any necessary tuning needed on receive
-#define VOX_ENABLE       1   // Voice-On-Xmit which is switching the transceiver into transmit as soon audio is detected (above noise gate level)
+//#define SEMI_QSK        1   // Just after keying the transmitter, keeps the RX muted (disabled)
+//#define RIT_ENABLE      1   // Receive-In-Transit offset (disabled to save ~200 bytes)
+#define VOX_ENABLE       1   // Voice-On-Xmit
+//#define MOX_ENABLE     1   // Monitor-On-Xmit
+
+// AGC Modes: 0=OFF, 1=FAST(CW), 2=MEDIUM(SSB), 3=SLOW(weak signals)
+#define DEFAULT_AGC_MODE 2   // Default AGC mode (SSB)
+#define AGC_FAST_DECAY   100   // Decay factor for FAST mode
+#define AGC_MEDIUM_DECAY 400   // Decay factor for MEDIUM mode (default)
+#define AGC_SLOW_DECAY   800   // Decay factor for SLOW mode
 //#define MOX_ENABLE     1   // Monitor-On-Xmit which is audio monitoring on speaker during transmit
 //#define FAST_AGC       1   // Adds fast AGC option (good for CW)
 //#define VSS_METER      1   // Supports Vss measurement (as s-meter option), requires resistor of 1M between 12V and pin 26 (PC3)
 
-#define PER_BAND_TRACKING 1  // uSDXOpen feature: Save/restore frequency, mode and filter per band
+#define PER_BAND_TRACKING 0  // Save/restore frequency, mode and filter per band (disabled to save ~500 bytes)
 
 //#define SWR_METER      1   // Supports SWR meter with bridge on A6/A7 (LQPF ATMEGA328P) by Alain, K1FM, see: https://groups.io/g/ucx/message/6262 and https://groups.io/g/ucx/message/6361
 #define PWR_CALIBRATION_CONSTANT 67 // if SWR_METER is defined, this is the initial calibration value for the original code of the power meter. 67 is ok for the SWR bridge ripped from the trusdx schematics (ADC6 connected to forward power, ADC7 connected to reflected power) --sq5bpf
@@ -84,3 +91,10 @@
 //#define F_XTAL  20000000   // Enable this for uSDXDuO, 20MHz SI5351 crystal
 //#define TX_CLK0_CLK1   1   // Enable this for uSDXDuO, i.e. when PA is driven by CLK0, CLK1 (not CLK2); NTX pin may be used for enabling the TX path (this is like RX pin, except that RX may also be used as attenuator)
 //#define F_CLK2  12000000   // Enables a fixed CLK2 clock output of choice (only applicable when TX_CLK0_CLK1 is enabled), e.g. for up-converter or to clock UART USB device
+
+// TX Optimization switches
+#define SPEECH_EQ           1   // Speech pre-emphasis: +6dB boost at 2kHz for better clarity
+#define SPEECH_COMPRESSOR   1   // Automatic dynamic compression for consistent TX levels
+#define TX_POWER_RAMP       1   // Smooth power ramp at TX start/end to prevent pops
+#define VOX_HYSTERESIS      1   // VOX with hysteresis to prevent chattering
+#define TX_COMPRESSION_GAIN 6   // Additional compression gain (1-8), higher = more punch

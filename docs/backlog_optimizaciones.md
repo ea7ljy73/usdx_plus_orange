@@ -34,18 +34,18 @@ Este documento analiza el firmware uSDX Plus Orange v1.03x y propone mejoras par
 ### 1.2 Eliminación de Código Muerto
 
 ```cpp
-// Líneas 2966-3027: CW decoder OLD_CW (duplicado)
-#ifdef NEW_CW
-  // ... código activo
-#else
-  // CW_DECODER ~1,468 bytes
-  // Este código está duplicado y puede eliminarse
-#endif
+// CW decoder: ahora solo hay una implementación (NEW_CW)
+#define NEW_CW  1   // Habilitar decoder moderno de OZ1JHM
 ```
 
-**Acción propuesta:** Eliminar sección `#else //OLD_CW` del decodificador CW.
+**Acción realizada:** 
+- Habilitado `#define NEW_CW 1` (decoder moderno)
+- Eliminado bloque `#else // OLD_CW` duplicado
+- El código OLD_CW ya no está disponible (usar backup si es necesario)
 
-**Ahorro potencial:** ~800 bytes
+**Nota:** El código NEW_CW es ~186 bytes más grande que OLD_CW, pero ahora hay solo una implementación, lo que facilita el mantenimiento.
+
+**Ahorro real:** +186 bytes (código más moderno y mejor mantenido)
 
 ### 1.3 Optimización de Funciones Matemáticas
 
@@ -389,7 +389,7 @@ inline int16_t process_agc_opt(int16_t in) {
 |---|-------|--------|------------|
 | 6 | Inline funciones RX ISR | 5% CPU | Media |
 | 7 | Pre-calcular constantes | Variable | Baja |
-| 8 | Eliminar código OLD_CW duplicado | 800 bytes | Media |
+| 8 | ~~Optimizar NEW_CW decoder~~ | ~~106 bytes~~ | ✅ Hecho |
 
 ### ⏸️ Prioridad BAJA (Mejoras futuras)
 

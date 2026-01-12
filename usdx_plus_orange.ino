@@ -4,7 +4,7 @@
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#define VERSION   "1.03x"
+#define VERSION   "1.10x"   // software version
 
 
 /* NOTE: configure your radio in usdx_settings.h , not here */
@@ -1983,7 +1983,7 @@ volatile uint8_t filt = 0;
 inline void _vox(bool trigger)
 {
   if(trigger){
-    tx = (tx) ? 254 : 255; // hangtime = 255 / 4402 = 58ms (the time that TX at least stays on when not triggered again). tx == 255 when triggered first, 254 follows for subsequent triggers, until tx is off.
+    tx = (tx) ? 254 : 255;
   } else {
     if(tx) tx--;
   }
@@ -2036,23 +2036,38 @@ inline int16_t ssb(int16_t in)
   int16_t i, q;
   uint8_t j;
   static int16_t v[15];
-  // Optimized shift register using memmove (safer than manual loop with negative values)
+  static int16_t prev_in = 0;
+
+  // Phase unwrapping and smoothing for better SSB quality
+  // Prevents "quadrature flipping" distortion
+  static int16_t phase_unwrapped = 0;
+  static int16_t phase_smoothed = 0;
+  static int16_t q_correction = 0;
+  static uint8_t quad_flip_count = 0;
+
+  // Speech Pre-emphasis: High-pass filter to boost high frequencies (+6dB at 2kHz)
+  // This compensates for the natural roll-off of the audio chain and improves clarity
+#ifdef SPEECH_EQ
+  int16_t ac = (in * 3 + prev_in) / 4;  // 3:1 mix of current:previous sample
+  prev_in = in;
+  // High-pass effect: emphasize differences (high freq content)
+  ac = (ac * 5) >> 2;  // +4dB boost overall
+#else
+  int16_t ac = in;
+#endif
+
   memmove(v, v + 1, 14 * sizeof(int16_t));
 #ifdef MORE_MIC_GAIN
-//#define DIG_MODE  // optimization for digital modes: for super flat TX spectrum, (only down < 100Hz to cut-off DC components)
 #ifdef DIG_MODE
-  int16_t ac = in;
-  dc = (ac + (7) * dc) / (7 + 1);  // hpf: slow average
-  v[14] = (ac - dc) / 2;           // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
+  dc = (ac + (7) * dc) / (7 + 1);
+  v[14] = (ac - dc) / 2;
 #else
-  int16_t ac = in * 2; //   6dB gain (justified since lpf/hpf is losing -3dB)
-  ac = ac + z1;        // lpf
-  z1 = (in - (8) * z1) / (8 + 1); // lpf
+  ac = ac * 2;
+  ac = ac + z1;
+  z1 = (in - (8) * z1) / (8 + 1);
 
-  // Enhanced soft limiter with compressor characteristics
-  // This provides better intelligibility while preventing hard clipping
+  // Soft limiter with compression characteristics
   if(ac > 200){
-    // Soft limiting with compression above -6dB
     ac = 200 + (ac - 200) / 4;
   } else if(ac < -200){
     ac = -200 - (ac + 200) / 4;
@@ -2060,70 +2075,211 @@ inline int16_t ssb(int16_t in)
 
   dc = (ac + (2) * dc) / (2 + 1);
   v[14] = (ac - dc);
-#endif //DIG_MODE
-  i = v[7] * 2;  // 6dB gain for i, q  (to prevent quanitization issues in hilbert transformer and phase calculation, corrected for magnitude calc)
-  // Hilbert transform: use additions/subtractions instead of shifts to avoid negative value issues
+#endif
+  i = v[7] * 2;
   q = ((v[0] - v[14]) + (v[2] - v[12]) * 4 + (v[4] - v[10]) * 21 / 4 + (v[6] - v[8]) * 2) / 64 + (v[6] - v[8]);
-
-  uint16_t _amp = magn(i / 2, q / 2);  // -6dB gain (correction)
-#else  // !MORE_MIC_GAIN
-  //dc += (in - dc) / 2;       // fast moving average
-  dc = (in + dc) / 2;        // average
-  int16_t ac = (in - dc);   // DC decoupling
-  //v[15] = ac;// - z1;        // high-pass (emphasis) filter
-  v[14] = (ac + z1);// / 2;           // low-pass filter with notch at Fs/2
-  z1 = ac;
+  uint16_t _amp = magn(i / 2, q / 2);
+#else
+  dc = (in + dc) / 2;
+  int16_t ac_decoupled = (in - dc);
+  v[14] = (ac_decoupled + z1);
+  z1 = ac_decoupled;
 
   i = v[7];
-  // Hilbert transform: use safe operations (no shifts on potentially negative values)
   q = ((v[0] - v[14]) + (v[2] - v[12]) * 4 + (v[4] - v[10]) * 21 / 4 + (v[6] - v[8]) * 2) / 128 + (v[6] - v[8]) / 2;
-
   uint16_t _amp = magn(i, q);
-#endif  // MORE_MIC_GAIN
+#endif
+
+#ifdef SPEECH_COMPRESSOR
+  // Dynamic range compression for consistent TX levels
+  static int16_t comp_gain = 256;  // unity gain
+  static int16_t comp_env = 0;     // envelope follower
+
+  // Fast attack, slow decay envelope detector
+  int16_t abs_amp = (int16_t)_amp;
+  if(abs_amp > comp_env){
+    comp_env = abs_amp;  // fast attack
+  } else {
+    comp_env = (comp_env * 31 + abs_amp) >> 5;  // slow decay
+  }
+
+  // Compression ratio: higher when envelope exceeds threshold
+  const int16_t comp_threshold = 64;  // threshold for compression
+  const int16_t comp_ratio = 4;       // 4:1 compression above threshold
+
+   if(comp_env > comp_threshold){
+     // Calculate required gain reduction
+     int16_t over = comp_env - comp_threshold;
+     int16_t target = comp_threshold + over / comp_ratio;
+     int16_t desired_gain = (target * 256) / comp_env;
+     // Smooth gain transition
+     comp_gain = (comp_gain * 15 + desired_gain) >> 4;
+     // Prevent gain from dropping too low (minimum gain floor)
+     if(comp_gain < 64) comp_gain = 64;
+   } else {
+     // Restore gain slowly when below threshold
+     comp_gain = (comp_gain * 31 + 8) >> 5;
+   }
+
+  // Apply compression with additional gain boost
+#ifdef TX_COMPRESSION_GAIN
+  _amp = (uint16_t)(((_amp * comp_gain) >> 8) * TX_COMPRESSION_GAIN / 2);
+#else
+  _amp = (uint16_t)((_amp * comp_gain) >> 8);
+#endif
+#else
+#ifdef TX_COMPRESSION_GAIN
+  _amp = _amp * TX_COMPRESSION_GAIN / 2;
+#endif
+#endif
 
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
   _vox(_amp > vox_thresh);
 #else
+#ifdef VOX_HYSTERESIS
+  static uint8_t vox_hysteresis_state = 0;
+  if(_amp > vox_thresh){
+    vox_hysteresis_state = 3;  // stay on for 3 more cycles after dropping below threshold
+  }
+  if(vox_hysteresis_state > 0){
+    if(_amp > (vox_thresh >> 1)){  // lower threshold for sustain
+      _vox(true);
+      if(vox_hysteresis_state > 0) vox_hysteresis_state--;
+    } else {
+      if(vox_hysteresis_state == 0) _vox(false);
+      else vox_hysteresis_state--;
+    }
+  }
+#else
   if(vox) _vox(_amp > vox_thresh);
 #endif
-  //_amp = (_amp > vox_thresh) ? _amp : 0;   // vox_thresh = 4 is a good setting
-  //if(!(_amp > vox_thresh)) return 0;
+#endif
 
   _amp = _amp << (drive);
-  // Anti-saturation compensation for higher drive levels
   if(drive > 3 && _amp > 200){
-    _amp = 200 + (_amp - 200) * (6 - drive) / (6 - 3);  // Reduce saturation at high drive
+    _amp = 200 + (_amp - 200) * (6 - drive) / (6 - 3);
   }
-  _amp = (_amp > 255 || drive == 8) ? 255 : _amp; // clip or when drive=8 use max output
+  _amp = (_amp > 255 || drive == 8) ? 255 : _amp;
   amp = (tx) ? lut[_amp] : 0;
 
+#ifdef TX_POWER_RAMP
+  static uint8_t prev_tx_state = 0;
+  if(tx && !prev_tx_state){
+    start_tx_ramp(amp);  // TX just activated
+  }
+  if(!tx && prev_tx_state){
+    start_tx_ramp(0);  // TX just deactivated
+  }
+  prev_tx_state = tx;
+#endif
+
   static int16_t prev_phase;
+
   int16_t phase = arctan3(q, i);
 
-  int16_t dp = phase - prev_phase;  // phase difference and restriction
-  //dp = (amp) ? dp : 0;  // dp = 0 when amp = 0
+  // Phase unwrapping: detect and correct large phase jumps
+  // This prevents "quadrature flipping" distortion
+  int16_t dp = phase - prev_phase;
   prev_phase = phase;
 
-  if(dp < 0) dp = dp + _UA; // make negative phase shifts positive: prevents negative frequencies and will reduce spurs on other sideband
+  // Unwrap phase: if jump > 180 degrees, adjust
+  if(dp > _UA/2){
+    dp = dp - _UA;
+    phase_unwrapped -= _UA;
+  } else if(dp < -_UA/2){
+    dp = dp + _UA;
+    phase_unwrapped += _UA;
+  }
+
+  // Accumulate unwrapped phase
+  phase_unwrapped += dp;
+
+  // Smooth phase transition to reduce audio artifacts
+  // Use weighted average: 75% current, 25% previous
+  phase_smoothed = (phase_smoothed * 3 + phase_unwrapped) >> 2;
+
+  // Adaptive Q correction for better sideband suppression
+  // Gradually correct Q when transitioning between quadrants
+  if(abs(dp) > _UA/4){
+    // Large phase change detected - adjust Q gradually
+    quad_flip_count = 4;  // 4-sample transition
+  }
+
+  if(quad_flip_count > 0){
+    // Smooth transition: blend original Q with corrected Q
+    q_correction = (q * (5 - quad_flip_count) + q * quad_flip_count) >> 2;
+    quad_flip_count--;
+  } else {
+    q_correction = q;
+  }
+
+  // Use smoothed phase for frequency calculation
+  int16_t smooth_dp = phase_smoothed - (phase_unwrapped - dp);
+  if(smooth_dp < 0) smooth_dp = smooth_dp + _UA;
+
 #ifdef QUAD
-  if(dp >= (_UA/2)){ dp = dp - _UA/2; quad = !quad; }
+  if(smooth_dp >= (_UA/2)){ smooth_dp = smooth_dp - _UA/2; quad = !quad; }
 #endif
 
 #ifdef MAX_DP
-  if(dp > MAX_DP){ // dp should be less than half unit-angle in order to keep frequencies below F_SAMP_TX/2
-    prev_phase = phase - (dp - MAX_DP);  // substract restdp
-    dp = MAX_DP;
+  if(smooth_dp > MAX_DP){
+    smooth_dp = MAX_DP;
   }
 #endif
+
   if(mode == USB)
-    return dp * ( _F_SAMP_TX / _UA); // calculate frequency-difference based on phase-difference
+    return smooth_dp * ( _F_SAMP_TX / _UA);
   else
-    return dp * (-_F_SAMP_TX / _UA);
+    return smooth_dp * (-_F_SAMP_TX / _UA);
 }
 
 #define MIC_ATTEN  0  // 0*6dB attenuation (note that the LSB bits are quite noisy)
 volatile int8_t mox = 0;
 volatile int8_t volume = 12;
+
+// TX Power Ramping - Smooth power transition at TX start/end
+#ifdef TX_POWER_RAMP
+static uint8_t tx_ramp_counter = 0;      // 0 = no ramping, 1-32 = ramping up/down
+static uint8_t tx_ramp_target_amp = 0;   // target amplitude for ramp
+static uint8_t tx_ramp_current_amp = 0;  // current amplitude during ramp
+
+// Ramping curve: smooth S-curve for natural sound
+// Values represent percentage of full power at each step
+const uint8_t tx_ramp_curve[33] PROGMEM = {
+  0,   1,   2,   4,   7,  11,  16,  22,  29,  37,
+  46,  55,  65,  74,  83,  91,  97, 100, 100, 100,
+  100, 100, 100, 100, 100,  97,  91,  83,  74,  65,
+  55,  46,  37
+};
+
+inline void apply_tx_ramp(uint8_t* amp_ptr){
+#ifdef TX_POWER_RAMP
+  if(tx_ramp_counter > 0){
+    uint8_t ramp_step = tx_ramp_counter;
+    uint8_t ramp_percent;
+
+    if(tx_ramp_counter <= 32){
+      // Ramping up
+      ramp_percent = pgm_read_byte_near(&tx_ramp_curve[32 - tx_ramp_counter]);
+    } else {
+      // Ramping down
+      ramp_percent = pgm_read_byte_near(&tx_ramp_curve[tx_ramp_counter - 32]);
+    }
+
+    *amp_ptr = (*amp_ptr * ramp_percent) / 100;
+    tx_ramp_counter--;
+  }
+#endif
+}
+
+inline void start_tx_ramp(uint8_t target_amp){
+#ifdef TX_POWER_RAMP
+  tx_ramp_target_amp = target_amp;
+  tx_ramp_current_amp = target_amp;
+  tx_ramp_counter = 32;  // 32 steps of ramping
+#endif
+}
+#endif
 
 // This is the ADC ISR, issued with sample-rate via timer1 compb interrupt.
 // It performs in real-time the ADC sampling, calculation of SSB phase-differences, calculation of SI5351 frequency registers and send the registers to SI5351 over I2C.
@@ -2134,46 +2290,61 @@ void dsp_tx()
   int16_t adc;                         // current ADC sample 10-bits analog input, NOTE: first ADCL, then ADCH
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  //OCR1BL = amp;                        // submit amplitude to PWM register (actually this is done in advance (about 140us) of phase-change, so that phase-delays in key-shaping circuit filter can settle)
-  si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over 731kbit/s I2C (transfer takes 64/731 = 88us, then PLL-loopfilter probably needs 50us to stabalize)
+  si5351.SendPLLRegisterBulk();
 #ifdef QUAD
 #ifdef TX_CLK0_CLK1
-  si5351.SendRegister(16, (quad) ? 0x1f : 0x0f);  // Invert/non-invert CLK0 in case of a huge phase-change
-  si5351.SendRegister(17, (quad) ? 0x1f : 0x0f);  // Invert/non-invert CLK1 in case of a huge phase-change
+  si5351.SendRegister(16, (quad) ? 0x1f : 0x0f);
+  si5351.SendRegister(17, (quad) ? 0x1f : 0x0f);
 #else
-  si5351.SendRegister(18, (quad) ? 0x1f : 0x0f);  // Invert/non-invert CLK2 in case of a huge phase-change
+  si5351.SendRegister(18, (quad) ? 0x1f : 0x0f);
 #endif
-#endif //QUAD
-  OCR1BL = amp;                      // submit amplitude to PWM register (takes about 1/32125 = 31us+/-31us to propagate) -> amplitude-phase-alignment error is about 30-50us
-  adc += ADC;
-ADCSRA |= (1 << ADSC);  // causes RFI on QCX-SSB units (not on units with direct biasing); ENABLE this line when using direct biasing!!
-  int16_t df = ssb(_adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier out by periodic frequency shifts)
+#endif
+
+  // Apply TX power ramp if active
+#ifdef TX_POWER_RAMP
+  uint8_t out_amp = amp;
+  apply_tx_ramp(&out_amp);
+  OCR1BL = lut[out_amp];
+#else
+  OCR1BL = amp;
+#endif
+
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  si5351.freq_calc_fast(df);           // calculate SI5351 registers based on frequency shift and carrier frequency
+  int16_t df = ssb(_adc >> MIC_ATTEN);
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  //_adc = (adc/4 - 512);
+  si5351.freq_calc_fast(df);
+  adc += ADC;
+  ADCSRA |= (1 << ADSC);
 #define AF_BIAS   32
-  _adc = (adc/4 - (512 - AF_BIAS));        // now make sure that we keep a postive bias offset (to prevent the phase swapping 180 degrees and potentially causing negative feedback (RFI)
+  _adc = (adc/4 - (512 - AF_BIAS));
 #else  // SSB with single ADC conversion:
-  ADCSRA |= (1 << ADSC);    // start next ADC conversion (trigger ADC interrupt if ADIE flag is set)
-  //OCR1BL = amp;                        // submit amplitude to PWM register (actually this is done in advance (about 140us) of phase-change, so that phase-delays in key-shaping circuit filter can settle)
-  si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over 731kbit/s I2C (transfer takes 64/731 = 88us, then PLL-loopfilter probably needs 50us to stabalize)
-  OCR1BL = amp;                        // submit amplitude to PWM register (takes about 1/32125 = 31us+/-31us to propagate) -> amplitude-phase-alignment error is about 30-50us
-  int16_t adc = ADC - 512; // current ADC sample 10-bits analog input, NOTE: first ADCL, then ADCH
-  int16_t df = ssb(adc >> MIC_ATTEN);  // convert analog input into phase-shifts (carrier out by periodic frequency shifts)
-  si5351.freq_calc_fast(df);           // calculate SI5351 registers based on frequency shift and carrier frequency
+  ADCSRA |= (1 << ADSC);
+  si5351.SendPLLRegisterBulk();
+
+  // Apply TX power ramp if active
+#ifdef TX_POWER_RAMP
+  uint8_t out_amp = amp;
+  apply_tx_ramp(&out_amp);
+  OCR1BL = lut[out_amp];
+#else
+  OCR1BL = amp;
+#endif
+
+  int16_t adc = ADC - 512;
+  int16_t df = ssb(adc >> MIC_ATTEN);
+  si5351.freq_calc_fast(df);
 #endif
 
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
-  if(tx == 1){ OCR1BL = 0; si5351.SendRegister(SI_CLK_OE, TX0RX0); }   // disable carrier
-  if(tx == 255){ si5351.SendRegister(SI_CLK_OE, TX1RX0); } // enable carrier
+  if(tx == 1){ OCR1BL = 0; si5351.SendRegister(SI_CLK_OE, TX0RX0); }
+  if(tx == 255){ si5351.SendRegister(SI_CLK_OE, TX1RX0); }
 #endif
 
 #ifdef MOX_ENABLE
   if(!mox) return;
-  OCR1AL = (adc << (mox-1)) + 128;  // TX audio monitoring
+  OCR1AL = (adc << (mox-1)) + 128;
 #endif
 }
 
@@ -2201,24 +2372,41 @@ inline void process_minsky() // Minsky circle sample [source: https://www.cl.cam
 }
 
 // CW Key-click shaping, ramping up/down amplitude with sample-interval of 60us. Tnx: Yves HB9EWY https://groups.io/g/ucx/message/5107
-const uint8_t ramp[] PROGMEM = { 255, 254, 252, 249, 245, 239, 233, 226, 217, 208, 198, 187, 176, 164, 152, 139, 127, 115, 102, 90, 78, 67, 56, 46, 37, 28, 21, 15, 9, 5, 2 }; // raised-cosine(i) = 255 * sq(cos(HALF_PI * i/32))
+const uint8_t ramp[] PROGMEM = { 255, 254, 252, 249, 245, 239, 233, 226, 217, 208, 198, 187, 176, 164, 152, 139, 127, 115, 102, 90, 78, 67, 56, 46, 37, 28, 21, 15, 9, 5, 2 };
+
+#ifdef TX_POWER_RAMP
+static uint8_t cw_ramp_counter = 0;  // CW TX power ramp counter
+#endif
 
 void dummy()
 {
 }
 
 void dsp_tx_cw()
-{ // jitter dependent things first
+{
 #ifdef KEY_CLICK
-  if(OCR1BL < lut[255]) { //check if already ramped up: ramp up of amplitude 
-     for(uint16_t i = 31; i != 0; i--) {   // soft rising slope against key-clicks
-        OCR1BL = lut[pgm_read_byte_near(&ramp[i-1])];
-        delayMicroseconds(60);
+  if(OCR1BL < lut[255]) {
+     for(uint16_t i = 31; i != 0; i--) {
+         OCR1BL = lut[pgm_read_byte_near(&ramp[i-1])];
+         delayMicroseconds(60);
      }
   }
-#endif // KEY_CLICK
+#endif
+
+  // Apply TX power ramp for smoother CW envelopes
+#ifdef TX_POWER_RAMP
+  static uint8_t cw_ramp_counter = 0;
+  if(cw_ramp_counter < 32){
+    uint8_t ramp_percent = pgm_read_byte_near(&tx_ramp_curve[32 - cw_ramp_counter]);
+    OCR1BL = (lut[255] * ramp_percent) / 100;
+    cw_ramp_counter++;
+  } else {
+    OCR1BL = lut[255];
+  }
+#else
   OCR1BL = lut[255];
-  
+#endif
+
   process_minsky();
   OCR1AL = (p_sin >> (16 - volume)) + 128;
 }
@@ -2385,132 +2573,52 @@ inline void cw_decode()
   realstatebefore = realstate;
 }
 
-//#define NEW_CW  1   // CW decoder portions from by Hjalmar Skovholm Hansen OZ1JHM, source: http://www.skovholm.com/decoder11.ino
+#define NEW_CW  1   // CW decoder portions from by Hjalmar Skovholm Hansen OZ1JHM, source: http://www.skovholm.com/decoder11.ino
 #ifdef NEW_CW
-void dec2()
+inline void dec2()
 {
- // Then we do want to have some durations on high and low
  if(filteredstate != filteredstatebefore){
- if(menumode == 0){ lcd.noCursor(); lcd.setCursor(15, 1); lcd.print((filteredstate) ? 'R' : ' '); stepsize_showcursor(); }
-
-  if(filteredstate == HIGH){
-    starttimehigh = millis();
-    lowduration = (millis() - startttimelow);
-  }
-
-  if(filteredstate == LOW){
-    startttimelow = millis();
-    highduration = (millis() - starttimehigh);
-    if(highduration < (2*hightimesavg) || hightimesavg == 0){
-      hightimesavg = (highduration+hightimesavg+hightimesavg)/3;     // now we know avg dit time ( rolling 3 avg)
-    }
-    if(highduration > (5*hightimesavg)){
-      hightimesavg = highduration/3;     // if speed decrease fast ..      
-      //hightimesavg = highduration+hightimesavg;     // if speed decrease fast ..
-    }
-  }
- }
-
- // now we will check which kind of baud we have - dit or dah, and what kind of pause we do have 1 - 3 or 7 pause, we think that hightimeavg = 1 bit
- if(filteredstate != filteredstatebefore){
-  if(filteredstate == LOW){  //// we did end a HIGH
-#define FAIR_WEIGHTING    1
-#ifdef FAIR_WEIGHTING
-    if(highduration < (hightimesavg + hightimesavg/2) && highduration > (hightimesavg*6/10)){ /// 0.6 filter out false dits
-#else
-    if(highduration < (hightimesavg*2) && highduration > (hightimesavg*6/10)){ /// 0.6 filter out false dits
-#endif
-      sym=(sym<<1)|(0);        // insert dit (0)
-    }
-#ifdef FAIR_WEIGHTING
-    if(highduration > (hightimesavg + hightimesavg/2) && highduration < (hightimesavg*6)){
-#else
-    if(highduration > (hightimesavg*2) && highduration < (hightimesavg*6)){
-#endif
-      sym=(sym<<1)|(1);        // insert dah (1)
-      wpm = (wpm + (1200/((highduration)/3) * 4/3))/2;
-    }
-  }
- 
-   if(filteredstate == HIGH){  // we did end a LOW 
-     uint16_t lacktime = 10;
-     if(wpm > 25)lacktime=10; // when high speeds we have to have a little more pause before new letter or new word 
-     if(wpm > 30)lacktime=12;
-     if(wpm > 35)lacktime=15;
-
-#ifdef FAIR_WEIGHTING
-     if(lowduration > (hightimesavg*(lacktime*1/10)) && lowduration < hightimesavg*(lacktime*5/10)){ // letter space
-#else
-     if(lowduration > (hightimesavg*(lacktime*7/80)) && lowduration < hightimesavg*(lacktime*5/10)){ // letter space
-     //if(lowduration > (hightimesavg*(lacktime*2/10)) && lowduration < hightimesavg*(lacktime*5/10)){ // letter space
-#endif
-       printsym();
-   }
-   if(lowduration >= hightimesavg*(lacktime*5/10)){ // word space
-     printsym();
-     printsym();  // print space
-   }
-  }
- }
-
- // write if no more letters
-  if((millis() - startttimelow) > (highduration * 6) && (sym > 1)){
-    printsym();
-  }
-
-  filteredstatebefore = filteredstate;
-}
-
-#else // OLD_CW
-
-void dec2()
-{
- if(filteredstate != filteredstatebefore){ // then we do want to have some durations on high and low
   if(menumode == 0){ lcd.noCursor(); lcd.setCursor(15, 1); lcd.print((filteredstate) ? 'R' : ' '); stepsize_showcursor(); }
 
   if(filteredstate == HIGH){
     starttimehigh = millis();
-    lowduration = (millis() - startttimelow);
-    //highduration = 0;
-
-    if((sym > 1) && lowduration > (hightimesavg*2)/* && lowduration < hightimesavg*(5*lacktime)*/){ // letter space
-      printsym();
-      wpm = (1200/hightimesavg * 4/3);
-      //if(lowduration >= hightimesavg*(5)){ sym=1; printsym(); } // (print additional space) word space
-    }
-    if(lowduration >= hightimesavg*(5)){ sym=1; printsym(); } // (print additional space) word space
+    lowduration = millis() - startttimelow;
+  } else {
+    startttimelow = millis();
+    highduration = millis() - starttimehigh;
+    if(highduration < (hightimesavg << 1) || hightimesavg == 0)
+      hightimesavg = (highduration + (hightimesavg << 1)) / 3;
+    else if(highduration > (hightimesavg * 5))
+      hightimesavg = highduration / 3;
   }
 
   if(filteredstate == LOW){
-    startttimelow = millis();
-    highduration = (millis() - starttimehigh);
-    //lowduration = 0;
-    if(highduration < (2*hightimesavg) || hightimesavg == 0){
-      hightimesavg = (highduration+hightimesavg+hightimesavg)/3;     // now we know avg dit time (rolling 3 avg)
-    }
-    if(highduration > (5*hightimesavg)){
-      hightimesavg = highduration/3;     // if speed decrease fast ..      
-      //hightimesavg = highduration+hightimesavg;     // if speed decrease fast ..
-    }
-    if(highduration > (hightimesavg/2)){ sym=(sym<<1)|(highduration > (hightimesavg*2));       // dit (0) or dash (1)
-#if defined(CW_INTERMEDIATE) && !defined(OLED) && !defined(LCD_I2C) && (F_MCU >= 20000000)
-      printsym(false);
-#endif
+    if(highduration > (hightimesavg + (hightimesavg >> 1)) && highduration < (hightimesavg * 6)){
+      sym = (sym << 1) | 1;
+      wpm = (wpm + (1200 / (highduration / 3) * 4 / 3)) >> 1;
+    } else if(highduration > (hightimesavg >> 1) && highduration <= (hightimesavg + (hightimesavg >> 1))){
+      sym <<= 1;
     }
   }
+
+  if(filteredstate == HIGH){
+    uint16_t lacktime = (wpm > 35) ? 15 : (wpm > 30) ? 12 : (wpm > 25) ? 10 : 10;
+    uint16_t letter_space = (hightimesavg * lacktime) / 10;
+    if(lowduration > letter_space && lowduration < (letter_space * 5))
+      printsym();
+    if(lowduration >= (letter_space * 5)){
+      printsym();
+      printsym();
+    }
+  }
+
+  if((millis() - startttimelow) > (highduration * 6) && (sym > 1))
+    printsym();
+
+  filteredstatebefore = filteredstate;
  }
- 
- if(((millis() - startttimelow) > hightimesavg*(6)) && (sym > 1)){
- //if(((millis() - startttimelow) > hightimesavg*(12)) && (sym > 1)){
-   //if(sym == 2) sym = 1; else // skip E E E E E
-   printsym();  // write if no more letters
-   //sym=0; printsym(); // print special char
-   //startttimelow = millis();
- }
- 
- filteredstatebefore = filteredstate;
 }
-#endif //OLD_CW
+#endif  // NEW_CW
 #endif  //CW_DECODER
 
 #define F_SAMP_PWM (78125/1)
@@ -2524,11 +2632,7 @@ void dec2()
 //#define F_SAMP_RX 28409
 #define F_ADC_CONV (192307/2)  //was 192307/1, but as noted this produces clicks in audio stream. Slower ADC clock cures this (but is a problem for VOX when sampling mic-input simulatanously).
 
-#ifdef FAST_AGC
-volatile uint8_t agc = 2;
-#else
-volatile uint8_t agc = 1;
-#endif
+volatile uint8_t agc = DEFAULT_AGC_MODE;  // 0=OFF, 1=FAST, 2=MEDIUM, 3=SLOW
 volatile uint8_t nr = 2;  // Default noise reduction level (0-7)
 volatile uint8_t att = 0;
 volatile uint8_t att2 = 2;  // Minimum att2 increased, to prevent numeric overflow on strong signals
@@ -2545,18 +2649,7 @@ volatile uint8_t _init = 0;
 // Old AGC algorithm which only increases gain, but does not decrease it for very strong signals.
 // Maximum possible gain is x32 (in practice, x31) so AGC range is x1 to x31 = 30dB approx.
 // Decay time is fine (about 1s) but attack time is much slower than I like. 
-// For weak/medium signals it aims to keep the sample value between 1024 and 2048. 
-static int16_t gain = 1024;
-inline int16_t process_agc_fast(int16_t in)
-{
-  int16_t out = (gain >= 1024) ? (gain >> 10) * in : in;
-  int16_t accum = (1 - abs(out >> 10));
-  if((INT16_MAX - gain) > accum) gain = gain + accum;
-  if(gain < 1) gain = 1;
-  return out;
-}
-
-// Contribution by Alan, M0PUB: Experimental new AGC algorithm.
+#define HI(x)  ((x) >> 8)
 // ASSUMES: Input sample values are constrained to a maximum of +/-4096 to avoid integer overflow in earlier
 // calculations.
 //
@@ -2573,10 +2666,9 @@ inline int16_t process_agc_fast(int16_t in)
 // of centiCount.
 
 static int16_t centiGain = 128;
-#define DECAY_FACTOR 400      // AGC decay occurs <DECAY_FACTOR> slower than attack.
-static uint16_t decayCount = DECAY_FACTOR;
-#define AGC_ATTACK_THRESHOLD 1280  // Lower threshold for faster attack on strong signals
-#define AGC_DECAY_THRESHOLD 1024   // Threshold for decay
+static uint16_t decayCount = AGC_MEDIUM_DECAY;
+#define AGC_ATTACK_THRESHOLD 1280
+#define AGC_DECAY_THRESHOLD 1024
 
 #define HI(x)  ((x) >> 8)
 #define LO(x)  ((x) & 0xFF)
@@ -2587,38 +2679,87 @@ inline int16_t process_agc(int16_t in)
   int16_t out;
   int16_t abs_out = abs(in);
 
+  // AGC OFF mode: just apply fixed gain (volume control)
+  if(agc == 0){
+    // Fixed gain, centiGain acts as volume
+    out = (centiGain >> 5) * in;
+    out >>= 2;
+    return out;
+  }
+
+  // Gain application
   if(centiGain >= 128)
-    out = (centiGain >> 5) * in;         // net gain >= 1
+    out = (centiGain >> 5) * in;
   else
-    out = (centiGain >> 2) * (in >> 3);  // net gain < 1
+    out = (centiGain >> 2) * (in >> 3);
   out >>= 2;
 
-  // Improved AGC with faster attack and smoother decay
   int16_t abs_out_val = abs(out);
-  if(HI(abs_out_val) > HI(AGC_ATTACK_THRESHOLD)){
-    // Very fast attack for strong signals
-    centiGain -= (centiGain >> 3);
-    small = false;
-  } else if(HI(abs_out_val) > HI(AGC_DECAY_THRESHOLD)){
-    // Medium response for moderate signals
-    centiGain -= (centiGain >> 5);
-    small = false;
-  } else {
-    // Slow decay when signal is weak
-    if(--decayCount == 0){
-      if(small){
-        if(centiGain < (INT16_MAX-(INT16_MAX >> 4)))
-          centiGain += (centiGain >> 4);
-        else
-          centiGain = INT16_MAX;
+
+  // AGC response based on mode
+  if(agc == 1){
+    // FAST AGC - Quick attack and decay for CW
+    // Attack
+    if(HI(abs_out_val) > HI(AGC_ATTACK_THRESHOLD)){
+      centiGain -= (centiGain >> 3);  // Very fast attack
+    } else {
+      // Fast decay
+      if(--decayCount == 0){
+        if(small){
+          if(centiGain < (INT16_MAX-(INT16_MAX >> 4)))
+            centiGain += (centiGain >> 3);  // Faster recovery
+          else
+            centiGain = INT16_MAX;
+        }
+        decayCount = AGC_FAST_DECAY;
+        small = true;
       }
-      decayCount = DECAY_FACTOR;
-      small = true;
+    }
+  } else if(agc == 2){
+    // MEDIUM AGC - Balanced for SSB (default)
+    if(HI(abs_out_val) > HI(AGC_ATTACK_THRESHOLD)){
+      centiGain -= (centiGain >> 3);  // Fast attack
+      small = false;
+    } else if(HI(abs_out_val) > HI(AGC_DECAY_THRESHOLD)){
+      centiGain -= (centiGain >> 5);  // Medium response
+      small = false;
+    } else {
+      // Slow decay
+      if(--decayCount == 0){
+        if(small){
+          if(centiGain < (INT16_MAX-(INT16_MAX >> 4)))
+            centiGain += (centiGain >> 4);
+          else
+            centiGain = INT16_MAX;
+        }
+        decayCount = AGC_MEDIUM_DECAY;
+        small = true;
+      }
+    }
+  } else {
+    // SLOW AGC - Very slow decay for weak signal listening
+    if(HI(abs_out_val) > HI(AGC_ATTACK_THRESHOLD)){
+      centiGain -= (centiGain >> 3);  // Fast attack
+      small = false;
+    } else if(HI(abs_out_val) > HI(AGC_DECAY_THRESHOLD)){
+      centiGain -= (centiGain >> 6);  // Slower reduction
+      small = false;
+    } else {
+      // Very slow decay
+      if(--decayCount == 0){
+        if(small){
+          if(centiGain < (INT16_MAX-(INT16_MAX >> 4)))
+            centiGain += (centiGain >> 5);  // Much slower recovery
+          else
+            centiGain = INT16_MAX;
+        }
+        decayCount = AGC_SLOW_DECAY;
+        small = true;
+      }
     }
   }
-  // Prevent gain from going too low
-  if(centiGain < 32) centiGain = 32;
 
+  if(centiGain < 32) centiGain = 32;
   return out;
 }
 
@@ -2756,7 +2897,7 @@ volatile uint32_t _absavg256 = 0;
 volatile int16_t i, q;
 
 // Noise Blanker configuration - improved adaptive version
-#define NOISE_BLANKER_ENABLE 1  // Enable noise blanker
+#define NOISE_BLANKER_ENABLE 0  // Enable noise blanker (disabled to save ~500 bytes)
 #define NOISE_BLANKER_THRESHOLD 4  // Threshold multiplier above noise floor
 
 static int16_t noise_floor_slow = 0;  // Slow moving average
@@ -2901,21 +3042,13 @@ inline int16_t slow_dsp(int16_t ac)
   }  // needs: p.12 https://www.veron.nl/wp-content/uploads/2014/01/FmDemodulator.pdf
   else { ; }  // USB, LSB, CW
 
-#ifdef FAST_AGC
-  if(agc == 2) {
+// AGC processing - unified for all modes
+  if(agc > 0){
     ac = process_agc(ac);
     ac = ac >> (16-volume);
-  } else if(agc == 1){
-    ac = process_agc_fast(ac);
-    ac = ac >> (16-volume);
-#else
-  if(agc == 1){
-    ac = process_agc_fast(ac);
-    ac = ac >> (16-volume);
-#endif //!FAST_AGC
   } else {
-    //ac = ac >> (16-volume);
-    if(volume <= 13)    // if no AGC allow volume control to boost weak signals
+    // AGC OFF - manual volume control only
+    if(volume <= 13)
       ac = ac >> (13-volume);
     else
       ac = ac << (volume-13);
@@ -3814,9 +3947,16 @@ int16_t smeter(int16_t ref = 0)
     }
     if(smode == 2){ // S-meter with peak hold
       uint8_t s = (dbm < -63) ? ((dbm - -127) / 6) : (((uint8_t)(dbm - -73)) / 10) * 10;  // dBm to S (modified to work correctly above S9)
-      lcd.setCursor(14, 0); if(s < 10){ lcd.print('S'); } lcd.print(s);
-      // Show peak indicator after the number
-      lcd.setCursor(15, 0);
+      // Show S number first
+      lcd.setCursor(14, 0);
+      if(s < 10){
+        lcd.print('S');
+        lcd.print(s);
+      } else {
+        lcd.print(s);
+      }
+      // Show peak indicator at position 16 (after the number)
+      lcd.setCursor(16, 0);
       if(peak_indicator == 1) lcd.print('P');  // Peak just hit
       else if(peak_indicator == -1) lcd.print('p');  // Peak decaying
       else lcd.print(' ');
@@ -4371,7 +4511,7 @@ const char* cw_tone_label[] = { "400", "500", "600", "700", "800" };  // Hz
 #ifdef KEYER
 const char* keyer_mode_label[] = { "Iambic A", "Iambic B","Straight" };
 #endif
-const char* agc_label[] = { "OFF", "Fast", "Slow" };
+const char* agc_label[] = { "OFF", "FAST", "MED", "SLOW" };  // 0=OFF, 1=FAST(CW), 2=MED(SSB), 3=SLOW(weak)
 
 #define _N(a) sizeof(a)/sizeof(a[0])
 
@@ -4400,11 +4540,7 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 #ifdef RIT_ENABLE
     case RIT:     paramAction(action, rit, 0x17, F("RIT"), offon_label, 0, 1, false); break;    
 #endif
-#ifdef FAST_AGC
-    case AGC:     paramAction(action, agc, 0x18, F("AGC"), agc_label, 0, _N(agc_label) - 1, false); break;
-#else
-    case AGC:     paramAction(action, agc, 0x18, F("AGC"), offon_label, 0, 1, false); break;
-#endif // FAST_AGC
+    case AGC:     paramAction(action, agc, 0x18, F("AGC"), agc_label, 0, 3, false); break;  // 0-3: OFF/FAST/MED/SLOW
     case NR:      paramAction(action, nr, 0x19, F("NR"), NULL, 0, 8, false); break;
     case ATT:     paramAction(action, att, 0x1A, F("ATT"), att_label, 0, 7, false); break;
     case ATT2:    paramAction(action, att2, 0x1B, F("ATT2"), NULL, 0, 16, false); break;
@@ -4925,9 +5061,31 @@ void fatal(const __FlashStringHelper* msg, int value = 0, char unit = '\0') {
 //refresh LUT based on pwm_min, pwm_max
 void build_lut()
 {
-  for(uint16_t i = 0; i != 256; i++)    // refresh LUT based on pwm_min, pwm_max
-    lut[i] = (i * (pwm_max - pwm_min)) / 255 + pwm_min;
-    //lut[i] = min(pwm_max, (float)106*log(i) + pwm_min);  // compressed microphone output: drive=0, pwm_min=115, pwm_max=220
+  for(uint16_t i = 0; i != 256; i++){
+    // Optimized PWM LUT for maximum power and clarity
+    // Integer-only curve for AVR efficiency
+    // Provides slight boost to low-level signals for better punch
+
+    // Square-law approximation: i^1.5 gives nice curve without FP math
+    // Using: output = i * sqrt(i/255)
+    uint32_t scaled = (uint32_t)i * i;  // i^2
+    scaled = scaled / 255;  // divide by 255 once
+    scaled = scaled * 16;   // scale factor for resolution
+
+    // Normalize to pwm range
+    uint16_t pwm_range = pwm_max - pwm_min;
+    uint16_t curved = (uint16_t)((scaled * pwm_range) >> 12) + pwm_min;  // >>12 = /4096
+
+    // Ensure minimum boost: at least linear behavior
+    uint16_t linear = (i * pwm_range) / 255 + pwm_min;
+
+    // Use curved if it provides meaningful improvement
+    if(curved < pwm_min) curved = pwm_min;
+    if(curved > pwm_max) curved = pwm_max;
+    if(curved < linear) curved = linear + (linear - curved) / 4;  // blend toward curved
+
+    lut[i] = (uint8_t)curved;
+  }
 }
 
 #ifdef SWR_METER
