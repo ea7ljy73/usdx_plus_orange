@@ -5538,12 +5538,13 @@ volatile int8_t menu = 0; // current parameter id selected in menu
 #define pgm_cache_item(addr, sz)                                               \
   byte _item[sz];                                                              \
   memcpy_P(_item, addr, sz); // copy array item from PROGMEM to SRAM
-#define get_version_id()                                                       \
-  (uint16_t)((uint16_t)(VERSION[0] - '1') * 2048 +                             \
-             (uint16_t)((VERSION[2] - '0') * 10 + (VERSION[3] - '0')) * 32 +   \
-             (uint16_t)((VERSION[4]) ? (VERSION[4] - 'a' + 1) : 0) *           \
-                 1) // converts VERSION string with format "X.XXx" into
-                    // uint16_t
+
+inline uint16_t get_version_id() {
+  uint16_t major = (uint16_t)(VERSION[0] - '1');
+  uint16_t minor = (uint16_t)(VERSION[2] - '0') * 10u + (uint16_t)(VERSION[3] - '0');
+  uint16_t suffix = (uint16_t)(VERSION[4] ? (VERSION[4] - 'a' + 1) : 0);
+  return (major << 11) + (minor << 5) + suffix;  // major*2048 + minor*32 + suffix
+}
 
 uint8_t eeprom_version;
 #define EEPROM_OFFSET                                                          \
