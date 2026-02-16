@@ -1,9 +1,70 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 1.16
+**Version:** 1.17
 **Base:** uSDX Legacy 1.02x
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian (modifications)
+
+---
+
+## v1.17 (February 2026) - Critical TX Bug Fix
+
+### Critical Issue Fixed
+
+**Reported Problem:** Transmission (TX) completely non-functional. Reception (RX) works perfectly.
+
+**Root Cause:** Two critical compile-time defines were accidentally removed in a previous version, causing TX to use the wrong processing path with insufficient microphone gain:
+
+```cpp
+#define MORE_MIC_GAIN 1  // MISSING - critical for TX microphone gain
+#define TX_POWER_RAMP 1  // MISSING - smooth power ramping
+```
+
+**Impact of Missing Defines:**
+- ❌ **Insufficient microphone gain:** No `* 2` amplification in TX path
+- ❌ **Wrong VOX threshold:** 2 instead of 4 (legacy value)
+- ❌ **Incorrect processing path:** Used `!MORE_MIC_GAIN` path instead of legacy path
+- ❌ **Result:** TX unable to generate sufficient signal to modulate carrier
+
+### Fixes Applied
+
+1. **Restored Missing Defines** (lines 1731-1732)
+   - Added `#define MORE_MIC_GAIN 1` (critical for TX to work)
+   - Added `#define TX_POWER_RAMP 1` (smooth power ramping at TX start/end)
+   - **Impact:** TX now uses correct processing path with proper gain
+
+2. **Reverted Hilbert Coefficient** (line 2044)
+   - Corrected coefficient from `* 16` back to `* 15` in `!MORE_MIC_GAIN` path
+   - Matches legacy exactly for fallback path
+   - **Impact:** Consistent with legacy when MORE_MIC_GAIN disabled
+
+3. **Fixed Array Size Bug** (line 2135)
+   - Corrected `tx_ramp_curve[41]` to `tx_ramp_curve[42]`
+   - Bug from v1.14 - array had 42 elements but declared as [41]
+   - **Impact:** Compilation now succeeds without errors
+
+### Memory Usage
+
+- **Flash:** 29,284 bytes (90.8%, +328 bytes from v1.16)
+- **RAM:** 1,419 bytes (69.3%, +2 bytes from v1.16)
+- **Increase:** Expected - TX functionality now fully enabled with MORE_MIC_GAIN and TX_POWER_RAMP
+
+### Comparison with Legacy
+
+✅ **TX path now matches legacy exactly:**
+- `MORE_MIC_GAIN 1` enabled (like legacy line 2021)
+- VOX threshold = 4 (like legacy line 2023)
+- Hilbert coefficient 15 in fallback path (like legacy line 2073)
+- Full microphone gain chain active
+
+### Verification Tests
+
+- [x] Compile successful (no errors/warnings)
+- [x] Memory within safety limits (90.8% flash < 96% threshold)
+- [ ] **CRITICAL:** TX functional test (SSB/CW/AM/FM transmission)
+- [ ] RX still works correctly (no regressions)
+- [ ] VOX activation threshold correct
+- [ ] TX power ramping smooth (no clicks)
 
 ---
 
