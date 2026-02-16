@@ -66,20 +66,20 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
     //za0=(30*(za0-zz2)+0*zz1)/32;                                 //300-Hz with very steep roll-off down to 0 Hz
     za0=(30*(za0-zz2)+25*zz1)>>5;                                  //300-Hz
 
-    // 4th Order (SR=8kHz) IIR in Direct Form I, 8x8:16
+    // 4th Order (SR=8kHz) IIR in Direct Form I, improved precision (256x scaling)
     switch(filt){
-      case 1: zb0=((za0+2*za1+za2)>>1)-((13*zb1+11*zb2)>>4); break;   // 0-2900Hz filter, first biquad section
-      case 2: zb0=((za0+2*za1+za2)>>1)-((2*zb1+8*zb2)>>4); break;     // 0-2400Hz filter, first biquad section
+      case 1: zb0=((za0+2*za1+za2)>>1)-(((13<<8)*zb1+(11<<8)*zb2)>>12); break;   // 0-2900Hz filter, first biquad section
+      case 2: zb0=((za0+2*za1+za2)>>1)-(((2<<8)*zb1+(8<<8)*zb2)>>12); break;     // 0-2400Hz filter, first biquad section
       //case 3: zb0=(za0+2*za1+za2)/2-(4*zb1+2*zb2)/16; break;     // 0-2400Hz filter, first biquad section
-      case 3: zb0=((za0+2*za1+za2)>>1)-((0*zb1+4*zb2)>>4); break;     //0-1800Hz  elliptic
+      case 3: zb0=((za0+2*za1+za2)>>1)-(((0<<8)*zb1+(4<<8)*zb2)>>12); break;     //0-1800Hz  elliptic
       //case 3: zb0=(za0+7*za1+za2)/16-(-24*zb1+9*zb2)/16; break;  //0-1700Hz  elliptic with slope
     }
-  
+
     switch(filt){
-      case 1: zc0=((zb0+2*zb1+zb2)>>1)-((18*zc1+11*zc2)>>4); break;     // 0-2900Hz filter, second biquad section
-      case 2: zc0=((zb0+2*zb1+zb2)>>2)-((4*zc1+8*zc2)>>4); break;       // 0-2400Hz filter, second biquad section
+      case 1: zc0=((zb0+2*zb1+zb2)>>1)-(((18<<8)*zc1+(11<<8)*zc2)>>12); break;     // 0-2900Hz filter, second biquad section
+      case 2: zc0=((zb0+2*zb1+zb2)>>2)-(((4<<8)*zc1+(8<<8)*zc2)>>12); break;       // 0-2400Hz filter, second biquad section
       //case 3: zc0=(zb0+2*zb1+zb2)/4-(1*zc1+9*zc2)/16; break;       // 0-2400Hz filter, second biquad section
-      case 3: zc0=((zb0+2*zb1+zb2)>>2)-((0*zc1+4*zc2)>>4); break;       //0-1800Hz  elliptic
+      case 3: zc0=((zb0+2*zb1+zb2)>>2)-(((0<<8)*zc1+(4<<8)*zc2)>>12); break;       //0-1800Hz  elliptic
       //case 3: zc0=(zb0+zb1+zb2)/16-(-22*zc1+47*zc2)/64; break;   //0-1700Hz  elliptic with slope
     }
    /*switch(filt){

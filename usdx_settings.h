@@ -96,7 +96,7 @@
 
 // AGC Modes: 0=OFF, 1=FAST(CW), 2=MEDIUM(SSB), 3=SLOW(weak signals)
 #define DEFAULT_AGC_MODE 2   // Default AGC mode (SSB)
-#define AGC_FAST_DECAY 100   // Decay factor for FAST mode
+#define AGC_FAST_DECAY 50    // Decay factor for FAST mode (v1.15: faster recovery for CW)
 #define AGC_MEDIUM_DECAY 400 // Decay factor for MEDIUM mode (default)
 #define AGC_SLOW_DECAY 800   // Decay factor for SLOW mode
 // AGC thresholds - restore original values for stable startup behavior
