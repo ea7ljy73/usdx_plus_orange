@@ -4628,11 +4628,7 @@ void loop() {
           stepsize = STEP_1k;
         else
           stepsize = STEP_500;
-        if (mode == CW) {
-          filt = 4;
-          nr = 0;
-        } else
-          filt = 0;
+        // Preserve filt and nr settings - user controls these explicitly via menu
       }
       change = true;
       break;
@@ -4660,11 +4656,11 @@ void loop() {
           _menumode = 2;
         } // short encoder-click while in menu: enter value selection screen
         if (menumode == 2) {
-          _menumode = 0;
+          _menumode = 1;  // Return to menu selection screen first (smoother transition like legacy)
           change = true;
           paramAction(SAVE, menu);
         } // short encoder-click while in value selection screen: save, and
-          // return to default screen
+          // return to menu selection screen
 #ifdef MENU_STR
         if (menumode == 3) {
           _menumode = 3;
@@ -4689,7 +4685,7 @@ void loop() {
         if (bandval < 1)
           bandval = (N_BANDS - 2); // wrap to highest allowed band
       }
-      stepsize = STEP_1k;
+      // Preserve current stepsize - user adjusts with encoder button if needed
       change = true;
       encoder_last_delta = 0; // Reset after band change
       break;
@@ -4847,7 +4843,7 @@ void loop() {
     if (encoder_change || (prev_menumode != menumode))
       paramAction(UPDATE_MENU, (menumode) ? menu : 0);
     prev_menumode = menumode;
-    if (menumode >= 2) {
+    if (menumode == 2) {  // Match exact menumode 2 (parameter edit mode) like legacy
       if (encoder_change) {
         lcd.setCursor(0, 1);
         lcd.cursor();
@@ -4860,11 +4856,7 @@ void loop() {
             stepsize = STEP_1k;
           else
             stepsize = STEP_500;
-          if (mode == CW) {
-            filt = 4;
-            nr = 0;
-          } else
-            filt = 0;
+          // Preserve filt and nr settings - user controls these explicitly via menu
         }
         if (menu == BAND)
           change = true;
