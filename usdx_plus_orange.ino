@@ -22,7 +22,7 @@
 #include <math.h>
 
 // Version del firmware
-#define VERSION "1.18"
+#define VERSION "1.19"
 
 // ============================================================================
 // SECCIÓN 1: DEFINICIONES DE PINES DE HARDWARE
@@ -4942,7 +4942,8 @@ void loop() {
 
 #ifdef VOX_ENABLE
   // VOX microphone sampling loop - CRITICAL for TX to work!
-  if(vox){
+  // Only active in LSB/USB modes (not CW/AM/FM)
+  if((vox) && ((mode == LSB) || (mode == USB))){
     static uint16_t vox_adc;
     static uint8_t vox_sample;
 
