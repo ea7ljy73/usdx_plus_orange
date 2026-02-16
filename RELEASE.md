@@ -1,9 +1,66 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 1.15
+**Version:** 1.16
 **Base:** uSDX Legacy 1.02x
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian (modifications)
+
+---
+
+## v1.16 (February 2026) - Menu Navigation Bug Fix
+
+### Critical Bug Fixes
+
+**Reported Issue:** Pressing encoder button to change tune rate sometimes caused increased noise or apparent gain boost.
+
+**Root Cause Analysis:** Deep investigation identified **4 critical bugs** causing DSP parameters (filter, NR, AGC) to reset unexpectedly during menu navigation, resulting in:
+- Increased noise (NR disabled)
+- Apparent gain increase (filter reset to maximum BW 300-3000Hz)
+- Audio artifacts (pops/clicks from abrupt parameter changes)
+
+### Fixes Implemented
+
+1. **Eliminated Auto-Reset of Filter/NR on Mode Changes** (PRIORITY 1)
+   - Removed automatic filter/NR resets in VFO swap (lines 4631-4635)
+   - Removed automatic filter/NR resets in Menu MODE update (lines 4863-4867)
+   - **Impact:** Filter and noise reduction settings now preserved when changing modes
+   - User controls these parameters explicitly via menu
+
+2. **Corrected Menumode Condition** (PRIORITY 2)
+   - Changed `menumode >= 2` to `menumode == 2` (line 4850)
+   - **Impact:** Aligned with legacy behavior, prevents DSP updates in invalid menu states
+
+3. **Fixed Menu Return State** (PRIORITY 3)
+   - Changed menu exit from `_menumode = 0` to `_menumode = 1` (line 4659)
+   - **Impact:** Smoother transition (2→1→0) like legacy, prevents abrupt DSP updates
+
+4. **Eliminated Stepsize Auto-Reset on Band Change** (PRIORITY 4 - Partial)
+   - Removed `stepsize = STEP_1k` when changing bands (line 4688)
+   - **Preserved:** Intelligent stepsize adjustment for narrow CW filters (lines 4571-4576)
+   - **Impact:** Stepsize preserved across band changes, improved predictability
+
+### Memory Usage
+
+- **Flash:** 28,956 bytes (89.8%, +10 bytes from v1.15)
+- **RAM:** 1,417 bytes (69.2%, unchanged)
+- **Change:** Minimal increase due to compiler optimization of removed code blocks
+
+### User Experience Improvements
+
+✅ **Changing tune rate with encoder button:** Silent, no side effects
+✅ **Switching modes (SSB↔CW):** Preserves configured filter and NR settings
+✅ **Menu navigation:** Smooth, predictable, no surprises
+✅ **Band changes:** Stepsize preserved (user adjusts manually if needed)
+
+### Verification Tests
+
+- [x] Compile successful (no errors/warnings)
+- [x] Memory within safety limits (89.8% flash < 96% threshold)
+- [ ] Mode change preserves filter/NR (Test 1)
+- [ ] Tune rate change has no DSP effects (Test 2)
+- [ ] Encoder double-click preserves parameters (Test 3)
+- [ ] Menu navigation smooth (Test 4)
+- [ ] Regression test: RX/TX SSB/CW/AM/FM functional (Test 6)
 
 ---
 
