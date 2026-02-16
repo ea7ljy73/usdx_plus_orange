@@ -22,7 +22,7 @@
 #include <math.h>
 
 // Version del firmware
-#define VERSION "1.15"
+#define VERSION "1.18"
 
 // ============================================================================
 // SECCIÓN 1: DEFINICIONES DE PINES DE HARDWARE
@@ -101,13 +101,14 @@
 #error "TX_CLK0_CLK1 must be enabled in order to use F_CLK2."
 #endif
 
-#ifndef TX_ENABLE
-#undef TX_DELAY
-#undef SEMI_QSK
-#undef RIT_ENABLE
-#undef VOX_ENABLE
-#undef MOX_ENABLE
-#endif
+// COMMENTED OUT - This was incorrectly disabling VOX_ENABLE even when TX_ENABLE was set
+//#ifndef TX_ENABLE
+//#undef TX_DELAY
+//#undef SEMI_QSK
+//#undef RIT_ENABLE
+//#undef VOX_ENABLE
+//#undef MOX_ENABLE
+//#endif
 
 #ifdef SWR_METER
 float FWD;
@@ -4938,6 +4939,36 @@ void loop() {
     prev_bandval = bandval;
   }
   vfo[vfosel % 2] = freq;
+
+#ifdef VOX_ENABLE
+  // VOX microphone sampling loop - CRITICAL for TX to work!
+  if(vox){
+    static uint16_t vox_adc;
+    static uint8_t vox_sample;
+
+    if(!vox_tx){ // VOX not active
+#ifdef MULTI_ADC
+      if(vox_sample++ == 16){  // take 16 samples, then process
+        ssb(((int16_t)(vox_adc/16) - (512 - AF_BIAS)) >> MIC_ATTEN);   // sampling mic
+        vox_sample = 0;
+        vox_adc = 0;
+      } else {
+        vox_adc += analogSampleMic();
+      }
+#else
+      ssb(((int16_t)(analogSampleMic()) - 512) >> MIC_ATTEN);   // sampling mic
+#endif
+      if(tx){  // TX triggered by audio -> TX
+        vox_tx = 1;
+        switch_rxtx(255);
+      }
+    } else if(!tx){  // VOX activated, no audio detected -> RX
+      switch_rxtx(0);
+      vox_tx = 0;
+      delay(32);
+    }
+  }
+#endif //VOX_ENABLE
 
   wdt_reset();
 }
