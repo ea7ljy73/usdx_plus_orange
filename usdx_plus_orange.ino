@@ -1728,6 +1728,8 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 #define MAX_DP ((filt == 0) ? _UA : (filt == 3) ? _UA / 4 : _UA / 2)
 #define CARRIER_COMPLETELY_OFF_ON_LOW 1
 #define MULTI_ADC 1
+#define MORE_MIC_GAIN 1     // Adds more microphone gain, improving overall SSB quality (critical for TX to work!)
+#define TX_POWER_RAMP 1     // Smooth power ramping at TX start/end to eliminate clicks
 
 // Improved magnitude approximation: error 0.95dB -> 0.4dB (-0.55dB improvement)
 #define magn(i,q) ({ \
@@ -2041,7 +2043,7 @@ inline int16_t ssb(int16_t in)
   z1 = ac;
 
   i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 + (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz (@4kSPS) when used in image-rejection scenario; (Hilbert transform require 5 additional bits)
 
   uint16_t _amp = magn(i, q);
 #endif  // MORE_MIC_GAIN
@@ -2129,8 +2131,8 @@ static uint8_t tx_ramp_current_amp = 0; // current amplitude during ramp
 
 // Ramping curve: smooth S-curve for natural sound
 // Values represent percentage of full power at each step
-// Extended to 41 elements for symmetric UP/DOWN ramps
-const uint8_t tx_ramp_curve[41] PROGMEM = {
+// Extended to 42 elements for symmetric UP/DOWN ramps
+const uint8_t tx_ramp_curve[42] PROGMEM = {
     // UP ramp (indices 0-16): 0% -> 100%
     0,   1,   2,   4,   7,   11,  16,  22,  29, 37, 46, 55, 65, 74, 83, 91, 97,
     // Hold (indices 17-24): 100%
