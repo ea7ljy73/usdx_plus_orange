@@ -3086,24 +3086,6 @@ inline int16_t process_nr(int16_t in)   // G8RDI mod - added DSP FIR filte after
 #else
 inline int16_t process_nr(int16_t in)
 {
-	/*
-	  static int16_t avg;
-	  avg = EA(avg, abs(in), 64); // alpha=1/64=0.0156
-	param_c = avg;
-	*/
-
-	/*
-	  int32_t _avg = 64 * avg;
-	//  if(_avg > 4) _avg = 4;  // clip
-	//  uint16_t brs_avgsq = 1 << (_avg * _avg);
-	  if(_avg > 14) _avg = 14;  // clip
-	  uint16_t brs_avgsq = 1 << (_avg);
-
-
-	  int16_t inv_gain;
-	  if(brs_avgsq > 1) inv_gain = brs_avgsq / (brs_avgsq - 1);  // = 1 / (1 - 1/(1 << (1*avg*avg)) );
-	  else inv_gain = 32768;*/
-
 	static int16_t ea1;
 	ea1 = EA(ea1, in, 1 << (nr - 1));
 	//static int16_t ea2;
@@ -3112,15 +3094,6 @@ inline int16_t process_nr(int16_t in)
 	return ea1;
 }
 #endif
-
-/*
-inline int16_t process_nr(int16_t in)
-{
-  // Exponential moving average and variance (Lyons 13.36.2)
-  param_b = EA(param_b, in, 1 << 4);  // avg
-  param_c = EA(param_c, (in - param_b) * (in - param_b), 1 << 4);  // variance
-}
-*/
 
 #define N_FILT 7
 //volatile uint8_t filt = 0;
@@ -3196,18 +3169,6 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
 		case 3: zc0 = (zb0 + 2 * zb1 + zb2) / 4 - (0 * zc1 + 4 * zc2) / 16; break;       //0-1800Hz  elliptic
 			//case 3: zc0=(zb0+zb1+zb2)/16-(-22*zc1+47*zc2)/64; break;   //0-1700Hz  elliptic with slope
 		}
-		/*switch(filt){
-		   case 1: zb0=za0; break; //0-4000Hz (pass-through)
-		   case 2: zb0=(10*(za0+2*za1+za2)+16*zb1-17*zb2)/32; break;    //0-2500Hz  elliptic -60dB@3kHz
-		   case 3: zb0=(7*(za0+2*za1+za2)+48*zb1-18*zb2)/32; break;     //0-1700Hz  elliptic
-		 }
-
-		 switch(filt){
-		   case 1: zc0=zb0; break; //0-4000Hz (pass-through)
-		   case 2: zc0=(8*(zb0+zb2)+13*zb1-43*zc1-52*zc2)/64; break;   //0-2500Hz  elliptic -60dB@3kHz
-		   case 3: zc0=(4*(zb0+zb1+zb2)+22*zc1-47*zc2)/64; break;   //0-1700Hz  elliptic
-		 }*/
-
 		zc2 = zc1;
 		zc1 = zc0;
 
@@ -3260,12 +3221,6 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
 			case 5: zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (113L * zb1 - 60L * zb2) / 64; break; //600Hz+-100Hz
 			case 6: zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (110L * zb1 - 62L * zb2) / 64; break; //600Hz+-50Hz
 			case 7: zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (110L * zb1 - 61L * zb2) / 64; break; //600Hz+-18Hz
-				//case 8: zb0=(0*za0+1*za1+0*za2)+(110L*zb1-60L*zb2)/64; break; //591Hz+-12Hz
-
-				/*case 4: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+7L*zb2)/64; break; //600Hz+-250Hz
-				case 5: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-15L*zb1+4L*zb2)/64; break; //600Hz+-100Hz
-				case 6: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+2L*zb2)/64; break; //600Hz+-50Hz
-				case 7: zb0=(0*za0+1*za1+0*za2)+2*zb1-zb2+(-14L*zb1+3L*zb2)/64; break; //600Hz+-18Hz*/
 			}
 
 			switch (filt) {
@@ -3278,12 +3233,6 @@ inline int16_t filt_var(int16_t za0)  //filters build with www.micromodeler.com
 			case 5: zc0 = (zb0 - 2 * zb1 + zb2) / 4 + (106L * zc1 - 59L * zc2) / 64; break; //600Hz+-100Hz
 			case 6: zc0 = (zb0 - 2 * zb1 + zb2) / 16 + (113L * zc1 - 62L * zc2) / 64; break; //600Hz+-50Hz
 			case 7: zc0 = (zb0 - 2 * zb1 + zb2) / 32 + (112L * zc1 - 62L * zc2) / 64; break; //600Hz+-18Hz
-				//case 8: zc0=(zb0-2*zb1+zb2)/64+(113L*zc1-63L*zc2)/64; break; //591Hz+-12Hz
-
-				/*case 4: zc0=(zb0-2*zb1+zb2)/1+zc1-zc2+(31L*zc1+12L*zc2)/64; break; //600Hz+-250Hz
-				case 5: zc0=(zb0-2*zb1+zb2)/4+2*zc1-zc2+(-22L*zc1+5L*zc2)/64; break; //600Hz+-100Hz
-				case 6: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-15L*zc1+2L*zc2)/64; break; //600Hz+-50Hz
-				case 7: zc0=(zb0-2*zb1+zb2)/16+2*zc1-zc2+(-16L*zc1+2L*zc2)/64; break; //600Hz+-18Hz*/
 			}
 		}
 		zc2 = zc1;
@@ -7001,159 +6950,4 @@ void loop()
 	//{ lcd.setCursor(0, 0); lcd.print(freeMemory()); lcd.print(F("    ")); }
 	}
 
-/* BACKLOG:
-code definitions and re-use for comb, integrator, dc decoupling, arctan
-refactor main()
-agc based on rms256, agc/smeter after filter
-noisefree integrator (rx audio out) in lower range
-raised cosine tx amp for cw, 4ms tau seems enough: http://fermi.la.asu.edu/w9cf/articles/click/index.html
-32 bin fft
-dynamic range cw
-att extended agc
-Split
-undersampling, IF-offset
-K2/TS480 CAT control
-faster RX-TX switch to support CW
-usdx API demo code
-scan
-move last bit of arrays into flash? https://web.archive.org/web/20180324010832/https://www.microchip.com/webdoc/AVRLibcReferenceManual/FAQ_1faq_rom_array.html
-u-law in RX path?: http://dystopiancode.blogspot.com/2012/02/pcm-law-and-u-law-companding-algorithms.html
-Arduino library?
-1. RX bias offset correction by measurement avg, 2. charge decoupling cap. by resetting to 0V and setting 5V for a certain amount of (charge) time
-add 1K (500R?) to GND at TTL RF output to keep zero-level below BS170 threshold
-additional PWM output for potential BOOST conversion
-squelch gating
-more buttons
-s-meter offset vs DC bal.
-keyer with interrupt-driven timers (to reduce jitter)
-
-Analyse assembly:
-/home/guido/Downloads/arduino-1.8.10/hardware/tools/avr/bin/avr-g++ -S -g -Os -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -Wno-error=narrowing -MMD -mmcu=atmega328p -DF_CPU=16000000L -DARDUINO=10810 -DARDUINO_AVR_UNO -DARDUINO_ARCH_AVR -I/home/guido/Downloads/arduino-1.8.10/hardware/arduino/avr/cores/arduino -I/home/guido/Downloads/arduino-1.8.10/hardware/arduino/avr/variants/standard /tmp/arduino_build_483134/sketch/QCX-SSB.ino.cpp -o /tmp/arduino_build_483134/sketch/QCX-SSB.ino.cpp.txt
-
-Rewire/code I/Q clk pins so that a Div/1 and Div/2 scheme is used instead of 0 and 90 degrees phase shift
-10,11,13,12   10,11,12,13  (pin)
-Q- I+ Q+ I-   Q- I+ Q+ I-
-90 deg.shift  div/2@S1(pin2)
-
-50MHz LSB OK, USB NOK
-
-atmega328p signature: https://forum.arduino.cc/index.php?topic=341799.15   https://www.eevblog.com/forum/microcontrollers/bootloader-on-smd-atmega328p-au/msg268938/#msg268938 https://www.avrfreaks.net/forum/undocumented-signature-row-contents
-
-Alain k1fm AGC sens issue:  https://groups.io/g/ucx/message/3998   https://groups.io/g/ucx/message/3999
-txdelay when vox is on (disregading the tx>0 state due to ssb() overrule, instead use RX-digitalinput)
-Adrian: issue #41, set cursor just after writing 'R' when smeter is off, and (menumode == 0)
-Konstantinos: backup/restore vfofilt settings when changing vfo.
-Bob: 2mA for clk0/1 during RX
-Uli: accuracate voltages during diag
-
-agc behind filter
-vcc adc extend. power/curr measurement
-swr predistort eff calc
-block ptt while in vox mode
-
-adc bias error and potential error correction
-noise burst on tx
-https://groups.io/g/ucx/topic/81030243#6265
-
-for (size_t i = 0; i < 9; i++) id[i] = boot_signature_byte_get(0x0E + i + (i > 5));
-
-// https://www.ti.com/lit/ds/symlink/ina226.pdf
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x27, 20, 4);
-#include <Adafruit_INA219.h>
-Adafruit_INA219 ina219;
-float pwr;
-float Eff;
-float Vinc, Vref = 0, SWR;
-float k = 0.85;
-float busvoltage = 0;
-float current_mA = 0;
-float power_mW = 0;
-
-void setup() {
-  ina219.begin();
-  lcd.init();
-  lcd.backlight();
-}
-void loop() {
-  busvoltage = ina219.getBusVoltage_V();
-  current_mA = ina219.getCurrent_mA();
-  power_mW = ina219.getPower_mW();
-  Vinc = analogRead(3);
-  Vref = analogRead(2);
-  SWR = (Vinc + Vref) / (Vinc - Vref);
-  Vinc = ((Vinc * 5.0) / 1024.0) + 0.5;
-  pwr = ((((Vinc) * (Vinc)) - 0.25 ) * k);
-  Eff = (pwr) / ((power_mW) / 1000) * 100;
-  if (pwr > 0 ) (pwr = pwr + 0.25);
-  lcd.setCursor(0, 0);
-  lcd.print("SWR     :1 / P     W");
-  lcd.setCursor(4, 0);
-  lcd.print(SWR);
-  lcd.setCursor(15, 0);
-  lcd.print(pwr);
-
-  lcd.setCursor (0, 2);
-  //lcd.print ("Vss = ");
-  lcd.print(busvoltage);
-  lcd.print("V  ");
-
-  lcd.setCursor(8, 2);
-  lcd.print (-((current_mA) / 1000));
-  lcd.print("A  ");
-
-  lcd.setCursor(15, 2);
-  lcd.print((power_mW) / 1000);
-  lcd.print("W   ");
-  lcd.setCursor(0, 1);
-  lcd.print("Efficiency = ");
-  lcd.print(Eff);
-  lcd.setCursor(17, 1);
-  lcd.print("%   ");
-
-  delay(300);
-}
-*/
-/*
-int8_t updateMode() // GW8RDI mod - relocated to function
-{
-  if (!menumode)
-  {
-    prev_mode = mode;
-    if (rit) { rit = 0; stepsize = prev_stepsize[mode == CW]; change = true;  return -1; }
-    mode += 1;    // Step thro modes
-    //encoder_val = 1;
-    //paramAction(UPDATE, MODE); // Mode param //paramAction(UPDATE, mode, NULL, F("Mode"), mode_label, 0, _N(mode_label), true);
-//#define MODE_CHANGE_RESETS  1
-#ifdef MODE_CHANGE_RESETS
-    if (mode != CW) stepsize = STEP_1k; else stepsize = STEP_500; // sets suitable stepsize
-#endif
-    if (mode > CW) mode = LSB;  // skip all other modes (only LSB, USB, CW)
-#ifdef MODE_CHANGE_RESETS
-    if (mode == CW) { filt = 4; nr = 0; }
-    else filt = 0;  // resets filter (to most BW) and NR on mode change
-#else
-    if (mode == CW) { nr = 0; }
-    prev_stepsize[prev_mode == CW] = stepsize; stepsize = prev_stepsize[mode == CW]; // backup stepsize setting for previous mode, restore previous stepsize setting for current selected mode; filter settings captured for either CQ or other modes.
-    prev_filt[prev_mode == CW] = filt; filt = prev_filt[mode == CW];  // backup filter setting for previous mode, restore previous filter setting for current selected mode; filter settings captured for either CQ or other modes.
-#endif
-    //paramAction(UPDATE, MODE);
-    vfomode[vfosel % 2] = mode;
-    paramAction(SAVE, (vfosel % 2) ? MODEB : MODEA);  // save vfoa/b changes
-    paramAction(SAVE, MODE);
-    paramAction(SAVE, FILTER);
-    si5351.iqmsa = 0;  // enforce PLL reset
-    if ((prev_mode == CW) && (cwdec))
-      show_banner();
-    change = true;
-  }
-  else
-  {
-    if (menumode == 1) { menumode = 0; }  // short right-click while in menu: enter value selection screen
-    if (menumode >= 2) { menumode = 1; change = true; paramAction(SAVE, menu); } // short right-click while in value selection screen: save, and return to menu screen
-  }
-  return 1;
-}
-*/
 
