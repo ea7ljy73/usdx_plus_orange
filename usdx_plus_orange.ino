@@ -93,253 +93,87 @@ Global variables use 1499 bytes (73%) of dynamic memory, leaving 549 bytes for l
 
 // Notes: To have CW tone in the menu, enable #define FILTER_700HZ. You´ll need to find 28 bytes depending on your config, i.e. disabling #define DIAG
 
-// Configuration switches; remove/add a double-slash at line-start to enable/disable a feature; to save space disable e.g. CAT, DIAG, KEYER
+// Configuration in usdx_settings.h - edit that file to customize your rig
+#include "usdx_settings.h"
 
+// ---- Derived settings (computed from hardware model - do not edit) ----
 
-
-	// THIS IS THE BLOCK TO SELECT THE USDX MODEL!!!!!!!!!
-
-
-
-
-// *** BEFORE ALL, READ THIS BLOCK !!!!!!!!
-
-/* THIS CONFIG: / To change, ADD or DELETE the "//" in front of #define lines below
-		XXBLACK BRICK UNIT, FRONT PANEL ON LARGER SIDE: 25.0, SWR, SWAP-ROTARY, BACKLIGHT_PIN 0x08
-		RED BUTTONS UNIT 27001400 (CHANGE BELOW TO SET YOUR OFFSET OR SET 27000000), NO SWR, SWAP-ROTARY
-		XXWHITE BUTTONS UNIT 27000000 (CHANGE BELOW TO SET YOUR OFFSET OR SET 27000000), NO SWR, SWAP-ROTARY - NEEDS CHECKING TODO
-		XXRED CORNERS UNIT 25000000 SWR, SWAP-ROTARY
-		XXTRUESDX UNIT - PLEASE CONTACT GW8RDI TO CHECK YOUR CONFIGURATION BEFORE PROGAMMING AS WE ARE IN TESTING PHASE.
-*/
-// NOTE: ONLY ENABLE ONE OF THE MODELS BELOW BY ADDING OR REMOVING THE UNCOMMENT "//"
-//________________________________________________________________________________________________________________________
-//#define BLACK_BRICK 1   // Backlight control PortD is PD3 0x08, SWR, NO ROTARY SWAP
-
-//#define RED_CORNERS 1 // Backlight control PortD is PD3 0x08, or PD5 0x20 for Red Corners rig. Disable for Red and White buttons and most black brick uSDX.
-
-// !!!!! ALWAYS DISABLE LINE BELOW !!!!!!
-///#define MY_RED_CORNERS 1	// Only for my(GW8RDI) Red Corners with reversed rotary part!
-// !!!!! ALWAYS DISABLE LINE ABOVE !!!!!!
-
-//#define RED_BUTTONS 1 // Used for Small HF SDR TRANSCEIVER uSDX model, without SWR circuit.  May have SMD inductors.
-
-#define WHITE_BUTTONS 1 // Small black unit with white or red buttons on front, without SWR circuit.
-
-//#define TRUSDX 1 // Small USDX clone in 3D printed case marked "DL2MAN & PE1NNZ".  CHECK WITH GW8RDI BEFORE USING THIS FOR UPDATES AND CONFIG DETAILS!  SWR protection via PA sensing resistor can be added if needed.
-// NOTE:  DL2MAN claims (as of 17 April 2023) that his license blocks users from installing other software (Microsoft vs Linux et al), but it is understood that this violates consumer rights laws in the USA, UK and European Union.
-
-// *** NOTE ***: If none of the above are enabled, configuration may match other units, but if tuning direction is reversed, backlight or frequency wrong, adjust as needed.
-// IF IN DOUBT PLEASE ASK ME FIRST: GW8RDI
-//________________________________________________________________________________________________________________________
-
-
-
-
-
-
-
-
-
-
+// Backlight control pin
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
 #define BACKLIGHT_PIN 0x20
 #else
 #define BACKLIGHT_PIN 0x08
 #endif
 
-#ifndef TRUSDX  // With CAT enabled on trusdx we remove band data and mode memory to free space
-#define KEEP_BAND_DATA 1        // Maintain last freq and mode set on each band - GW8RDI mod
-#endif
-
-#define SHOW_USB_LSB_CW_ONLY 1  // If defined, Menu will only cycle thro these 3 modes
-
-// AM & FM Modulation changes
-//#define FM_ARCTAN 1         // Enable FM differentiator TEST - GW8RDI mod
-//#define AM_MOD_MAGN_SQRT 1  // Use more accurate SQRT method
-
-//****************************************************************
-//#define DEBUG_G8RDI 1   // Enables display of error codes on LCD
-//****************************************************************
-
-// Change Callsign from G8RDI to match your own, or set it to "uSDR+  " if you don't want it customised:-
-
-// *** CALLSIGN NO MORE THAN 5 CHARACTERS!!! DON'T REMOVE THE 2 SPACES!!!  IGNORE THIS WARNING IT WILL CRASH THE PROGRAM!!! ***
-#ifdef DEBUG_G8RDI
-#define MY_CALLSIGN_PADDED "DEBUG  "
-#else
-// Put your callsigne below and remove the "///" in front to activate.
-#define MY_CALLSIGN "EA7LJY"               // <----- Add your callsign here or enable line below, replacing G8RDI!  If you don´t want the LCD to show your callsign, enable the line "uSDR+" below.
-
-#define MY_CALLSIGN_PADDED "EA7LJY  "      // <----- Also add your callsign here BUT keep the 2 spaces at the end!
-/// Disable below line if using your own callsign by adding // in front.
-//#define MY_CALLSIGN_PADDED "uSDR+  "    // Ensure two spaces at end of heading and that it is under 7 characters (including the 2 spaces), or this program may not work correctly.
-
-//#define MY_PREFIX ""  // No prefix, use this line by removing the //, add below to replica line.
-#define MY_PREFIX ""    // Add visiting country prefix here
-
-#define MY_NAME "JULIAN"   // <---- *** ADD YOUR NAME HERE FOR CW MESSAGES
-#endif
-#define CALLSIGN_LENGTH 6       // Change length to match your callsign but remember the LCD isn't very wide!
-
-// *** MEMORY LIMITATION OF ATMEGA328 *** This means you may have to mix and match functions option defines.  CAT requires considerable memory, so use only if needed.
-
-// If your dial goes the wrong way, change SWAP_ROTARY
+// Rotary encoder swap and SWR meter for RED_CORNERS / BLACK_BRICK
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
-// SWAP_ROTARY is isually required for Red Corners unless Rotary type changed, like mine!
 #ifdef MY_RED_CORNERS
-#define REVERSE_BAND_CHANGE	1	//If your freq. change is correct, but band jump goes backwards, define REVERSE_BAND_CHANGE
+#define REVERSE_BAND_CHANGE 1
 #else
-#define SWAP_ROTARY    1   // Swap rotary direction (enable for WB2CBA-uSDX)  NOTE:  To enable SWAP without RED_CORNERS enabled, comment out the lines above and below with // character, i.e. //#ifdef RED_CORNERS and //#endif
-//#define REVERSE_BAND_CHANGE	1	//If your freq. change is correct, but band jump goes backwards, define REVERSE_BAND_CHANGE
+#ifndef SWAP_ROTARY
+#define SWAP_ROTARY 1
 #endif
-// :( No space for SWR with both CW Msgs and CAT
-#define SWR_METER      1   // Supports SWR meter with bridge on A6/A7 (LQPF ATMEGA328P) by Alain, K1FM, see: https://groups.io/g/ucx/message/6262 and https://groups.io/g/ucx/message/6361
 #endif
-
-//***************** TRUSDX FEATURES
-#if defined(TRUSDX)
-
-//#define LCD_I2C        1   // LCD with I2C (PCF8574 module          ), connect SDA (PD2), SCL (PD3), NOTE that this display is pretty slow
-
-#define OLED_SSD1306     1   // OLED display (SSD1306 128x32 or 128x64), connect SDA (PD2), SCL (PD3)
-//#define OLED_SH1106    1   // OLED display (SH1106 1.3" inch display), connect SDA (PD2), SCL (PD3), NOTE that this display is pretty slow
-#define CONDENSED        1   // Display in 4 line mode (for OLED and LCD2004 modules)
-
-#define LPF_SWITCHING_DL2MAN_USDX_REV3 1    // Default 5-8 band latching relays IM43
-//#define LPF_SWITCHING_DL2MAN_USDX_REV2  1 // 5 band latching relays IM43
-
-#define SWR_METER        1   // Supports SWR meter with bridge on A6/A7 (LQPF ATMEGA328P) by Alain, K1FM, see: https://groups.io/g/ucx/message/6262 and https://groups.io/g/ucx/message/6361
-
-//*****************
-#else
-
-#define LPF_SWITCHING_DL2MAN_USDX_REV3 1    // Default 8 band latching relays IM43
-//#define LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH 1    // NOTE: CHANGE IF THIS VERSION LATCHES
-//#define LPF_SWITCHING_DL2MAN_USDX_REV2  1 // 5 band latching relays IM43
-
-#endif
-
-#if defined(BLACK_BRICK)
-#define SWR_METER      1   // Supports SWR meter with bridge on A6/A7 (LQPF ATMEGA328P) by Alain, K1FM, see: https://groups.io/g/ucx/message/6262 and https://groups.io/g/ucx/message/6361
-#endif
-
-//#define FAST_AGC         1   // Adds fast AGC option (good for CW) Slow mode not recommended.  Remove for CAT if memory errors.
-
-#define CAT              1   // CAT-interface - OTHER OPTIONS, SUCH AS CW_MESSAGES and KEEP_BAND_DATA MAY TO BE DISABLED TO MAKE SPACE FOR CAT
-//#define CAT_EXT        1   // Extended CAT support: remote button and screen control commands over CAT
-//#define CAT_STREAMING    1   // Streams audio and IQ, only 8KHz b/w, & needs faster 115200 baud RS232
-#define CAT_FAST         1   // Uses faster 115200 baud (can be changed to 57600), else 38400, 8, 1, N.
-
-// If short of memory on compile and not using Spectrum display, disable CAT_XO_CMD:- Like this:-> //#define CAT_XO_CMD
-#ifdef CAT
-#ifndef TRUSDX
-#define CAT_TX_CMD          1  // GW8RDI mod - added - Send TX and RX status CAT cmds as PTT is pressed and released
-#define CAT_XO_CMD          1  // GW8RDI mod - added - Set TX offset freq. for Quantum Spectrum module from QuantumSDR.com
-// Note: to use CAT_XO_CMD, RIT_ENABLE must also be enabled.
+#ifndef SWR_METER
+#define SWR_METER 1
 #endif
 #endif
 
-// Lines below NEEDED FOR CW, removed to make space for CAT
-//#define KEYER            1   // CW keyer for Iambic - NOTE: Auto CW msg sending aborts if not installed as changes dit timing. Can be removed to save memory for CAT
-//#define KEY_CLICK        1   // G8RDI mod - may be removed to free memory for CAT - NEEDED FOR CW msg sending else CW TX sounds mushy & CW msg sending stops after one peep! // Reduce key clicks by envelope shaping
-//#define FILTER_700HZ   1    // G8RDI mod - Moved here - Enabled shows in Menu
-
-// CW Messages: Note: If CAT is enabled, CW messages may cause a program memory overflow. KEEP_BAND_DATA can be disabled to release memory for CW at cost of losing band frequency memory.
-//#define CW_MESSAGE 1          // Transmits pre-defined CW messages on-demand (left-click menu item 4.2)
-//#define CW_MESSAGE_EXT 1      // Additional CW messages
-
-// NOTE: DO NOT CHANGE THE CW_MESSAGE LINES BELOW AS THEY ARE INCORPORATED OR NOT BASED ON CW_MESSAGE and CW_MESSAGE_EXT above.
-// Note: !!!Do not exceed CW_MESSAGE_LENGTH when ammending messages!!!
-#ifdef CW_MESSAGE_EXT
-#define CW_MESSAGE_LENGTH 48  //48/32
-#else
-#define CW_MESSAGE_LENGTH 48  //48/32/16
+#if defined(BLACK_BRICK) && !defined(SWR_METER)
+#define SWR_METER 1
 #endif
 
-// CHANGE THE CW MESSAGE TEXT BELOW AS YOU LIKE BUT LESS THAN CW_MESSAGE_LENGTH+1 CHARS!  THE ## MEANS +, USED TO CONCATANTE STRINGS.
-// DO NOT COMMENT OUT LINES BELOW, THESE TEXTS ARE NOT INCLUDED WHEN CW_MESSAGES/EXT ARE DISABLED
-#define CW_STD_MSG "CQ CQ DE " MY_CALLSIGN " +"  // 16 chars, change in code of size changes.
-#define CW_MSG1 "CQ CQ DE " MY_CALLSIGN " +"
-#define CW_MSG2 "CQ CQ DE " MY_PREFIX MY_CALLSIGN " +"
-#define CW_MSG3 MY_PREFIX MY_CALLSIGN
-#define CW_MSG4 "GE TKS 5NN 5NN NAME IS " MY_NAME " HW?"
-#define CW_MSG5 "FB RPTR TX 5W ANT EFW 73 CUAGN"
-#define CW_MSG6 "73 GL TU EE"
-// Examples:
-//"CQ"  MY_CALLSIGN " +", "CQ CQ DE " MY_CALLSIGN + MY_CALLSIGN " +", "GE TKS 5NN 5NN NAME IS ROB ROB HW?", "FB RPTR TX 5W 5W ANT ENDFED 73 CUAGN", "73 TU E E", "G8RDI"
-//"CQ CQ DE " MY_CALLSIGN " " MY_CALLSIGN " +", "GE TKS 5NN 5NN NAME IS " MY_NAME "" MY_NAME " HW?", "FB RPTR TX 5W 5W ANT ENDFED 73 CUAGN", "73 TU E E", MY_CALLSIGN
-//#define CW_MSG2 '"CQ CQ DE " MY_CALLSIGN " +"'  // Remove/add your Area prefit
-//#define CW_MSG3 MY_CALLSIGN
-
-//#define NR_FIR 1  // GW8RDI mod. Usually this won´t fit with CAT, but removing other options, such as CW messages, etc., can make enough space
-
-///G8RDI comment out FAST_AGC & DIAG below to save mem space for CAT
-//#define DIAG             1   // Hardware diagnostics on startup (use to debug problems)
-
-#ifndef CAT_XO_CMD  // Undefined CW_VOLUME to make space for CAT_XO_CMD
-#define CW_VOLUME        1    // Enable separate CW tone volume in the menu
+// TRUSDX-specific hardware defaults
+#ifdef TRUSDX
+#ifndef OLED_SSD1306
+#define OLED_SSD1306 1
 #endif
+#ifndef CONDENSED
+#define CONDENSED 1
+#endif
+#ifndef LPF_SWITCHING_DL2MAN_USDX_REV3
+#define LPF_SWITCHING_DL2MAN_USDX_REV3 1
+#endif
+#ifndef SWR_METER
+#define SWR_METER 1
+#endif
+#endif // TRUSDX
 
-#define CW_DECODER       1   // CW decoder
-//#define CW_INTERMEDIATE  1   // CW decoder shows intermediate characters (only available for LCD and F_MCU at 20M), sequences like:  EIS[HV] EIUF EAW[JP] EARL TMO TMG[ZQ] TND[BX] TNK[YC], may be good to learn CW; a full list of possible sequences:  EISH5 EISV3 EIUF EIUU2 EAWJ1 EAWP EARL TMOO0 TMOO9 TMOO8 TMGZ7 TMGQ TNDB6 TNDX TNKY TNKC
-//#define CW_FREQS_QRP   1   // Defaults to CW QRP   frequencies when changing bands
-//#define CW_FREQS_FISTS 1   // Defaults to CW FISTS frequencies when changing bands
-
-// NOTE: Make sure you have the correct xtal frequency enabled. This is the xtal near the SI5351/SI3253 chip, not the one near the Atmega MCU.
-//#define F_XTAL    27005000   // 27MHz SI5351 crystal
-//#define F_XTAL  25004000   // 25MHz SI5351 crystal  (enable for WB2CBA-uSDX, SI5351 break-out board or uSDXDuO)
+// Crystal frequency: model-specific defaults (override in usdx_settings.h)
+#ifndef F_XTAL
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
-//#ifdef RED_CORNERS
-#define F_XTAL  25000000   // 25MHz SI5351 crystal  (enable for 25MHz TCXO)
-#else
-#ifdef MY_RED_CORNERS
+#define F_XTAL  25000000
+#elif defined(MY_RED_CORNERS)
 #define F_XTAL  27001400
 #else
-#define F_XTAL  27000000   // !!!! SET YOUR EXACT XTAL FREQ OR 27000000 !!!!  27MHz usually on black bricks, Red Buttons (27001400 is my calibration offset!!!) and White buttons versions
+#define F_XTAL  27000000
+#endif
+#endif // F_XTAL
+
+// CAT extended commands: auto-enabled with CAT on non-TRUSDX
+#ifdef CAT
+#ifndef TRUSDX
+#ifndef CAT_TX_CMD
+#define CAT_TX_CMD 1
+#endif
+#ifndef CAT_XO_CMD
+#define CAT_XO_CMD 1
+#endif
+#endif
+#endif
+
+// CW_VOLUME: enabled unless CAT_XO_CMD uses the memory
+#ifndef CAT_XO_CMD
+#ifndef CW_VOLUME
+#define CW_VOLUME 1
 #endif
 #endif
 
-// GW8RDI NOTE: Enable to have battery voltage shown on the LCD.
-// GW8RDI WARNING!!! The problem with the original code is that it switches the ADC VREF up to 5V to read the bat, V, this causes some noise on the IQ sampling which enters the audio,
-//  and can interfere with the reading of buttons which are sensed through an ADC.
-// A better solution is to simply use a 2 resistor voltage divider and not change VREF, calculating the bar. voltage based on the res. divider ration. Alternatively, only show voltage in a menu function.  todo - change code.
-//#define VSS_METER      1   // Supports Vss measurement (as s-meter option), requires resistor of 1M between 12V and pin 26 (PC3)
-
-//#define QCX            1   // Supports older (non-SDR) QCX HW modifications (QCX, QCX-SSB, QCX-DSP with I/Q alignment-feature)
-//#define OLED_SSD1306   1   // OLED display (SSD1306 128x32 or 128x64), connect SDA (PD2), SCL (PD3)
-//#define OLED_SH1106    1   // OLED display (SH1106 1.3" inch display), connect SDA (PD2), SCL (PD3), NOTE that this display is pretty slow
-//#define LCD_I2C        1   // LCD with I2C (PCF8574 module          ), connect SDA (PD2), SCL (PD3), NOTE that this display is pretty slow
-//#define LPF_SWITCHING_DL2MAN_USDX_REV3           1   // Enable 8-band filter bank switching:     latching relays wired to a TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.0 as common (ground), IO1.0..7 used by the individual latches K0-7 switching respectively LPFs for 10m, 15m, 17m, 20m, 30m, 40m, 60m, 80m
-//#define LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH 1   // Enable 8-band filter bank switching: non-latching relays wired to a TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.0 as common (ground), IO1.0..7 used by the individual latches K0-7 switching respectively LPFs for 10m, 15m, 17m, 20m, 30m, 40m, 60m, 80m. Enable this if you are using 8-band non-latching version for the relays, the radio will draw extra 15mA current but will work ity any relay (Tnx OH2UDS/TA7W Baris)
-//#define LPF_SWITCHING_DL2MAN_USDX_REV2         1   // Enable 5-band filter bank switching:     latching relays wired to a TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.1 as common (ground), IO0.3, IO0.5, IO0.7, IO1.1, IO1.3 used by the individual latches K1-5 switching respectively LPFs for 20m, 30m, 40m, 60m, 80m
-//#define LPF_SWITCHING_DL2MAN_USDX_REV2_BETA    1   // Enable 5-band filter bank switching:     latching relays wired to a PCA9539PW   GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.1 as common (ground), IO0.3, IO0.5, IO0.7, IO1.1, IO1.3 used by the individual latches K1-5 switching respectively LPFs for 20m, 30m, 40m, 60m, 80m
-//#define LPF_SWITCHING_DL2MAN_USDX_REV1         1   // Enable 3-band filter bank switching:     latching relays wired to a PCA9536D    GPIO extender on the PC4/PC5 I2C bus; relays are using IO0 as common (ground), IO1-IO3 used by the individual latches K1-3 switching respectively LPFs for 20m, 40m, 80m
-//#define LPF_SWITCHING_WB2CBA_USDX_OCTOBAND     1   // Enable 8-band filter bank switching: non-latching relays wired to a MCP23008    GPIO extender on the PC4/PC5 I2C bus; relays are using GND as common (ground), GP0..7 used by the individual latches K1-8 switching respectively LPFs for 80m, 60m, 40m, 30m, 20m, 17m, 15m, 10m
-//#define LPF_SWITCHING_PE1DDA_USDXDUO           14  // Enable 2-band filter bank switching: non-latching relay  wired to pin PD5 (pin 11); specify as value the frequency in MHz for which (and above) the relay should be altered (e.g. put 14 to enable the relay at 14MHz and above to use the 20m LPF).
-#define SI5351_ADDR   0x60   // SI5351A I2C address: 0x60 for SI5351A-B-GT, Si5351A-B04771-GT, MS5351M; 0x62 for SI5351A-B-04486-GT; 0x6F for SI5351A-B02075-GT; see here for other variants: https://www.silabs.com/TimingUtility/timing-download-document.aspx?OPN=Si5351A-B02075-GT&OPNRevision=0&FileType=PublicAddendum
-//#define F_MCU   16000000   // 16MHz ATMEGA328P crystal (enable for unmodified Arduino Uno/Nano boards with 16MHz crystal). You may change this value to any other crystal frequency (up to 28MHz may work)
-
-// Advanced configuration switches
-//#define CONDENSED      1   // Display in 4 line mode (for OLED and LCD2004 modules)
-#define TX_ENABLE        1   // Disable this for RX only (no transmit), e.g. to support uSDX for kids idea: https://groups.io/g/ucx/topic/81030243#6276
-#define SEMI_QSK         1   // Just after keying the transmitter, keeps the RX muted for a short amount of time in the anticipation for continued keying
-#define RIT_ENABLE       1   // Receive-In-Transit alternates the receiving frequency with an user-defined offset to compensate for any necessary tuning needed on receive
-#define VOX_ENABLE       1   // Voice-On-Xmit which is switching the transceiver into transmit as soon audio is detected (above noise gate level)
-//#define MOX_ENABLE     1   // Monitor-On-Xmit which is audio monitoring on speaker during transmit
-
-//#define ONEBUTTON      1   // Use single (encoder) button to control full the rig; optionally use L/R buttons to completely replace rotory encoder function
-//#define DEBUG          1   // for development purposes only (adds debugging features such as CPU, sample-rate measurement, additional parameters)
-//#define TESTBENCH      1   // Tests RX chain by injection of sine wave, measurements results are sent over serial
-
-// G8RDI removed for memory due to CAT  
-//#define TX_DELAY       1   // Enables a delay in the actual transmission to allow relay-switching to be completed before the power is applied (see also NTX, PTX definitions below for GPIO that can switch relay/PA)
-//#define NTX            11  // Enables LOW  on TX, used as PTT out to enable external PAs (a value of 11 means PB3 is used)
-#define PTX            11  // Enables HIGH on TX, used as PTT out to enable external PAs (a value of 11 means PB3 is used)
-//#define CLOCK          1   // Enables clock
-// G8RDI removed to save memory #define:
-//#define F_XTAL  20000000   // Enable this for uSDXDuO, 20MHz SI5351 crystal
-//#define TX_CLK0_CLK1   1   // Enable this for uSDXDuO, i.e. when PA is driven by CLK0, CLK1 (not CLK2); NTX pin may be used for enabling the TX path (this is like RX pin, except that RX may also be used as attenuator)
-//#define F_CLK2  12000000   // Enables a fixed CLK2 clock output of choice (only applicable when TX_CLK0_CLK1 is enabled), e.g. for up-converter or to clock UART USB device
+// Debug callsign override
+#ifdef DEBUG_G8RDI
+#undef MY_CALLSIGN_PADDED
+#define MY_CALLSIGN_PADDED "DEBUG  "
+#endif
 
 // QCX pin defintions
 #define LCD_D4  0         //PD0    (pin 2)

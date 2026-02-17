@@ -1,190 +1,137 @@
-// Configuration switches; remove/add a double-slash at line-start to
-// enable/disable a feature; to save space disable e.g. CAT, DIAG, KEYER
+// usdx_settings.h - User Configuration
+// uSDX Plus Orange (based on usdxWHITEBUTTONS v4.00d by GW8RDI)
+// Edit this file to customize hardware, callsign, and features.
+// See CLAUDE.md for documentation on each option.
 
-/* Very approximate firmware size of various functionality (using gcc 7.3.0):
- * DIAG - 1308 bytes
- * CAT - 4150 bytes
- * CW_DECODER - 1468 bytes
- * CW_INTERMEDIATE - 20 bytes
- * FAST_AGC - 700 bytes
- * SWR_METER - 1724 bytes
- * SWR_METER + INA219_POWER_METER - 2580 bytes
- * note: combinations of these are not additive, so don't assume that disabling
- * DIAG and CAT will save exactly 4150+1308=5458 bytes
- */
+#pragma once
 
-#define DIAG                                                                   \
-  1 // Hardware diagnostics on startup (only disable when your rig is working)
-#define KEYER 1         // CW keyer
-#define CAT 1           // CAT-interface
-#define F_XTAL 27000000 // 27MHz SI5351 crystal
+// =============================================================================
+// HARDWARE MODEL - Enable exactly ONE by removing the "//" in front
+// =============================================================================
+// #define BLACK_BRICK 1    // Backlight PD3 0x08, SWR, no rotary swap
+// #define RED_CORNERS 1    // Backlight PD5 0x20 or PD3 0x08, SWR, rotary swap
+// #define RED_BUTTONS 1    // Small HF uSDX, no SWR, SMD inductors
+#define WHITE_BUTTONS 1     // Small black unit with white/red buttons, no SWR
+// #define TRUSDX 1         // DL2MAN/PE1NNZ clone, OLED, latching relays
 
-// Bluetooth HC-05 Configuration for CAT control (FT8, digital modes)
-// Connect HC-05 TX->PD0(RX), RX->PD1(TX), VCC->5V, GND->GND
-// Enable Bluetooth by pressing button at startup
-// #define BLUETOOTH_HC05  1   // Enable HC-05 Bluetooth module support
-// #define BLUETOOTH_PIN   17  // Button pin to activate Bluetooth at startup
-// (PC3/A3 = BUTTONS) #define F_XTAL  25004000   // 25MHz SI5351 crystal (enable
-// for WB2CBA-uSDX, SI5351 break-out board or uSDXDuO) #define F_XTAL  25000000
-// // 25MHz SI5351 crystal  (enable for 25MHz TCXO) #define SWAP_ROTARY    1 //
-// Swap rotary direction (enable for WB2CBA-uSDX) #define QCX            1   //
-// Supports older (non-SDR) QCX HW modifications (QCX, QCX-SSB, QCX-DSP with I/Q
-// alignment-feature) #define OLED_SSD1306   1   // OLED display (SSD1306 128x32
-// or 128x64), connect SDA (PD2), SCL (PD3) #define OLED_SH1106    1   // OLED
-// display (SH1106 1.3" inch display), connect SDA (PD2), SCL (PD3), NOTE that
-// this display is pretty slow #define LCD_I2C        1   // LCD with I2C
-// (PCF8574 module          ), connect SDA (PD2), SCL (PD3), NOTE that this
-// display is pretty slow
-#define LPF_SWITCHING_DL2MAN_USDX_REV3                                         \
-  1 // Enable 8-band filter bank switching:     latching relays wired to a
-    // TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.0
-    // as common (ground), IO1.0..7 used by the individual latches K0-7
-    // switching respectively LPFs for 10m, 15m, 17m, 20m, 30m, 40m, 60m, 80m
-// #define LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH 1   // Enable 8-band filter
-// bank switching: non-latching relays wired to a TCA/PCA9555 GPIO extender on
-// the PC4/PC5 I2C bus; relays are using IO0.0 as common (ground), IO1.0..7 used
-// by the individual latches K0-7 switching respectively LPFs for 10m, 15m, 17m,
-// 20m, 30m, 40m, 60m, 80m. Enable this if you are using 8-band non-latching
-// version for the relays, the radio will draw extra 15mA current but will work
-// ity any relay (Tnx OH2UDS/TA7W Baris) #define LPF_SWITCHING_DL2MAN_USDX_REV2
-// 1   // Enable 5-band filter bank switching:     latching relays wired to a
-// TCA/PCA9555 GPIO extender on the PC4/PC5 I2C bus; relays are using IO0.1 as
-// common (ground), IO0.3, IO0.5, IO0.7, IO1.1, IO1.3 used by the individual
-// latches K1-5 switching respectively LPFs for 20m, 30m, 40m, 60m, 80m #define
-// LPF_SWITCHING_DL2MAN_USDX_REV2_BETA    1   // Enable 5-band filter bank
-// switching:     latching relays wired to a PCA9539PW   GPIO extender on the
-// PC4/PC5 I2C bus; relays are using IO0.1 as common (ground), IO0.3, IO0.5,
-// IO0.7, IO1.1, IO1.3 used by the individual latches K1-5 switching
-// respectively LPFs for 20m, 30m, 40m, 60m, 80m #define
-// LPF_SWITCHING_DL2MAN_USDX_REV1         1   // Enable 3-band filter bank
-// switching:     latching relays wired to a PCA9536D    GPIO extender on the
-// PC4/PC5 I2C bus; relays are using IO0 as common (ground), IO1-IO3 used by the
-// individual latches K1-3 switching respectively LPFs for 20m, 40m, 80m #define
-// LPF_SWITCHING_WB2CBA_USDX_OCTOBAND     1   // Enable 8-band filter bank
-// switching: non-latching relays wired to a MCP23008    GPIO extender on the
-// PC4/PC5 I2C bus; relays are using GND as common (ground), GP0..7 used by the
-// individual latches K1-8 switching respectively LPFs for 80m, 60m, 40m, 30m,
-// 20m, 17m, 15m, 10m #define LPF_SWITCHING_PE1DDA_USDXDUO           14  //
-// Enable 2-band filter bank switching: non-latching relay  wired to pin PD5
-// (pin 11); specify as value the frequency in MHz for which (and above) the
-// relay should be altered (e.g. put 14 to enable the relay at 14MHz and above
-// to use the 20m LPF).
-#define SI5351_ADDR                                                            \
-  0x60 // SI5351A I2C address: 0x60 for SI5351A-B-GT, Si5351A-B04771-GT,
-       // MS5351M; 0x62 for SI5351A-B-04486-GT; 0x6F for SI5351A-B02075-GT; see
-       // here for other variants:
-       // https://www.silabs.com/TimingUtility/timing-download-document.aspx?OPN=Si5351A-B02075-GT&OPNRevision=0&FileType=PublicAddendum
-// #define F_MCU   16000000   // 16MHz ATMEGA328P crystal (enable for unmodified
-// Arduino Uno/Nano boards with 16MHz crystal). You may change this value to any
-// other crystal frequency (up to 28MHz may work)
+// =============================================================================
+// OPERATOR CONFIGURATION
+// =============================================================================
+// *** CALLSIGN: max 5 chars + 2 trailing spaces in PADDED version! ***
+#define MY_CALLSIGN        "EA7LJY"
+#define MY_CALLSIGN_PADDED "EA7LJY  "   // Keep exactly 2 trailing spaces
+#define MY_PREFIX          ""            // Visiting country prefix, e.g. "DL/"
+#define MY_NAME            "JULIAN"      // For CW messages
+#define CALLSIGN_LENGTH    6             // Match length of MY_CALLSIGN
 
-// Advanced configuration switches
-// #define CONDENSED      1   // Display in 4 line mode (for OLED and LCD2004
-// modules) #define CAT_EXT        1   // Extended CAT support: remote button
-// and screen control commands over CAT #define CAT_STREAMING  1   // Extended
-// CAT support: audio streaming over CAT, once enabled and triggered with CAT
-// cmd, samplerate 7812Hz, 8-bit unsigned audio is sent over UART. The ";" is
-// omited in the data-stream, and only sent to indicate the beginning and end of
-// a CAT cmd.
-#define CW_DECODER 1 // CW decoder (disabled to save ~1500 bytes)
-#define TX_ENABLE 1  // Disable this for RX only (no transmit)
-#define KEY_CLICK 1  // Reduce key clicks by envelope shaping
-#define SEMI_QSK        1   // Just after keying the transmitter, keeps the RX muted (disabled)
-#define RIT_ENABLE      1   // Receive-In-Transit offset (disabled to save ~200 bytes)
-#define VOX_ENABLE 1 // Voice-On-Xmit
-// #define MOX_ENABLE     1   // Monitor-On-Xmit
+// =============================================================================
+// HARDWARE SETTINGS
+// =============================================================================
+#define SI5351_ADDR  0x60   // SI5351A I2C address (0x60 most common, 0x62 alt)
 
-// AGC Modes: 0=OFF, 1=FAST(CW), 2=MEDIUM(SSB), 3=SLOW(weak signals)
-#define DEFAULT_AGC_MODE 2   // Default AGC mode (SSB)
-#define AGC_FAST_DECAY 50    // Decay factor for FAST mode (v1.15: faster recovery for CW)
-#define AGC_MEDIUM_DECAY 400 // Decay factor for MEDIUM mode (default)
-#define AGC_SLOW_DECAY 800   // Decay factor for SLOW mode
-// AGC thresholds - restore original values for stable startup behavior
-#define AGC_ATTACK_THRESHOLD                                                   \
-  1024 // v1.11 Optimized: fast attack for strong signals
-#define AGC_DECAY_THRESHOLD                                                    \
-  768 // v1.11 Optimized: gentler decay for weak signals
-// #define MOX_ENABLE     1   // Monitor-On-Xmit which is audio monitoring on
-// speaker during transmit #define FAST_AGC       1   // Adds fast AGC option
-// (good for CW) #define VSS_METER      1   // Supports Vss measurement (as
-// s-meter option), requires resistor of 1M between 12V and pin 26 (PC3)
+// Crystal frequency - set to match your SI5351 chip (NOT the MCU crystal)
+// Model-specific defaults are applied in the .ino; override here if needed:
+// #define F_XTAL  27005000  // 27MHz with calibration offset
+// #define F_XTAL  25004000  // 25MHz with calibration offset (WB2CBA-uSDX)
+// #define F_XTAL  25000000  // 25MHz TCXO (Red Corners, Black Brick)
+// #define F_XTAL  27000000  // 27MHz standard (White Buttons, Red Buttons)
 
-// #define PER_BAND_TRACKING \
-//   1 // Save/restore frequency, mode and filter per band (disabled to save
-//   ~500
-// bytes)
+// MCU crystal frequency (only change if running 16MHz Arduino Uno/Nano stock):
+// #define F_MCU   16000000  // 16MHz; default assumed is 20MHz
 
-// #define SWR_METER      1   // Supports SWR meter with bridge on A6/A7 (LQPF
-// ATMEGA328P) by Alain, K1FM, see: https://groups.io/g/ucx/message/6262 and
-// #define SWR_METER      1   // Enable
-// PWR/SWR meter on display during TX
-#define PWR_CALIBRATION_CONSTANT                                               \
-  67 // if SWR_METER is defined, this is the initial calibration value for the
-     // original code of the power meter. 67 is ok for the SWR bridge ripped
-     // from the trusdx schematics (ADC6 connected to forward power, ADC7
-     // connected to reflected power) --sq5bpf
+// =============================================================================
+// DISPLAY OPTIONS (choose at most one)
+// =============================================================================
+// #define OLED_SSD1306  1  // OLED SSD1306 128x32/128x64 via SDA(PD2)/SCL(PD3)
+// #define OLED_SH1106   1  // OLED SH1106 1.3" via SDA(PD2)/SCL(PD3)
+// #define LCD_I2C       1  // I2C LCD PCF8574 module, slow
+// #define CONDENSED     1  // 4-line display mode (for OLED and LCD2004)
 
-// #define INA219_POWER_METER     1   // PA voltage/current/power monitoring
-// using an addon INA219 board (adafruit etc). Also shows PA efficiency. Works
-// only if SWR_METER is defined. Measurements are done only in CW --sq5bpf
-#define CURRENT_SHUNT_CALIBRATION_CONSTANT                                     \
-  4010 // default calibration constant for my INA219 board (same as Adafruit
-       // board but without the logo). This should be 4096 for a 0.1ohm resistor
-       // and the chosen configuration, so either the resistor is a bit off, or
-       // my meter is off --sq5bpf
+// =============================================================================
+// FILTER BANK (LPF switching via I2C GPIO expander)
+// =============================================================================
+#define LPF_SWITCHING_DL2MAN_USDX_REV3 1  // 8-band latching relays (IM43)
+// #define LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH 1  // 8-band non-latching
+// #define LPF_SWITCHING_DL2MAN_USDX_REV2 1           // 5-band latching
+// #define LPF_SWITCHING_DL2MAN_USDX_REV2_BETA 1      // 5-band PCA9539PW
+// #define LPF_SWITCHING_DL2MAN_USDX_REV1 1           // 3-band PCA9536D
+// #define LPF_SWITCHING_WB2CBA_USDX_OCTOBAND 1       // 8-band MCP23008
+// #define LPF_SWITCHING_PE1DDA_USDXDUO 14             // 2-band relay on PD5
 
-// #define ONEBUTTON      1   // Use single (encoder) button to control full the
-// rig; optionally use L/R buttons to completely replace rotory encoder function
-// #define DEBUG          1   // for development purposes only (adds debugging
-// features such as CPU, sample-rate measurement, additional parameters) #define
-// TESTBENCH      1   // Tests RX chain by injection of sine wave, measurements
-// results are sent over serial #define CW_FREQS_QRP   1   // Defaults to CW QRP
-// frequencies when changing bands #define CW_FREQS_FISTS 1   // Defaults to CW
-// FISTS frequencies when changing bands
+// =============================================================================
+// TX / RX FEATURES
+// =============================================================================
+#define TX_ENABLE        1  // Enable TX; comment out for RX-only
+#define SEMI_QSK         1  // Mute RX briefly after CW key-up
+#define RIT_ENABLE       1  // Receive Incremental Tuning (+/- offset)
+#define VOX_ENABLE       1  // Voice-activated TX
+// #define MOX_ENABLE    1  // Monitor-on-TX (audio feedback during TX)
 
-#define CW_MESSAGE       1   // Transmits pre-defined CW messages on-demand
-// #define CW_MESSAGE_EXT 1   // Additional CW messages
+// =============================================================================
+// MEMORY / BAND FEATURES
+// =============================================================================
+#define KEEP_BAND_DATA   1  // Remember frequency and mode per band
+#define SHOW_USB_LSB_CW_ONLY 1  // Menu cycles only LSB / USB / CW modes
 
-// put your call and name here, it will be used to generate the predefined
-// messages
-#define MYCALL "EA7LJY"
-#define MYNAME "JULIAN"
+// =============================================================================
+// CAT INTERFACE
+// =============================================================================
+#define CAT              1  // Enable CAT control (TS-480 subset)
+#define CAT_FAST         1  // 115200 baud (else 38400)
+// #define CAT_EXT       1  // Extended: remote button/screen control
+// #define CAT_STREAMING 1  // Audio/IQ streaming over CAT
 
-// predefined CW messages
-#define CW_MSG1 "CQ " MYCALL " +"
-// CW_MSG2-5 are used only when CW_MESSAGE_EXT is set
-#define CW_MSG2 "CQ CQ DE " MYCALL " " MYCALL " +"
-#define CW_MSG3 "GE TKS 5NN 5NN NAME IS " MYNAME " " MYNAME " HW?"
-#define CW_MSG4 "FB RPTR TX 5W 5W ANT INV V 73 CUAGN"
-#define CW_MSG5 "73 TU E E"
-#define CW_MSG6 MYCALL
+// =============================================================================
+// CW FEATURES
+// =============================================================================
+// #define KEYER         1  // Iambic CW keyer (disabling saves memory for CAT)
+// #define KEY_CLICK     1  // TX envelope shaping to reduce key clicks
+// #define FILTER_700HZ  1  // 700Hz CW tone filter selectable in menu
+#define CW_DECODER       1  // CW decoder display
+// #define CW_INTERMEDIATE 1  // Show intermediate Morse sequences (LCD only)
+// #define CW_FREQS_QRP  1  // Default to QRP CW frequencies on band change
+// #define CW_FREQS_FISTS 1 // Default to FISTS CW frequencies on band change
+// #define CW_VOLUME     1  // Separate CW volume level in menu
 
-// #define TX_DELAY       1   // Enables a delay in the actual transmission to
-// allow relay-switching to be completed before the power is applied (see also
-// NTX, PTX definitions below for GPIO that can switch relay/PA) #define NTX 11
-// // Enables LOW  on TX, used as PTT out to enable external PAs (a value of 11
-// means PB3 is used) #define PTX            11  // Enables HIGH on TX, used as
-// PTT out to enable external PAs (a value of 11 means PB3 is used) #define
-// CLOCK          1   // Enables clock
-#define CW_INTERMEDIATE                                                        \
-  1 // CW decoder shows intermediate characters (only available for LCD and
-    // F_MCU at 20M)
-// #define F_XTAL  20000000   // Enable this for uSDXDuO, 20MHz SI5351 crystal
-// #define TX_CLK0_CLK1   1   // Enable this for uSDXDuO, i.e. when PA is driven
-// by CLK0, CLK1 (not CLK2); NTX pin may be used for enabling the TX path (this
-// is like RX pin, except that RX may also be used as attenuator) #define F_CLK2
-// 12000000   // Enables a fixed CLK2 clock output of choice (only applicable
-// when TX_CLK0_CLK1 is enabled), e.g. for up-converter or to clock UART USB
-// device
+// =============================================================================
+// CW MESSAGES
+// =============================================================================
+// #define CW_MESSAGE    1  // Predefined CW messages (uses memory, check fit)
+// #define CW_MESSAGE_EXT 1 // Additional CW messages (see below)
+#define CW_MESSAGE_LENGTH  48
+#define CW_STD_MSG  "CQ CQ DE " MY_CALLSIGN " +"
+#define CW_MSG1     "CQ CQ DE " MY_CALLSIGN " +"
+#define CW_MSG2     "CQ CQ DE " MY_PREFIX MY_CALLSIGN " +"
+#define CW_MSG3     MY_PREFIX MY_CALLSIGN
+#define CW_MSG4     "GE TKS 5NN 5NN NAME IS " MY_NAME " HW?"
+#define CW_MSG5     "FB RPTR TX 5W ANT EFW 73 CUAGN"
+#define CW_MSG6     "73 GL TU EE"
 
-// TX Optimization switches
-// #define SPEECH_EQ \
-//   1 // Speech pre-emphasis: +6dB boost at 2kHz for better clarity
-// #define SPEECH_COMPRESSOR \
-//   1 // Automatic dynamic compression for consistent TX levels
-// #define TX_POWER_RAMP 1  // Smooth power ramp at TX start/end to prevent pops
-// #define VOX_HYSTERESIS 1 // VOX with hysteresis to prevent chattering
-// #define PHASE_SMOOTHING \
-//   1 // Smooth phase changes to reduce spurs (saves ~80 bytes if disabled)
-#define TX_COMPRESSION_GAIN                                                    \
-  6 // Additional compression gain (1-8), higher = more punch
+// =============================================================================
+// DSP / NOISE REDUCTION
+// =============================================================================
+// #define NR_FIR        1  // FIR noise reduction (needs space - disable CW msgs)
+// #define FAST_AGC      1  // Fast AGC mode option (good for CW)
+// #define FM_ARCTAN     1  // FM differentiator (experimental)
+// #define AM_MOD_MAGN_SQRT 1  // More accurate AM magnitude (sqrt method)
+
+// =============================================================================
+// DIAGNOSTICS / DEBUG
+// =============================================================================
+// #define DIAG          1  // Hardware diagnostics on startup (+1308 bytes)
+// #define DEBUG_G8RDI   1  // Show error codes on LCD (changes callsign to DEBUG)
+
+// =============================================================================
+// TX PTT OUTPUT
+// =============================================================================
+#define PTX  11             // HIGH on TX: PTT output on PB3 (pin 17)
+// #define NTX 11           // LOW on TX: PTT output on PB3 (alternative logic)
+// #define TX_DELAY  1      // Delay before TX for relay switching
+
+// =============================================================================
+// ADVANCED / RARELY CHANGED
+// =============================================================================
+// #define QCX           1  // Older QCX hardware support
+// #define ONEBUTTON     1  // Single-button control mode
+// #define TX_CLK0_CLK1  1  // uSDXDuO: PA driven by CLK0/CLK1 not CLK2
+// #define F_CLK2  12000000 // Fixed CLK2 output (only with TX_CLK0_CLK1)
