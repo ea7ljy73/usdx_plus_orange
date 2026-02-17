@@ -4289,16 +4289,17 @@ void setup() {
 
 #ifdef TX_ENABLE
   build_lut();
+  func_ptr = dsp_tx;
+  TIMER2_COMPA_vect();
+  func_ptr = sdr_rx_00;
 #endif
 
   show_banner();
 
   start_rx();
 
-  // Initialize audio output PWM
-  timer1_start(F_SAMP_PWM);
+  // Initialize audio output PWM (sidetone)
   TCCR1A |= (1 << COM1A1);  // Enable audio output on OC1A (SIDETONE) - PWM mode
-  TCCR1A &= ~(1 << COM1B1); // Disable KEY_OUT PWM during RX
   OCR1AL = 0x80;            // Set to midpoint (2.5V) for silence
 
 #ifdef KEYER
