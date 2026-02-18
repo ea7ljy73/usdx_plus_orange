@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "4.00d"
+#define VERSION "5.00"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
