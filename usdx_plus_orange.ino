@@ -2135,6 +2135,16 @@ inline int16_t ssb(int16_t in) {
     return dp * (-_F_SAMP_TX / _UA);
 }
 
+volatile uint8_t deemph_fm = 0;
+static int16_t   deemph_z1 = 0;
+
+inline int16_t fm_deemph(int16_t in) {
+  if(!deemph_fm)
+    return in;
+  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 3);
+  return deemph_z1;
+}
+
 //=========================================================================
 // SECTION 07: GLOBAL VARIABLES AND TYPES
 //=========================================================================
@@ -3095,6 +3105,10 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
     acm = -id - qh; // SSB & CW: inverting I and Q helps dampening a
                     // feedback-loop between PWM out and ADC inputs
     ac = acm;
+  }
+
+  if(mode == FM && deemph_fm) {
+    ac = fm_deemph(ac);
   }
 
   static uint8_t absavg256cnt;
