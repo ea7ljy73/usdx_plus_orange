@@ -19,8 +19,6 @@
 // Configuration in usdx_settings.h - edit that file to customize your rig
 #include "usdx_settings.h"
 
-#define VERSION "4.00d"
-
 //=========================================================================
 // SECTION 01: DERIVED SETTINGS (computed from hardware model)
 //=========================================================================
