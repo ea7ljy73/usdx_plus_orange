@@ -24,27 +24,27 @@
 
 // Backlight control pin
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
-#define BACKLIGHT_PIN 0x20
+	#define BACKLIGHT_PIN 0x20
 #else
-#define BACKLIGHT_PIN 0x08
+	#define BACKLIGHT_PIN 0x08
 #endif
 
 // Rotary encoder swap and SWR meter for RED_CORNERS / BLACK_BRICK
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
-#ifdef MY_RED_CORNERS
-#define REVERSE_BAND_CHANGE 1
-#else
-#ifndef SWAP_ROTARY
-#define SWAP_ROTARY 1
-#endif
-#endif
-#ifndef SWR_METER
-#define SWR_METER 1
-#endif
+	#ifdef MY_RED_CORNERS
+		#define REVERSE_BAND_CHANGE 1
+	#else
+		#ifndef SWAP_ROTARY
+			#define SWAP_ROTARY 1
+		#endif
+	#endif
+	#ifndef SWR_METER
+		#define SWR_METER 1
+	#endif
 #endif
 
 #if defined(BLACK_BRICK) && !defined(SWR_METER)
-#define SWR_METER 1
+	#define SWR_METER 1
 #endif
 
 // TRUSDX-specific hardware defaults
@@ -65,13 +65,13 @@
 
 // Crystal frequency: model-specific defaults (override in usdx_settings.h)
 #ifndef F_XTAL
-#if defined(RED_CORNERS) || defined(BLACK_BRICK)
-#define F_XTAL 25000000
-#elif defined(MY_RED_CORNERS)
-#define F_XTAL 27001400
-#else
-#define F_XTAL 27000000
-#endif
+	#if defined(RED_CORNERS) || defined(BLACK_BRICK)
+		#define F_XTAL 25000000
+	#elif defined(MY_RED_CORNERS)
+		#define F_XTAL 27001400
+	#else
+		#define F_XTAL 27000000
+	#endif
 #endif // F_XTAL
 
 // CAT extended commands: auto-enabled with CAT on non-TRUSDX
@@ -88,15 +88,15 @@
 
 // CW_VOLUME: enabled unless CAT_XO_CMD uses the memory
 #ifndef CAT_XO_CMD
-#ifndef CW_VOLUME
-#define CW_VOLUME 1
-#endif
+	#ifndef CW_VOLUME
+		#define CW_VOLUME 1
+	#endif
 #endif
 
 // Debug callsign override
 #ifdef DEBUG_G8RDI
-#undef MY_CALLSIGN_PADDED
-#define MY_CALLSIGN_PADDED "DEBUG  "
+	#undef MY_CALLSIGN_PADDED
+	#define MY_CALLSIGN_PADDED "DEBUG  "
 #endif
 
 // QCX pin defintions
@@ -125,83 +125,83 @@
 // #define PTX   11        //PB3    (pin 17)
 
 #ifdef SWAP_ROTARY
-#undef ROT_A
-#undef ROT_B
-#define ROT_A 7 // PD7    (pin 13)
-#define ROT_B 6 // PD6    (pin 12)
+	#undef ROT_A
+	#undef ROT_B
+	#define ROT_A 7 // PD7    (pin 13)
+	#define ROT_B 6 // PD6    (pin 12)
 #endif
 
 #if (defined(OLED_SSD1306) || defined(OLED_SH1106))
-#define OLED 1
+	#define OLED 1
 #endif
 
 #if (defined(CAT) || defined(TESTBENCH)) && !(OLED)
-#define _SERIAL 1 // Coexistence support for serial port and LCD on the same pins
+	#define _SERIAL 1 // Coexistence support for serial port and LCD on the same pins
 #endif
 
 #ifdef LPF_SWITCHING_DL2MAN_USDX_REV3_NOLATCH
-#define LPF_SWITCHING_DL2MAN_USDX_REV3 1
+	#define LPF_SWITCHING_DL2MAN_USDX_REV3 1
 #endif
 
 #ifdef TX_CLK0_CLK1
-#ifdef F_CLK2
-#define TX1RX0 0b11111000
-#define TX1RX1 0b11111000
-#define TX0RX1 0b11111000
-#define TX0RX0 0b11111011
-#else //! F_CLK2
-#define TX1RX0 0b11111100
-#define TX1RX1 0b11111100
-#define TX0RX1 0b11111100
-#define TX0RX0 0b11111111
-#endif // F_CLK2
+	#ifdef F_CLK2
+		#define TX1RX0 0b11111000
+		#define TX1RX1 0b11111000
+		#define TX0RX1 0b11111000
+		#define TX0RX0 0b11111011
+	#else //! F_CLK2
+		#define TX1RX0 0b11111100
+		#define TX1RX1 0b11111100
+		#define TX0RX1 0b11111100
+		#define TX0RX0 0b11111111
+	#endif // F_CLK2
 #else  //! TX_CLK0_CLK1
-#define TX1RX0 0b11111011
-#define TX1RX1 0b11111000
-#define TX0RX1 0b11111100
-#define TX0RX0 0b11111111
+	#define TX1RX0 0b11111011
+	#define TX1RX1 0b11111000
+	#define TX0RX1 0b11111100
+	#define TX0RX0 0b11111111
 #endif // TX_CLK0_CLK1
 
 #if defined(F_CLK2) && !defined(TX_CLK0_CLK1)
-#error "TX_CLK0_CLK1 must be enabled in order to use F_CLK2."
+	#error "TX_CLK0_CLK1 must be enabled in order to use F_CLK2."
 #endif
 
 #ifndef TX_ENABLE
-#undef KEYER
-#undef TX_DELAY
-#undef SEMI_QSK
-#undef RIT_ENABLE
-#undef VOX_ENABLE
-#undef MOX_ENABLE
+	#undef KEYER
+	#undef TX_DELAY
+	#undef SEMI_QSK
+	#undef RIT_ENABLE
+	#undef VOX_ENABLE
+	#undef MOX_ENABLE
 #endif //! TX_ENABLE
 
 #ifdef SWR_METER
-float FWD;
-float SWR;
-float ref_V = 5 * 1.15;
-static uint32_t stimer;
-#define PIN_FWD A6
-#define PIN_REF A7
+	float FWD;
+	float SWR;
+	float ref_V = 5 * 1.15;
+	static uint32_t stimer;
+	#define PIN_FWD A6
+	#define PIN_REF A7
 #endif
 
 #if (ARDUINO < 10810)
-#if (ARDUINO != 10607) // G8RDI mod - IDE 2.0.1 has its version set to 10607, an IDE bug since fixed.
-#error "Unsupported Arduino IDE version, use Arduino IDE 1.8.10 or later from https://www.arduino.cc/en/software"
-#endif
+	#if (ARDUINO != 10607) // G8RDI mod - IDE 2.0.1 has its version set to 10607, an IDE bug since fixed.
+		#error "Unsupported Arduino IDE version, use Arduino IDE 1.8.10 or later from https://www.arduino.cc/en/software"
+	#endif
 #endif
 
 #if !(defined(ARDUINO_ARCH_AVR))
-#error "Unsupported architecture, select Arduino IDE > Tools > Board > Arduino AVR Boards > Arduino Uno."
+	#error "Unsupported architecture, select Arduino IDE > Tools > Board > Arduino AVR Boards > Arduino Uno."
 #endif
 
 #if (F_CPU != 16000000)
-#error "Unsupported clock frequency, Arduino IDE must specify 16MHz clock; alternate crystal frequencies may be specified with F_MCU."
+	#error "Unsupported clock frequency, Arduino IDE must specify 16MHz clock; alternate crystal frequencies may be specified with F_MCU."
 #endif
 
 #undef F_CPU
 #define F_CPU 20007000 // Actual crystal frequency of 20MHz XTAL1, note that this declaration is just informative and does not correct the timing in Arduino functions like delay(); hence a 1.25 factor needs to be added for correction.
 #ifndef F_MCU
-#define F_MCU 20000000 // 20MHz ATMEGA328P crystal
+	#define F_MCU 20000000 // 20MHz ATMEGA328P crystal
 #endif
 
 extern char __bss_end;
@@ -212,27 +212,27 @@ static int freeMemory()
 } // see: http://www.nongnu.org/avr-libc/user-manual/malloc.html
 
 #ifdef CAT_EXT
-volatile uint8_t cat_key = 0;
-uint8_t _digitalRead(uint8_t pin)
-{				   // reads pin or (via CAT) artificially overriden pins
-	serialEvent(); // allows CAT update
-	if (cat_key)
-	{
-		return (pin == BUTTONS) ? ((cat_key & 0x07) > 0) : (pin == DIT) ? ~cat_key & 0x10
-													   : (pin == DAH)	? ~cat_key & 0x20
-																		: 0;
-	} // overrides digitalRead(DIT, DAH, BUTTONS);
-	return digitalRead(pin);
-}
+	volatile uint8_t cat_key = 0;
+	uint8_t _digitalRead(uint8_t pin)
+	{ // reads pin or (via CAT) artificially overriden pins
+		serialEvent(); // allows CAT update
+		if (cat_key)
+		{
+			return (pin == BUTTONS) ? ((cat_key & 0x07) > 0) : (pin == DIT) ? ~cat_key & 0x10
+																	   : (pin == DAH) ? ~cat_key & 0x20
+																	   : 0;
+		} // overrides digitalRead(DIT, DAH, BUTTONS);
+		return digitalRead(pin);
+	}
 #else
-#define _digitalRead(x) digitalRead(x)
+	#define _digitalRead(x) digitalRead(x)
 #endif // CAT_EXT
 
 // #define ONEBUTTON_INV 1 // Encoder button goes from PC3 to GND (instead PC3 to 5V, with 10k pull down)
 #ifdef ONEBUTTON_INV
-uint8_t inv = 1;
+	uint8_t inv = 1;
 #else
-uint8_t inv = 0;
+	uint8_t inv = 0;
 #endif
 
 // #ifdef KEYER
@@ -309,37 +309,37 @@ class I2C_
 { // Secundairy I2C class used by I2C LCD/OLED, uses alternate pins: PD2 (SDA) and PD3 (SCL)
 public:
 #if (F_MCU > 20900000)
-#ifdef OLED_SH1106
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 9; i++) \
-		asm("nop");
-#else
-#ifdef OLED_SSD1306
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 6; i++) \
-		asm("nop");
-#else // other (I2C_LCD)
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 7; i++) \
-		asm("nop");
-#endif
-#endif
+	#ifdef OLED_SH1106
+		#define _DELAY()                     \
+			for (uint8_t i = 0; i != 9; i++) \
+				asm("nop");
+	#else
+		#ifdef OLED_SSD1306
+			#define _DELAY()                     \
+				for (uint8_t i = 0; i != 6; i++) \
+					asm("nop");
+		#else // other (I2C_LCD)
+			#define _DELAY()                     \
+				for (uint8_t i = 0; i != 7; i++) \
+					asm("nop");
+		#endif
+	#endif
 #else // slow F_MCU
-#ifdef OLED_SH1106
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 8; i++) \
-		asm("nop");
-#else
-#ifdef OLED_SSD1306
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 4; i++) \
-		asm("nop"); // 4=731kb/s
-#else				// other (I2C_LCD)
-#define _DELAY()                     \
-	for (uint8_t i = 0; i != 5; i++) \
-		asm("nop");
-#endif
-#endif
+	#ifdef OLED_SH1106
+		#define _DELAY()                     \
+			for (uint8_t i = 0; i != 8; i++) \
+				asm("nop");
+	#else
+		#ifdef OLED_SSD1306
+			#define _DELAY()                     \
+				for (uint8_t i = 0; i != 4; i++) \
+					asm("nop"); // 4=731kb/s
+		#else				// other (I2C_LCD)
+			#define _DELAY()                     \
+				for (uint8_t i = 0; i != 5; i++) \
+					asm("nop");
+		#endif
+	#endif
 #endif					  // F_MCU
 #define _I2C_SDA (1 << 2) // PD2
 #define _I2C_SCL (1 << 3) // PD3
