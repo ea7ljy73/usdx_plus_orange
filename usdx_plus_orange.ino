@@ -2661,10 +2661,11 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr    = 2; // G8RDI mod
-volatile uint8_t att   = 0;
-volatile uint8_t att2  = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
-volatile uint8_t _init = 0;
+volatile uint8_t nr       = 2; // G8RDI mod
+volatile uint8_t att      = 0;
+volatile uint8_t att2     = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
+volatile uint8_t rf_atten = 0;
+volatile uint8_t _init    = 0;
 
 // Old AGC algorithm which only increases gain, but does not decrease it for
 // very strong signals. Maximum possible gain is x32 (in practice, x31) so AGC
@@ -2700,9 +2701,9 @@ inline int16_t process_agc_fast(int16_t in) {
 // Variable 'slowdown' allows the decay time to be slowed down so that it is not
 // directly related to the value of centiCount.
 
-static int16_t centiGain = 128;
-#define DECAY_FACTOR 400 // AGC decay occurs <DECAY_FACTOR> slower than attack.
-static uint16_t decayCount = DECAY_FACTOR;
+static int16_t    centiGain  = 128;
+volatile uint16_t agc_decay  = 400;
+static uint16_t   decayCount = agc_decay;
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
 
@@ -2729,7 +2730,7 @@ inline int16_t process_agc(int16_t in) {
         else
           centiGain = INT16_MAX;
       }
-      decayCount = DECAY_FACTOR;
+      decayCount = agc_decay;
       small      = true;
     }
   }
@@ -3349,7 +3350,12 @@ void sdr_rx_07();
 
 #    define M_SR 1 // CIC N=3
 void sdr_rx_00() {
-  int16_t ac      = sdr_rx_common_i();
+  int16_t ac = sdr_rx_common_i();
+  if(rf_atten > 0) {
+    ac = ac >> (rf_atten / 6);
+    if(rf_atten % 6 >= 3)
+      ac = ac >> 1;
+  }
   func_ptr        = sdr_rx_01;
   int16_t i_s1za0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
   i_s0za1         = ac;
