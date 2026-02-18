@@ -1,63 +1,16 @@
-//  QCX-SSB.ino - https://github.com/threeme3/QCX-SSB
-//
-//  Copyright 2019, 2020, 2021   Guido PE1NNZ <pe1nnz@amsat.org>
-//  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//=========================================================================
+// usdx_plus_orange.ino - uSDX Plus Orange Firmware
+// Based on QCX-SSB by PE1NNZ (https://github.com/threeme3/QCX-SSB)
+// Modifications Copyright 2022-2023 Rob Colclough GW8RDI
+// Refactorization Copyright 2024-2026 EA7LJY
+// Licensed under MIT License
+//=========================================================================
 
-//  Copyright all additions 2022-2023 Rob Colclough GW8RDI, use of the additions and changes is permitted for all private, non-commecial use at user´s risk.  No responsibility is accepted for any losses that may occur through the use of this modified code.
+// Configuration in usdx_settings.h - edit that file to customize your rig
+#include "usdx_settings.h"
 
-// THIS CODE SUPERCEEDS VERSIONS 1.02X AND 1.03. 1.03 HAS UPDATES FOR OLED CHPSETS BUT DOES NOT HAVE FUNCTIONAL OR DSP CHANGES COMPARED TO 1.02w.
-
-// GW8RDI IMPORTANT NOTES: ***   DO NOT RUSH - READ THE NOTES BELOW SEVERAL TIMES!
-
-// *** THIS OPEN SOFTWARE IS FULLY SUPPORTED* FREE OF COST BY GW8RDI and others ***
-
-/*
-Comfigured for (tr)usdx clone:
-
-Compile results 17 April 2023
-"C:\\Users\\User\\AppData\\Local\\Arduino15\\packages\\arduino\\tools\\avr-gcc\\7.3.0-atmel3.6.1-arduino7/bin/avr-size" -A "C:\\Users\\Usuario\\AppData\\Local\\Temp\\arduino\\sketches\\E2EA2B2706C6565E78832871CCAA7296/usdx.ino.elf"
-Sketch uses 32244 bytes (99%) of program storage space. Maximum is 32256 bytes.
-Global variables use 1499 bytes (73%) of dynamic memory, leaving 549 bytes for local variables. Maximum is 2048 bytes.
-*/
-
-// *** ISP DATA CORRUPTION WARNING1!!   ALWAYS REMOVE C24 (C27?) (or as marked) it's a 10nF on the ISP HEADER'S MOSI line (PA ctrl out) (PB3) of the ISP header,
-//  and disconnect the internal mic by plugging in a disconnected Jack plug.  FAILING TO DO THIS CAN CORRUPT YOUR MCU CHIP!!
-
-// *** CHECK WITH ME FIRST PLEASE ***
-
-// PLEASE DO NOT PUBLISH WHAT YOU THINK ARE FAULTS WITH THIS RELEASE *** BEFORE CHECKING WITH ME, GW8RDI ***.
-// 99% OF REPORTED PROBLEMS ARE JUST CONFIGURATION RELATED, NOT BUGS OR LIMITATIONS.
-// SO IF YOU USE THIS SOFTWARE, YOU AGREE NOT TO PUBLISH UNTIL YOU´VE CONTACTED ME, GW8RDI
-// THIS AVOIDS CONFUSIONS.
-
-// Supports up to 9 bands (using 8 filters, 15 and 17M share). To increase change N_BANDS, and add frequencies to array "band[N_BANDS] ="
-// SSB TX quality tests, see below MORE_MIC_GAIN, QUAD
-
-/*  WELCOME TO THE OPEN SOURCE USDX PROJECT 2022 AND ONWARDS!
-
-	This version is for all uSDX/uSDR transceivers, release numbers are 4.XXx.
-
-	Compiled and programmed using Arudino IDE 2.0.4, available from www.arduinio.cc
-
-	To support the add-on module for uSDX with powerful DSP processor, version numbers will be 3.XXx.
-
-	*** READ ALL THE NOTES here and ask questions on the FB "USDX USDR" group before programming, it may save a lot of heartache!
-	Our intention is to make the uSDX a great option, with all the facilities and interfaces you can imagine!
-	The quadrature mixer (designed by Dan Tayloe N7VE) in the uSDX makes it as good a receiver as a professional rig, when built correctly.
-	The TX modulation has been improved and gets good reports, and with the add-on module it can be as good as the best out there.
-	Enjoy!
-	73 Rob, GW8RDI
-*/
-
-//  G8RDI Modifications log:
-#define VERSION   "4.00d"    // Fixed format "9.99z" : Additions and changes Copyright 2022-2023 GW8RDI - You can use and distribute if you maintain the copyright message, commercial use is prohibited.
-
-//  2022/03/04 - Added delay to show serial number at start - G8RDI mod
-//               Added band change direction based on last freq step directions. See "case BE | DC:" - GW8RDI mod
-//               Set PB3/PB5 to output in init to drive LCD backlight
-//  2022/03/05 - Release 1.02wA2 2022/03/20 : Added Cat 8.6 ad QUAD enable 8.7 menu items
-//  2022/03/06 - With MORE_MIC_GAIN enabled & QUAD disabled, SSB TX voice is sounding much better!
-//  2022/04/24 - Release 1.02wA3: Fixed band dir. bug
+// Version for display
+#define VERSION   "4.00d"
 //  2022/05/08 - Added KEEP_BAND_DATA to maintain last freq and mode set on each band.
 //  2022/05/09 - Release 1.02wA4 : Maintains last freq and mode set for each band, up to 9 bands set. Added error code display.
 //  2022/05/11 - Changed menu to cycle end-start, start-end
@@ -96,7 +49,11 @@ Global variables use 1499 bytes (73%) of dynamic memory, leaving 549 bytes for l
 // Configuration in usdx_settings.h - edit that file to customize your rig
 #include "usdx_settings.h"
 
-// ---- Derived settings (computed from hardware model - do not edit) ----
+#define VERSION   "4.00d"
+
+//=========================================================================
+// SECTION 01: DERIVED SETTINGS (computed from hardware model)
+//=========================================================================
 
 // Backlight control pin
 #if defined(RED_CORNERS) || defined(BLACK_BRICK)
@@ -387,7 +344,11 @@ volatile uint8_t vox = 0;
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
-//#define _I2C_DIRECT_IO    1 // Enables communications that is not using the standard I/O pull-down approach with pull-up resistors, instead I/O is directly driven with 0V/5V
+//=========================================================================
+// SECTION 02: I2C CLASSES (for LCD/OLED)
+//=========================================================================
+
+//#define _I2C_DIRECT_IO    1
 class I2C_ { // Secundairy I2C class used by I2C LCD/OLED, uses alternate pins: PD2 (SDA) and PD3 (SCL)
 public:
 #if(F_MCU > 20900000)
@@ -467,10 +428,12 @@ public:
 	uint8_t endTransmission() { stop(); return 0; };
 };
 I2C_ Wire;
-//#include <Wire.h>
 
 uint8_t backlight = 8;
-//#define RS_HIGH_ON_IDLE   1   // Experimental LCD support where RS line is high on idle periods to comply with SDA I2C standard.
+
+//=========================================================================
+// SECTION 03: DISPLAY CLASSES (LCD/OLED)
+//=========================================================================
 
 class LCD : public Print {  // inspired by: http://www.technoblogy.com/show?2BET
 public:  // LCD1602 display in 4-bit mode, RS is pull-up and kept low when idle to prevent potential display RFI via RS line
@@ -1066,6 +1029,11 @@ ISR(PCINT2_vect){  // Interrupt on rotary encoder turn
 // I2C communication starts with a START condition, multiple single byte-transfers (MSB first) followed by an ACK/NACK and stops with a STOP condition;
 // during data-transfer SDA may only change when SCL is LOW, during a START/STOP condition SCL is HIGH and SDA goes DOWN for a START and UP for a STOP.
 // https://www.ti.com/lit/an/slva704/slva704.pdf
+
+//=========================================================================
+// SECTION 04: PRIMARY I2C CLASS (for SI5351 and I/O Expanders)
+//=========================================================================
+
 class I2C {
 public:
 #if(F_MCU > 20900000)
@@ -1191,8 +1159,13 @@ uint8_t log2(uint16_t x) {
 	return y;
 }
 
-// /*
+// I2C instance (used by SI5351)
 I2C i2c;
+
+//=========================================================================
+// SECTION 05: SI5351 CLOCK GENERATOR DRIVER
+//=========================================================================
+
 class SI5351 {
 public:
 	volatile int32_t _fout;
@@ -1435,6 +1408,10 @@ inline void set_lpf(uint8_t f) {
 }
 #endif  //LPF_SWITCHING_DL2MAN_USDX_REV1
 
+//=========================================================================
+// SECTION 06: I/O EXPANDERS AND LPF SWITCHING
+//=========================================================================
+
 #if defined(LPF_SWITCHING_DL2MAN_USDX_REV3) || defined(LPF_SWITCHING_DL2MAN_USDX_REV2) || defined(LPF_SWITCHING_DL2MAN_USDX_REV2_BETA)
 class IOExpander16 {
 public:
@@ -1674,6 +1651,9 @@ inline int16_t ssb(int16_t in)
 		return dp * (-_F_SAMP_TX / _UA);
 }
 
+//=========================================================================
+// SECTION 07: GLOBAL VARIABLES AND TYPES
+//=========================================================================
 #define MIC_ATTEN  0  // 0*6dB attenuation (note that the LSB bits are quite noisy)
 volatile int8_t mox = 0;
 volatile int8_t volume = 12;
@@ -1733,6 +1713,9 @@ void dsp_tx()
 #endif
 }
 
+//=========================================================================
+// SECTION 08: TX FUNCTIONS
+//=========================================================================
 volatile uint16_t acc;
 volatile uint32_t cw_offset;
 volatile uint8_t tone_vol = 12;
@@ -1803,6 +1786,9 @@ void dsp_tx_fm()
 	si5351.freq_calc_fast(df);           // calculate SI5351 registers based on frequency shift and carrier frequency
 }
 
+//=========================================================================
+// SECTION 09: CW FUNCTIONS
+//=========================================================================
 #define EA(y, x, one_over_alpha)  (y) = (y) + ((x) - (y)) / (one_over_alpha); // exponental averaging [Lyons 13.33.1]
 #define MLEA(y, x, L, M)  (y)  = (y) + ((((x) - (y)) >> (L)) - (((x) - (y)) >> (M))); // multiplierless exponental averaging [Lyons 13.33.1], with alpha=1/2^L - 1/2^M
 
@@ -2063,6 +2049,9 @@ void dec2()
 #endif //OLD_CW
 #endif  //CW_DECODER
 
+//=========================================================================
+// SECTION 10: RX/DSP FUNCTIONS
+//=========================================================================
 #define F_SAMP_PWM (78125/1)
 //#define F_SAMP_RX 78125  // overrun, do not use
 #define F_SAMP_RX 62500
@@ -3101,6 +3090,9 @@ void timer2_stop()
 //
 // Feel free to replace it with your own custom radio implementation :-)
 
+//=========================================================================
+// SECTION 11: UI AND DISPLAY FUNCTIONS
+//=========================================================================
 void inline lcd_blanks() { lcd.print(F("        ")); }
 
 #define N_FONTS  8
@@ -4358,6 +4350,9 @@ void analyseCATcmd()    // Supported Kenwood TS-480 protocol CAT commands
 }
 
 #ifdef CAT
+//=========================================================================
+// SECTION 12: CAT INTERFACE
+//=========================================================================
 volatile uint8_t cat_ptr = 0;
 void serialEvent() {
 	if (Serial.available()) {
@@ -4683,6 +4678,11 @@ void readSWR()
 	}
 }
 #endif
+
+//=========================================================================
+// SECTION 13: HARDWARE INITIALIZATION
+//=========================================================================
+
 void setup()
 {
 	digitalWrite(KEY_OUT, LOW);  // for safety: to prevent exploding PA MOSFETs, in case there was something still biasing them.
@@ -5016,6 +5016,9 @@ void setup()
 static int32_t _step = 0;
 //static int8_t prev_mode;
 
+//=========================================================================
+// SECTION 14: MAIN LOOP
+//=========================================================================
 void loop()
 {
 #ifdef VOX_ENABLE
