@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+IndentPPDirectives: AfterHash
+ColumnLimit: 120
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: true
+SpaceBeforeParens: Never
+AllowShortIfStatementsOnASingleLine: false
