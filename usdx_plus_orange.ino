@@ -217,37 +217,6 @@ static uint32_t stimer;
 #define PIN_REF  A7
 #endif
 
-/*
-// UCX installation: On blank chip, use (standard Arduino Uno) fuse settings (E:FD, H:DE, L:FF), and use customized Optiboot bootloader for 20MHz clock, then upload via serial interface (with RX, TX and DTR lines connected to pin 1, 2, 3 respectively)
-// UCX pin defintions
-+#define SDA     3         //PD3    (pin 5)
-+#define SCL     4         //PD4    (pin 6)
-+#define ROT_A   6         //PD6    (pin 12)
-+#define ROT_B   7         //PD7    (pin 13)
-+#define RX      8         //PB0    (pin 14)
-+#define SIDETONE 9        //PB1    (pin 15)
-+#define KEY_OUT 10        //PB2    (pin 16)
-+#define NTX     11        //PB3    (pin 17)
-+#define DAH     12        //PB4    (pin 18)
-+#define DIT     13        //PB5    (pin 19)
-+#define AUDIO1  14        //PC0/A0 (pin 23)
-+#define AUDIO2  15        //PC1/A1 (pin 24)
-+#define DVM     16        //PC2/A2 (pin 25)
-+#define BUTTONS 17        //PC3/A3 (pin 26)
-// In addition set:
-#define OLED  1
-#define ONEBUTTON  1
-#define ONEBUTTON_INV 1
-#undef DEBUG
-adjust I2C and I2C_ ports,
-ssb_cap=1; dsp_cap=2;
-#define _DELAY() for(uint8_t i = 0; i != 5; i++) asm("nop");
-#define F_XTAL 20004000
-#define F_CPU F_XTAL
-*/
-
-//FUSES = { .low = 0xFF, .high = 0xD6, .extended = 0xFD };   // Fuse settings should be set at programming (Arduino IDE > Tools > Burn bootloader)
-
 #if(ARDUINO < 10810)
 #if (ARDUINO != 10607)  // G8RDI mod - IDE 2.0.1 has its version set to 10607, an IDE bug since fixed.
 # error "Unsupported Arduino IDE version, use Arduino IDE 1.8.10 or later from https://www.arduino.cc/en/software"
@@ -1000,31 +969,6 @@ void encoder_setup()
 	last_state = (_digitalRead(ROT_B) << 1) | _digitalRead(ROT_A);
 	interrupts();
 }
-/*
-class Encoder {
-public:
-  volatile int8_t val = 0;
-  volatile int8_t step = 0;
-  uint8_t last_state;
-  Encoder(){
-  pinMode(ROT_A, INPUT_PULLUP);
-  pinMode(ROT_B, INPUT_PULLUP);
-  PCMSK2 |= (1 << PCINT22) | (1 << PCINT23); // interrupt-enable for ROT_A, ROT_B pin changes; see https://github.com/EnviroDIY/Arduino-SDI-12/wiki/2b.-Overview-of-Interrupts
-  PCICR |= (1 << PCIE2);
-  last_state = (_digitalRead(ROT_B) << 1) | _digitalRead(ROT_A);
-  sei();
-  }
-  void event(){
-  switch(last_state = (last_state << 4) | (_digitalRead(ROT_B) << 1) | _digitalRead(ROT_A)){ //transition  (see: https://www.allaboutcircuits.com/projects/how-to-use-a-rotary-encoder-in-a-mcu-based-project/  )
-	case 0x31: case 0x10: case 0x02: case 0x23: if(step < 0) step = 0; step++; if(step >  3){ step = 0; val++; } break;
-	case 0x32: case 0x20: case 0x01: case 0x13: if(step > 0) step = 0; step--; if(step < -3){ step = 0; val--; } break;
-  }
-  }
-};
-Encoder enc;
-ISR(PCINT2_vect){  // Interrupt on rotary encoder turn
-  enc.event();
-}*/
 
 // I2C communication starts with a START condition, multiple single byte-transfers (MSB first) followed by an ACK/NACK and stops with a STOP condition;
 // during data-transfer SDA may only change when SCL is LOW, during a START/STOP condition SCL is HIGH and SDA goes DOWN for a START and UP for a STOP.
@@ -2549,11 +2493,6 @@ const int8_t sine[] = {
   11, 22, 33, 43, 54, 64, 73, 82, 90, 97, 104, 110, 115, 119, 123, 125, 127, 127, 127, 125, 123, 119, 115, 110, 104, 97, 90, 82, 73, 64, 54, 43, 33, 22, 11, 0, -11, -22, -33, -43, -54, -64, -73, -82, -90, -97, -104, -110, -115, -119, -123, -125, -127, -127, -127, -125, -123, -119, -115, -110, -104, -97, -90, -82, -73, -64, -54, -43, -33, -22, -11, 0
 };
 
-// Short Sine table with 36 entries results in 1736Hz sine wave at effective sampling rate of 62500 SPS.
-/* const int8_t sine[] = {
-  22, 43, 64, 82, 97, 110, 119, 125, 127, 125, 119, 110, 97, 82, 64, 43, 22, 0, -22, -43, -64, -82, -97, -110, -119, -125, -127, -125, -119, -110, -97, -82, -64, -43, -22, 0
-}; */
-
 uint8_t ncoIdx = 0;
 int16_t NCO_Q()
 {
@@ -2602,25 +2541,6 @@ volatile uint8_t rx_state = 0;
 // H1(z) = (1 + z^-1)^4 = 1 + 4*z^-1 + 6*z^-2 + 4*z^-3 + z^-4 = 1 + 6*z^-2 + z^-4 + (4 + 4*z^-2) * z^-1 = FA(z) + FB(z) * z^-1;
 // with down-sampling before stage translates into poly-phase components: FA(z) = 1 + 6*z^-1 + z^-2, FB(z) = 4 + 4*z^-1
 // M=3 FA(z) = 1 + 3*z^-1, FB(z) = 3 + z^-1
-// source: Lyons Understanding Digital Signal Processing 3rd edition 13.24.1
-
-/* Basicdsp simulation:
-# M=2 FA(z) = 1 + z^-1, FB(z) = 2
-# M=3 FA(z) = 1 + 3*z^-1, FB(z) = 3 + z^-1
-# M=4 FA(z) = 1 + 6*z^-1 + z^-2, FB(z) = 4 + 4*z^-1
-samplerate=28000
-x=x+1
-clk1=mod1(x/2)*2
-y=y+clk1
-clk2=mod1(y/2)*2
-#s1=clk1*fir(in, 1, 2, 1, 0)/16
-#s2=clk2*fir(s1, 1, 0, 2, 0, 1, 0, 0)/16
-#s1=clk1*fir(in, 1, 3, 3, 1, 0)/16
-#s2=clk2*fir(s1, 1, 0, 3, 0, 3, 0, 1, 0, 0)/16
-s1=clk1*fir(in, 1, 4, 6, 4, 1, 0)/16
-s2=clk2*fir(s1, 1, 0, 4, 0, 6, 0, 4, 0, 1, 0, 0)/16
-out=s2
- */
 
 #define NEW_RX  1   // Faster (3rd-order) CIC stage, with simultanuous processing capability
 #ifdef NEW_RX
@@ -3006,14 +2926,6 @@ ISR(TIMER2_COMPA_vect)  // Timer2 COMPA interrupt
 
 #pragma GCC pop_options  // end of DSP section
 
-/*ISR (TIMER2_COMPA_vect  ,ISR_NAKED) {
-asm("push r24         \n\t"
-  "lds r24,  0\n\t"
-  "sts 0xB4, r24    \n\t"
-  "pop r24          \n\t"
-  "reti             \n\t");
-}*/
-
 void adc_start(uint8_t adcpin, bool ref1v1, uint32_t fs)
 {
 	DIDR0 |= (1 << adcpin); // disable digital input 
@@ -3023,11 +2935,8 @@ void adc_start(uint8_t adcpin, bool ref1v1, uint32_t fs)
 	ADMUX |= (adcpin & 0x0f);    // set analog input pin
 	ADMUX |= ((ref1v1) ? (1 << REFS1) : 0) | (1 << REFS0);  // If reflvl == true, set AREF=1.1V (Internal ref); otherwise AREF=AVCC=(5V)
 	ADCSRA |= ((uint8_t)log2((uint8_t)(F_CPU / 13 / fs))) & 0x07;  // ADC Prescaler (for normal conversions non-auto-triggered): ADPS = log2(F_CPU / 13 / Fs) - 1; ADSP=0..7 resulting in resp. conversion rate of 1536, 768, 384, 192, 96, 48, 24, 12 kHz
-	//ADCSRA |= (1 << ADIE);  // enable interrupts when measurement complete
 	ADCSRA |= (1 << ADEN);  // enable ADC
-	//ADCSRA |= (1 << ADSC);  // start ADC measurements
 #ifdef ADC_NR
-//  set_sleep_mode(SLEEP_MODE_ADC);  // ADC NR sleep destroys the timer2 integrity, therefore Idle sleep is better alternative (keeping clkIO as an active clock domain)
 	set_sleep_mode(SLEEP_MODE_IDLE);
 	sleep_enable();
 #endif
@@ -3035,7 +2944,6 @@ void adc_start(uint8_t adcpin, bool ref1v1, uint32_t fs)
 
 void adc_stop()
 {
-	//ADCSRA &= ~(1 << ADATE); // disable auto trigger
 	ADCSRA &= ~(1 << ADIE);  // disable interrupts when measurement complete
 	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);    // 128 prescaler for 9.6kHz
 #ifdef ADC_NR
@@ -4080,35 +3988,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL)  // list of parameters
 	case MODEA:   paramAction(action, vfomode[VFOA], 0, NULL, NULL, 0, 0, false); break;
 	case MODEB:   paramAction(action, vfomode[VFOB], 0, NULL, NULL, 0, 0, false); break;
 	case VERS:    paramAction(action, eeprom_version, 0, NULL, NULL, 0, 0, false); break;
-/* #ifdef KEEP_BAND_DATA
-	case BAND_DATA0:      // G8RDI mod - added
-		paramAction(action, freq_last[0], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[0], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA1:      // G8RDI mod - added
-		paramAction(action, freq_last[1], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[1], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA2:      // G8RDI mod - added
-		paramAction(action, freq_last[2], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[2], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA3:      // G8RDI mod - added
-		paramAction(action, freq_last[3], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[3], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA4:      // G8RDI mod - added
-		paramAction(action, freq_last[4], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[4], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA5:      // G8RDI mod - added
-		paramAction(action, freq_last[5], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[5], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA6:      // G8RDI mod - added
-		paramAction(action, freq_last[6], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[6], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA7:      // G8RDI mod - added
-		paramAction(action, freq_last[7], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[7], 0, NULL, NULL, 0, 0, false); break;
-	case BAND_DATA8:      // G8RDI mod - added
-		paramAction(action, freq_last[8], 0, NULL, NULL, 0, 0, false);
-		paramAction(action, mode_last[8], 0, NULL, NULL, 0, 0, false); break;
-#endif */
 		// Non-parameters
 	case _NULL:   menumode = 0; show_banner(); change = true; break;
 
@@ -4628,18 +4507,6 @@ void build_lut()
 
 #ifdef SWR_METER
 void readSWR()
-// reads FWD / REF values from A6 and A7 and computes SWR
-// credit Duwayne, KV4QB
-/* This should similar as PE1DDA's (more direct) approach:
-  busvoltage = ina219.getBusVoltage_V();
-  current_mA = ina219.getCurrent_mA();
-  power_mW = ina219.getPower_mW();
-  Vinc = analogRead(3);
-  Vref = analogRead(2);
-  SWR = (Vinc + Vref) / (Vinc - Vref);
-  Vinc = ((Vinc * 5.0) / 1024.0) + 0.5;
-  pwr = ((((Vinc) * (Vinc)) - 0.25 ) * k);
-  Eff = (pwr) / ((power_mW) / 1000) * 100; */
 {
 	float v_FWD = 0;
 	float v_REF = 0;
@@ -4780,31 +4647,9 @@ void setup()
 	//pinMode(DAH, INPUT_PULLUP);
 	pinMode(DAH, INPUT);
 	ssb_cap = (abs(v2 - v1) > (0.05 * 1024.0 / 5.0));  // SSB capability?
-
-	//ssb_cap = 0; dsp_cap = ANALOG;  // force standard QCX capability
-	//ssb_cap = 1; dsp_cap = ANALOG;  // force SSB and standard QCX-RX capability
-	//ssb_cap = 1; dsp_cap = DSP;     // force SSB and DSP capability
-	//ssb_cap = 1; dsp_cap = SDR;     // force SSB and SDR capability
 #endif // QCX
 
 #ifdef DEBUG
-/*if((mcusr & WDRF) && (!(mcusr & EXTRF)) && (!(mcusr & BORF))){
-  lcd.setCursor(0, 1); lcd.print(F("!!Watchdog RESET")); lcd_blanks();
-  delay(1500); wdt_reset();
-  }
-  if((mcusr & BORF) && (!(mcusr & WDRF))){
-  lcd.setCursor(0, 1); lcd.print(F("!!Brownout RESET")); lcd_blanks();  // Brow-out reset happened, CPU voltage not stable or make sure Brown-Out threshold is set OK (make sure E fuse is set to FD)
-  delay(1500); wdt_reset();
-  }
-  if(mcusr & PORF){
-  lcd.setCursor(0, 1); lcd.print(F("!!Power-On RESET")); lcd_blanks();
-  delay(1500); wdt_reset();
-  }*/
-  /*if(mcusr & EXTRF){
-  lcd.setCursor(0, 1); lcd.print(F("Power-On")); lcd_blanks();
-  delay(1); wdt_reset();
-  }*/
-
   // Measure CPU loads
 	if (!(load_tx <= 100)) {
 		fatal(F("CPU_tx"), load_tx, '%');
@@ -5806,34 +5651,10 @@ void loop()
 		freq_last[bandval - 1] = vfo[vfosel % 2];       // = freq;
 		mode_last[bandval - 1] = vfomode[vfosel % 2];   // = mode;
 
-/* 230401
-		switch (bandval - 1)    // G8RDI mod - added Save only changed
-		{
-		case 0:
-			paramAction(SAVE, BAND_DATA0); break;  // Save updated data only
-		case 1:
-			paramAction(SAVE, BAND_DATA1); break;
-		case 2:
-			paramAction(SAVE, BAND_DATA2); break;
-		case 3:
-			paramAction(SAVE, BAND_DATA3); break;
-		case 4:
-			paramAction(SAVE, BAND_DATA4); break;
-		case 5:
-			paramAction(SAVE, BAND_DATA5); break;
-		case 6:
-			paramAction(SAVE, BAND_DATA6); break;
-		case 7:
-			paramAction(SAVE, BAND_DATA7); break;
-		case 8:
-			paramAction(SAVE, BAND_DATA8); break;
-		default: error_code = 1;      // Flag error
-		}
-*/
-    if ((bandval - 1) <= 8)
-      paramAction(SAVE, BAND_DATA0 + (bandval - 1));  // Save updated data only
-    else
-      error_code = 1;      // Flag error
+     if ((bandval - 1) <= 8)
+       paramAction(SAVE, BAND_DATA0 + (bandval - 1));  // Save updated data only
+     else
+       error_code = 1;      // Flag error
 
 #endif
 		save_event_time = 0;
