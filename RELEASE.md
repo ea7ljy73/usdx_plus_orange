@@ -1,9 +1,34 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.10
+**Version:** 5.11
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
+
+---
+
+## v5.11 - TX Modulation and RX Filter Fixes
+
+**Memory:** 30594 bytes flash (94%), 1465 bytes RAM (71%)
+
+### TX Improvement: Amplitude-Phase Alignment
+
+`OCR1BL` (amplitud PWM a PA) se envía ahora **antes** de `SendPLLRegisterBulk()`,
+en ambos paths (MULTI_ADC y single ADC).
+
+- Antes: fase se actualizaba ~88µs antes que la amplitud (error de alineación)
+- Ahora: amplitud se actualiza ~140µs antes de que el PLL se estabilice
+- Efecto: menor distorsión de envolvente en SSB, señal más limpia en banda lateral
+
+Esto restaura el comportamiento original del diseño (estaba en comentarios desde el código base de GW8RDI).
+
+### RX Improvement: Ganancia uniforme en filtros SSB
+
+Filtros SSB 2 (0-2400Hz) y 3 (0-1800Hz): segunda sección biquad `>>2` → `>>1`
+para igualar la ganancia del filtro 1 (0-2900Hz).
+
+- Antes: cambiar entre filtros SSB 1↔2 o 1↔3 producía un salto de ~6dB
+- Ahora: los tres filtros SSB tienen ganancia consistente, sin saltos de volumen
 
 ---
 

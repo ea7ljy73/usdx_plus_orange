@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.10"
+#define VERSION "5.11"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -2163,9 +2163,8 @@ void           dsp_tx() { // jitter dependent things first
                           // then ADCH
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  // OCR1BL = amp;                        // submit amplitude to PWM register
-  // (actually this is done in advance (about 140us) of phase-change, so that
-  // phase-delays in key-shaping circuit filter can settle)
+  OCR1BL = amp; // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
+                // so PA filter can settle before phase changes (original design intent)
   si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over
                                 // 731kbit/s I2C (transfer takes 64/731 = 88us,
                                 // then PLL-loopfilter probably needs 50us to
@@ -2184,9 +2183,6 @@ void           dsp_tx() { // jitter dependent things first
 #    endif
   }
 #  endif        // QUAD
-  OCR1BL = amp; // submit amplitude to PWM register (takes about 1/32125 =
-                // 31us+/-31us to propagate) -> amplitude-phase-alignment error
-                // is about 30-50us
   adc += ADC;
   ADCSRA |= (1 << ADSC);               // causes RFI on QCX-SSB units (not on units with direct
                                        // biasing); ENABLE this line when using direct biasing!!
@@ -2206,16 +2202,12 @@ void           dsp_tx() { // jitter dependent things first
 #else                                 // SSB with single ADC conversion:
   ADCSRA |= (1 << ADSC); // start next ADC conversion (trigger ADC interrupt if
                          // ADIE flag is set)
-  // OCR1BL = amp;                        // submit amplitude to PWM register
-  // (actually this is done in advance (about 140us) of phase-change, so that
-  // phase-delays in key-shaping circuit filter can settle)
+  OCR1BL = amp;                       // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
+                                      // so PA filter can settle before phase changes (original design intent)
   si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over
                                       // 731kbit/s I2C (transfer takes 64/731 = 88us,
                                       // then PLL-loopfilter probably needs 50us to
                                       // stabalize)
-  OCR1BL = amp;                       // submit amplitude to PWM register (takes about 1/32125 =
-                                      // 31us+/-31us to propagate) -> amplitude-phase-alignment error
-                                      // is about 30-50us
   int16_t adc = ADC - 512;            // current ADC sample 10-bits analog input, NOTE:
                                       // first ADCL, then ADCH
   int16_t df = ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
