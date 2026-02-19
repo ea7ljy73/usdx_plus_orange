@@ -2,12 +2,12 @@
 // usdx_plus_orange.ino - uSDX Plus Orange Firmware
 // Based on QCX-SSB by PE1NNZ (https://github.com/threeme3/QCX-SSB)
 // Modifications Copyright 2022-2023 Rob Colclough GW8RDI
-// Refactorization Copyright 2024-2026 EA7LJY
+// Refactorization Copyright 2024-2026 Julián EA7LJY
 // Licensed under MIT License
 //=========================================================================
 
 // Version for display
-#define VERSION "5.12"
+#define VERSION "5.13"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -2704,8 +2704,8 @@ inline int16_t process_agc_fast(int16_t in) {
 // directly related to the value of centiCount.
 
 static int16_t    centiGain  = 128;
-volatile uint16_t agc_decay  = 800; // v5.10: ~800ms decay for more natural SSB listening (was 400)
-static uint16_t   decayCount = agc_decay;
+volatile uint8_t  agc_decay  = 8;   // v5.13: stored 1-16 (actual=value*100); default 8→800 samples
+static uint16_t   decayCount = 800;
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
 
@@ -2732,7 +2732,7 @@ inline int16_t process_agc(int16_t in) {
         else
           centiGain = INT16_MAX;
       }
-      decayCount = agc_decay;
+      decayCount = (uint16_t)agc_decay * 100;
       small      = true;
     }
   }
@@ -4863,7 +4863,7 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 #define _N(a) sizeof(a) / sizeof(a[0])
 
 #define N_PARAMS                                                                                                       \
-  44 + 3 // number of (visible) parameters  // G8RDI mod +3 for added visible
+  44 + 6 // number of (visible) parameters  // G8RDI mod +3 / EA7LJY v5.13 +3 (AGC_DECAY, COMP_EN, PRE_EMPH)
          // menu items
 #ifdef KEEP_BAND_DATA
 #  define I_PARAMS 5 + 9
@@ -4915,6 +4915,9 @@ enum params_t {
   PARAM_A,
   PARAM_B,
   PARAM_C,
+  AGC_DECAY,
+  COMP_EN,
+  PRE_EMPH,
   BACKL,
   FREQA,
   FREQB,
@@ -4982,6 +4985,9 @@ enum params_t {
   PARAM_A,
   PARAM_B,
   PARAM_C,
+  AGC_DECAY,
+  COMP_EN,
+  PRE_EMPH,
   BACKL,
   FREQA,
   FREQB,
@@ -5074,6 +5080,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     paramAction(action, swrmeter, 0x1D, F("SWR Meter"), swr_label, 0, _N(swr_label) - 1, false);
     break;
 #endif
+  case AGC_DECAY:
+    paramAction(action, agc_decay, 0x1E, F("AGC Dcy"), NULL, 1, 16, false);
+    break;
 #ifdef CW_DECODER
   case CWDEC:
     paramAction(action, cwdec, 0x21, F("CW Decoder"), offon_label, 0, 1, false);
@@ -5126,6 +5135,12 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
 #endif
   case DRIVE:
     paramAction(action, drive, 0x33, F("TX Drive"), NULL, 0, 8, false);
+    break;
+  case COMP_EN:
+    paramAction(action, comp_enable, 0x36, F("TX Comp"), offon_label, 0, 1, false);
+    break;
+  case PRE_EMPH:
+    paramAction(action, pre_emph, 0x37, F("TX Emph"), NULL, 0, 3, false);
     break;
 #ifdef TX_DELAY
   case TXDELAY:
