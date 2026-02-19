@@ -85,7 +85,7 @@
 // CW FEATURES
 // =============================================================================
 // #define KEYER         1  // Iambic CW keyer (disabling saves memory for CAT)
-// #define KEY_CLICK     1  // TX envelope shaping to reduce key clicks
+#define KEY_CLICK     1  // TX envelope shaping to reduce key clicks
 // #define FILTER_700HZ  1  // 700Hz CW tone filter selectable in menu
 #define CW_DECODER 1 // CW decoder display
 // #define CW_INTERMEDIATE 1  // Show intermediate Morse sequences (LCD only)

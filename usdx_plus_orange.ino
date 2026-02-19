@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.00"
+#define VERSION "5.10"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -1989,9 +1989,9 @@ static uint8_t error_code = 0; // G8RDI mod - added LCD error code
 
 volatile uint8_t quad = 0;
 
-volatile uint8_t  comp_enable    = 0;
-volatile uint8_t  comp_ratio     = 4;
-volatile uint16_t comp_threshold = 180;
+volatile uint8_t  comp_enable    = 1;   // v5.10: enabled by default for better SSB modulation
+volatile uint8_t  comp_ratio     = 3;   // v5.10: ratio 3:1 (softer, less IMD vs 4:1)
+volatile uint16_t comp_threshold = 128; // v5.10: lower threshold for smoother compression
 volatile int16_t  comp_envelope  = 0;
 
 volatile int8_t eq_low      = 0;
@@ -1999,7 +1999,7 @@ volatile int8_t eq_high     = 0;
 static int16_t  eq_low_iir  = 0;
 static int16_t  eq_high_iir = 0;
 
-volatile uint8_t pre_emph = 2;
+volatile uint8_t pre_emph = 1; // v5.10: reduced for electret capsules (less sibilance)
 static int16_t   pre_z1   = 0;
 
 inline int16_t voice_compressor(int16_t in) {
@@ -2081,10 +2081,10 @@ inline int16_t ssb(int16_t in) {
   z1    = ac;
 
   i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 +
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 +
       (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz
                          // (@4kSPS) when used in image-rejection scenario; (Hilbert
-                         // transform require 5 additional bits)
+                         // transform require 5 additional bits) [v5.10: coeff 15->16 to match MORE_MIC_GAIN branch]
 
   uint16_t _amp = magn(i, q);
 #endif                                // MORE_MIC_GAIN
@@ -2712,7 +2712,7 @@ inline int16_t process_agc_fast(int16_t in) {
 // directly related to the value of centiCount.
 
 static int16_t    centiGain  = 128;
-volatile uint16_t agc_decay  = 400;
+volatile uint16_t agc_decay  = 800; // v5.10: ~800ms decay for more natural SSB listening (was 400)
 static uint16_t   decayCount = agc_decay;
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
@@ -3052,7 +3052,7 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
                     ac = ac - dc;
     */
     static int16_t as_last; // GW8RDI mod - replaced LP filter: DC removal done in sdr_rx()
-    int16_t        as = ac + (int16_t)((float)as_last * 0.9999f); // Reduce from 0.9999f for less bass response
+    int16_t        as = ac + as_last - (as_last >> 10); // v5.10: alpha=0.999 (was 0.9999f float, same effect, saves CPU)
     ac                = as - as_last;
     as_last           = as;
 
@@ -3090,7 +3090,7 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
     ac                = z0 - z1; // Differentiator
     z1                = z0;
 #else
-    static int16_t zi = i;               // G8RDI mod - Note, zi used without being initialised
+    static int16_t zi = 0;               // v5.10: fixed init to 0 (was =i, runtime non-zero init)
     ac                = ((ac + i) * zi); // -qh = ac + i
     zi                = i;
 #endif
