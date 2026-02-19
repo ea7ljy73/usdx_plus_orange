@@ -1,7 +1,6 @@
 // usdx_settings.h - User Configuration
 // uSDX Plus Orange (based on usdxWHITEBUTTONS v4.00d by GW8RDI)
 // Edit this file to customize hardware, callsign, and features.
-// See CLAUDE.md for documentation on each option.
 
 #pragma once
 
@@ -18,10 +17,16 @@
 // OPERATOR CONFIGURATION
 // =============================================================================
 // *** CALLSIGN: max 5 chars + 2 trailing spaces in PADDED version! ***
-#define MY_CALLSIGN "EA7LJY"
-#define MY_CALLSIGN_PADDED "EA7LJY  " // Keep exactly 2 trailing spaces
+//#define MY_CALLSIGN "EA7LJY"
+//#define MY_CALLSIGN_PADDED "EA7LJY  " // Keep exactly 2 trailing spaces
+//#define MY_PREFIX ""                  // Visiting country prefix, e.g. "DL/"
+//#define MY_NAME "JULIAN"              // For CW messages
+//#define CALLSIGN_LENGTH 6             // Match length of MY_CALLSIGN
+
+#define MY_CALLSIGN "CALLID"
+#define MY_CALLSIGN_PADDED "uSDX    " // Keep exactly 2 trailing spaces
 #define MY_PREFIX ""                  // Visiting country prefix, e.g. "DL/"
-#define MY_NAME "JULIAN"              // For CW messages
+#define MY_NAME "MY_NAME"              // For CW messages
 #define CALLSIGN_LENGTH 6             // Match length of MY_CALLSIGN
 
 // =============================================================================
