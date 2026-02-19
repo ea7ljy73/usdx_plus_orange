@@ -4,8 +4,10 @@
 # Documentación y herramientas de desarrollo (no necesarias en repositorio)
 /docs/
 /usdx-legazy/
+/usdxWHITEBUTTONS/
 /prompt.txt
 /AGENTS.md
+/CLAUDE.md
 
 # Claude Code agent directories
 /.agent/
