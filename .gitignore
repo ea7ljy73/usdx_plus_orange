@@ -6,6 +6,10 @@
 /usdx-legazy/
 /prompt.txt
 /AGENTS.md
+/CLAUDE.md
+
+# Hardware variant directories
+/usdxWHITEBUTTONS/
 
 # Claude Code agent directories
 /.agent/
