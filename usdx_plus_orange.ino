@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.11"
+#define VERSION "5.12"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -2009,13 +2009,13 @@ inline int16_t voice_compressor(int16_t in) {
   int16_t abs_in = in < 0 ? -in : in;
 
   if(abs_in > comp_envelope)
-    comp_envelope = comp_envelope + ((abs_in - comp_envelope) >> 2);
+    comp_envelope = comp_envelope + ((abs_in - comp_envelope) >> 2);   // attack ~3ms
   else
-    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 4);
+    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 7);   // v5.12: release ~27ms (was >>4=3ms, too fast/pumping)
 
   if(comp_envelope > comp_threshold) {
     int16_t gain = (comp_envelope - comp_threshold) / comp_ratio + comp_threshold;
-    return (in * gain) / comp_envelope;
+    return (int16_t)((int32_t)in * gain / comp_envelope); // v5.12: int32 avoids overflow on loud peaks
   }
   return in;
 }
@@ -2663,7 +2663,7 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr       = 2; // G8RDI mod
+volatile uint8_t nr       = 0; // v5.12: default off for SSB voice (nr=2 EA filter cuts at ~900Hz, hurts intelligibility)
 volatile uint8_t att      = 0;
 volatile uint8_t att2     = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
 volatile uint8_t rf_atten = 0;
