@@ -84,11 +84,11 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((18 * zc1 + 11 * zc2) >> 4);
       break; // 0-2900Hz filter, second biquad section
     case 2:
-      zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - ((4 * zc1 + 8 * zc2) >> 4);
-      break; // 0-2400Hz filter, second biquad section
+      zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((4 * zc1 + 8 * zc2) >> 4);
+      break; // 0-2400Hz filter, second biquad section [v5.10: >>1 to match filt1 gain]
     case 3:
-      zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - ((0 * zc1 + 4 * zc2) >> 4);
-      break; // 0-1800Hz  elliptic
+      zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((0 * zc1 + 4 * zc2) >> 4);
+      break; // 0-1800Hz elliptic [v5.10: >>1 to match filt1 gain]
     }
     zc2 = zc1;
     zc1 = zc0;
