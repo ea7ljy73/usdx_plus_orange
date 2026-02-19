@@ -7,6 +7,31 @@
 
 ---
 
+## v5.12 - Voice SSB Quality (TX compression + RX clarity)
+
+**Memory:** 30594 bytes flash (94%), 1466 bytes RAM (71%)
+
+### TX: Compressor improvements
+
+**Decay time:** `>>4` → `>>7` (release 3ms → 27ms)
+- Antes: el envelope de compresión se relajaba en 3ms → "pumping" audible entre sílabas
+- Ahora: 27ms de release → compresión suave y transparente, similar a radios comerciales
+- El ataque sigue siendo rápido (~3ms) para capturar picos de voz
+
+**Overflow fix:** `in * gain` → `(int32_t)in * gain / comp_envelope`
+- Antes: multiplicación int16×int16 podía desbordar en picos altos de micrófono → distorsión dura
+- Ahora: aritmética 32 bits garantiza resultado correcto sin coste de flash extra
+
+### RX: NR default desactivado para voz SSB
+
+**NR default:** `nr=2` → `nr=0`
+- El filtro EA con nr=2 corta a ~900Hz, atenuando significativamente las frecuencias de voz 1-3kHz
+- Con nr=0, el filtro IIR de banda (filt_var) es el único limitador de ancho de banda → respuesta plana en SSB
+- Los usuarios pueden activar NR desde el menú si desean reducción de ruido adicional
+- CW no se ve afectado (ya forzaba nr=0 al cambiar de modo)
+
+---
+
 ## v5.11 - TX Modulation and RX Filter Fixes
 
 **Memory:** 30594 bytes flash (94%), 1465 bytes RAM (71%)
