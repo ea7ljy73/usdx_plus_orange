@@ -4871,7 +4871,7 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS 52 // number of (visible) parameters
+#define N_PARAMS 65 // number of (visible) parameters
 // IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
 // only)
 #ifdef KEEP_BAND_DATA
