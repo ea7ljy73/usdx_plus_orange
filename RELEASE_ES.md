@@ -236,6 +236,8 @@ Actualmente, las siguientes funciones han sido asignadas a botones de acceso dir
 | 3.5 MOX             | Monitor en transmisión (audio sin silenciar durante TX) | |
 | 3.6 TX Comp         | Compresor de voz TX (ON/OFF), añade ~6dB de potencia media | |
 | 3.7 TX Emph         | Pre-énfasis micrófono TX (0=off, 1=6dB/oct, 2=12dB/oct, 3=18dB/oct) | |
+| 3.8 EQ Bass         | EQ de graves del micrófono TX (-7 a +7) | |
+| 3.9 EQ Treble       | EQ de agudos del micrófono TX (-7 a +7) | |
 | 4.1 CQ Interval     | Tiempo de inactividad en segundos antes de nuevo Mensaje CQ (0-60) | |
 | 4.2 CQ Msg          | Texto del mensaje CQ, pulsar botón izquierdo en menú iniciará envío | **L** |
 | 8.1 PA bias min     | Nivel PWM de amplitud PA (0-255) para representar 0% de salida RF | |

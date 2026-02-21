@@ -236,6 +236,8 @@ Currently, the following functions have been assigned to shortcut buttons (L=lef
 | 3.5 MOX             | Monitor on Xmit (audio unmuted during transmit) | |
 | 3.6 TX Comp         | TX voice compressor (ON/OFF), adds ~6dB average talk power | |
 | 3.7 TX Emph         | TX microphone pre-emphasis (0=off, 1=6dB/oct, 2=12dB/oct, 3=18dB/oct) | |
+| 3.8 EQ Bass         | TX microphone bass EQ (-7 to +7) | |
+| 3.9 EQ Treble       | TX microphone treble EQ (-7 to +7) | |
 | 4.1 CQ Interval     | Idle time in seconds before new CQ Message is given (0-60) | |
 | 4.2 CQ Msg          | CQ Message text, pressing left-button in menu will start sending | **L** |
 | 8.1 PA bias min     | PA amplitude PWM level (0-255) for representing 0% RF output | |
