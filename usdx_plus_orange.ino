@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.14"
+#define VERSION "5.15"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -4891,6 +4891,7 @@ enum params_t {
   ATT2,
   SMETER,
   SWRMETER,
+  AGC_DECAY,
   CWDEC,
   CWTONE,
   CWOFF,
@@ -4905,6 +4906,10 @@ enum params_t {
   DRIVE,
   TXDELAY,
   MOX,
+  COMP_EN,
+  PRE_EMPH,
+  EQ_BASS,
+  EQ_TREBLE,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
@@ -4924,11 +4929,6 @@ enum params_t {
   PARAM_A,
   PARAM_B,
   PARAM_C,
-  AGC_DECAY,
-  COMP_EN,
-  PRE_EMPH,
-  EQ_BASS,
-  EQ_TREBLE,
   BACKL,
   FREQA,
   FREQB,

@@ -17,16 +17,16 @@
 // OPERATOR CONFIGURATION
 // =============================================================================
 // *** CALLSIGN: max 5 chars + 2 trailing spaces in PADDED version! ***
-//#define MY_CALLSIGN "EA7LJY"
-//#define MY_CALLSIGN_PADDED "EA7LJY  " // Keep exactly 2 trailing spaces
-//#define MY_PREFIX ""                  // Visiting country prefix, e.g. "DL/"
-//#define MY_NAME "JULIAN"              // For CW messages
-//#define CALLSIGN_LENGTH 6             // Match length of MY_CALLSIGN
+// #define MY_CALLSIGN "EA7LJY"
+// #define MY_CALLSIGN_PADDED "EA7LJY  " // Keep exactly 2 trailing spaces
+// #define MY_PREFIX ""                  // Visiting country prefix, e.g. "DL/"
+// #define MY_NAME "JULIAN"              // For CW messages
+// #define CALLSIGN_LENGTH 6             // Match length of MY_CALLSIGN
 
 #define MY_CALLSIGN "CALLID"
 #define MY_CALLSIGN_PADDED "uSDX    " // Keep exactly 2 trailing spaces
 #define MY_PREFIX ""                  // Visiting country prefix, e.g. "DL/"
-#define MY_NAME "MY_NAME"              // For CW messages
+#define MY_NAME "MY_NAME"             // For CW messages
 #define CALLSIGN_LENGTH 6             // Match length of MY_CALLSIGN
 
 // =============================================================================
@@ -90,7 +90,7 @@
 // CW FEATURES
 // =============================================================================
 // #define KEYER         1  // Iambic CW keyer (disabling saves memory for CAT)
-#define KEY_CLICK     1  // TX envelope shaping to reduce key clicks
+#define KEY_CLICK 1 // TX envelope shaping to reduce key clicks
 // #define FILTER_700HZ  1  // 700Hz CW tone filter selectable in menu
 #define CW_DECODER 1 // CW decoder display
 // #define CW_INTERMEDIATE 1  // Show intermediate Morse sequences (LCD only)
@@ -132,7 +132,7 @@
 // =============================================================================
 #define PTX 11 // HIGH on TX: PTT output on PB3 (pin 17)
 // #define NTX 11           // LOW on TX: PTT output on PB3 (alternative logic)
-// #define TX_DELAY  1      // Delay before TX for relay switching
+#define TX_DELAY 1 // Delay before TX for relay switching
 
 // =============================================================================
 // ADVANCED / RARELY CHANGED
