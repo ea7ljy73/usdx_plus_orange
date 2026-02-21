@@ -5313,9 +5313,24 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
 
     if(action == NEXT_MENU) {
       int8_t new_id = id + ((encoder_val > 0) ? 1 : -1);
-      new_id        = max(1, min(N_PARAMS, new_id));
-      if(new_id != id && new_id != N_PARAMS)
-        id = paramAction(action, new_id);
+      if(new_id < 1)
+        new_id = N_PARAMS;
+      if(new_id > N_PARAMS)
+        new_id = 1;
+      // Keep trying until we find a valid ID with a case
+      for(uint8_t attempts = 0; attempts < N_PARAMS; attempts++) {
+        int8_t result = paramAction(action, new_id);
+        if(result == new_id) {
+          id = result;
+          break;
+        }
+        // Try next ID
+        new_id += (encoder_val > 0) ? 1 : -1;
+        if(new_id < 1)
+          new_id = N_PARAMS;
+        if(new_id > N_PARAMS)
+          new_id = 1;
+      }
       break;
     }
     break;
