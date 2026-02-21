@@ -5149,6 +5149,16 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
   case DRIVE:
     paramAction(action, drive, 0x33, F("TX Drive"), NULL, 0, 8, false);
     break;
+#ifdef TX_DELAY
+  case TXDELAY:
+    paramAction(action, txdelay, 0x34, F("TX Delay"), NULL, 0, 255, false);
+    break;
+#endif
+#ifdef MOX_ENABLE
+  case MOX:
+    paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false);
+    break;
+#endif
   case COMP_EN:
     paramAction(action, comp_enable, 0x36, F("TX Comp"), offon_label, 0, 1, false);
     break;
@@ -5161,16 +5171,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
   case EQ_TREBLE:
     paramAction(action, eq_high, 0x39, F("EQ Treble"), NULL, -7, 7, false);
     break;
-#ifdef TX_DELAY
-  case TXDELAY:
-    paramAction(action, txdelay, 0x34, F("TX Delay"), NULL, 0, 255, false);
-    break;
-#endif
-#ifdef MOX_ENABLE
-  case MOX:
-    paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false);
-    break;
-#endif
 #ifdef CW_MESSAGE
   case CWINTERVAL:
     paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false);
