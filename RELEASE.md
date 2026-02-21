@@ -1,9 +1,52 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.13
+**Version:** 5.14
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
+
+---
+
+## v5.14 - TX Modulation Improvements (SPLATTER FIX)
+
+**Memory:** 30,810 bytes flash (95%), 1,464 bytes RAM (71%)
+
+### Changes to Prevent TX Saturation
+
+This release addresses TX saturation/splatter issues reported on 10m band (28.450 MHz).
+
+#### TX Drive Reduction
+- **Default TX Drive:** 4 → 2
+- **Location:** `usdx_plus_orange.ino:6102`
+- **Impact:** 6dB reduction in TX gain, prevents overdrive on higher bands
+
+#### PA Bias Reduction
+- **Default pwm_max:** 160 → 145
+- **Location:** `usdx_plus_orange.ino:4820`
+- **Impact:** Limits maximum PA output, prevents over-excursion
+
+#### Smoother Voice Compressor
+- **Compression ratio:** 3:1 → 2:1
+- **Location:** `usdx_plus_orange.ino:1993`
+- **Impact:** Softer compression, reduced IMD, more natural voice
+
+#### Faster Compressor Attack
+- **Attack time:** ~3ms → ~1.5ms
+- **Location:** `usdx_plus_orange.ino:2012`
+- **Impact:** Faster response to initial audio peaks, better quality at start of transmission
+
+### Expected Improvements
+
+- Reduced TX saturation / splatter on higher bands (10m, 12m)
+- Better audio quality at the beginning of transmission
+- Improved overall SSB quality with less IMD
+- Closer behavior to original uSDX Legacy (which used drive=2 by default)
+
+### Notes
+
+- Users can still adjust TX Drive and PA Bias via menu if more power is needed
+- These are conservative changes to prevent over-modulation while maintaining good audio quality
+- Further adjustments may be needed depending on microphone and operating conditions
 
 ---
 
@@ -147,12 +190,12 @@ Impact: ~3-4% CPU reduction
 
 ---
 
-## Memory Usage (v5.13)
+## Memory Usage (v5.14)
 
 | Resource | Usage | Available |
 |----------|-------|-----------|
-| Flash | 30,710 bytes (95%) | 1546 bytes |
-| RAM | 1,464 bytes (71%) | 584 bytes |
+| Flash | ~30,700 bytes (95%) | ~1556 bytes |
+| RAM | ~1,464 bytes (71%) | 584 bytes |
 
 ## Compilation
 
@@ -179,7 +222,7 @@ Currently, the following functions have been assigned to shortcut buttons (L=lef
 | 1.1 Vol             | Audio level (0..16) & power-off/on (turn left) | **E +turn** |
 | 1.2 Mode            | Modulation (LSB, USB, CW, AM, FM) | **R** |
 | 1.3 FilterBW        | Audio passband (Full, 300..3000, 300..2400, 300..1800, 500, 200, 100, 50 Hz), this also controls the SSB TX BW. | **R double** |
-| 1.4 Band            | Band-switch to pre-defined CW/FT8 freqs (80,60,40,30,20,17,15,12,10,6m) | **E double** |
+| 1.4 Band            | Band-switch to pre-defined CW/FT8 freqs (80,60,40,30,20,17,15,10m) | **E double** |
 | 1.5 Tune Rate       | Tuning step size 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 | **E or E long** |
 | 1.6 VFO Mode        | Selects different VFO, or RX/TX split-VFO (A, B, Split) | **2x R long** |
 | 1.7 RIT             | RX in transit (ON, OFF) | **R long** |
