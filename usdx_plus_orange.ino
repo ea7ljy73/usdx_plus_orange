@@ -4872,8 +4872,8 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 #define _N(a) sizeof(a) / sizeof(a[0])
 
 #define N_PARAMS                                                                                                       \
-  44 + 6 // number of (visible) parameters  // G8RDI mod +3 / EA7LJY v5.13 +3 (AGC_DECAY, COMP_EN, PRE_EMPH)
-         // menu items
+  44 + 7 // number of (visible) parameters  // G8RDI mod +3 / EA7LJY v5.13 +5 (AGC_DECAY, COMP_EN, PRE_EMPH, EQ_BASS,
+         // EQ_TREBLE) menu items
 #ifdef KEEP_BAND_DATA
 #  define I_PARAMS 5 + 9
 enum params_t {
@@ -4927,6 +4927,8 @@ enum params_t {
   AGC_DECAY,
   COMP_EN,
   PRE_EMPH,
+  EQ_BASS,
+  EQ_TREBLE,
   BACKL,
   FREQA,
   FREQB,
@@ -4997,6 +4999,8 @@ enum params_t {
   AGC_DECAY,
   COMP_EN,
   PRE_EMPH,
+  EQ_BASS,
+  EQ_TREBLE,
   BACKL,
   FREQA,
   FREQB,
@@ -5150,6 +5154,12 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     break;
   case PRE_EMPH:
     paramAction(action, pre_emph, 0x37, F("TX Emph"), NULL, 0, 3, false);
+    break;
+  case EQ_BASS:
+    paramAction(action, eq_low, 0x38, F("EQ Bass"), NULL, -7, 7, false);
+    break;
+  case EQ_TREBLE:
+    paramAction(action, eq_high, 0x39, F("EQ Treble"), NULL, -7, 7, false);
     break;
 #ifdef TX_DELAY
   case TXDELAY:
