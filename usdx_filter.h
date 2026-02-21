@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #define N_FILT 7
 
 /* basicdsp filter simulation:
