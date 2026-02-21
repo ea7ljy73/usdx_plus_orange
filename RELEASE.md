@@ -9,7 +9,7 @@
 
 ## v5.15 - TX Menu Improvements
 
-**Memory:** 31,024 bytes flash (96%), 1,464 bytes RAM (71%)
+**Memory:** 31,150 bytes flash (96%), 1,465 bytes RAM (71%)
 
 ### New TX Menu Features
 
