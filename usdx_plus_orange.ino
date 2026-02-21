@@ -5313,9 +5313,14 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     }
 #endif
 
-    if((action == NEXT_MENU) && (id != N_PARAMS))
-      id = paramAction(action, max(1 /*0*/, min(N_PARAMS, id + ((encoder_val > 0) ? 1 : -1))));
-    break; // keep iterating util menu item found
+    if(action == NEXT_MENU) {
+      int8_t new_id = id + ((encoder_val > 0) ? 1 : -1);
+      new_id        = max(1, min(N_PARAMS, new_id));
+      if(new_id != id && new_id != N_PARAMS)
+        id = paramAction(action, new_id);
+      break;
+    }
+    break;
   }
   return id;
 }
