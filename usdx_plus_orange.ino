@@ -4966,6 +4966,7 @@ enum params_t {
   ATT2,
   SMETER,
   SWRMETER,
+  AGC_DECAY,
   CWDEC,
   CWTONE,
   CWOFF,
