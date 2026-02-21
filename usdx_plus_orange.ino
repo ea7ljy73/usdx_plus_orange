@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.15"
+#define VERSION "5.16"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -2091,10 +2091,10 @@ inline int16_t ssb(int16_t in) {
   z1    = ac;
 
   i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 +
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 +
       (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz
                          // (@4kSPS) when used in image-rejection scenario; (Hilbert
-                         // transform require 5 additional bits) [v5.10: coeff 15->16 to match MORE_MIC_GAIN branch]
+                         // transform require 5 additional bits) [legacy coeff 15]
 
   uint16_t _amp = magn(i, q);
 #endif                                // MORE_MIC_GAIN
@@ -2173,12 +2173,9 @@ void           dsp_tx() { // jitter dependent things first
                           // then ADCH
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  OCR1BL = amp;                 // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
-                                // so PA filter can settle before phase changes (original design intent)
   si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over
                                 // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                // then PLL-loopfilter probably needs 50us to
-                                // stabalize)
+                                // then PLL-loopfilter probably needs 50us to stabalize)
 #  ifdef QUAD
   if(quad_enabled) // G8RDI mod - added
   {
@@ -2193,6 +2190,7 @@ void           dsp_tx() { // jitter dependent things first
 #    endif
   }
 #  endif // QUAD
+  OCR1BL = amp;  // amplitude after phase (legacy order: ~30-50us misalignment)
   adc += ADC;
   ADCSRA |= (1 << ADSC);               // causes RFI on QCX-SSB units (not on units with direct
                                        // biasing); ENABLE this line when using direct biasing!!
@@ -2212,12 +2210,10 @@ void           dsp_tx() { // jitter dependent things first
 #else                                 // SSB with single ADC conversion:
   ADCSRA |= (1 << ADSC);              // start next ADC conversion (trigger ADC interrupt if
                                       // ADIE flag is set)
-  OCR1BL = amp;                       // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
-                                      // so PA filter can settle before phase changes (original design intent)
   si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over
                                       // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                      // then PLL-loopfilter probably needs 50us to
-                                      // stabalize)
+                                      // then PLL-loopfilter probably needs 50us to stabalize)
+  OCR1BL = amp;                       // amplitude after phase (legacy order: ~30-50us misalignment)
   int16_t adc = ADC - 512;            // current ADC sample 10-bits analog input, NOTE:
                                       // first ADCL, then ADCH
   int16_t df = ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
@@ -4871,11 +4867,12 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS 65 // number of (visible) parameters
+#define N_PARAMS 47 // number of (visible) parameters; BACKL(0xA1) is always the last visible
 // IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
 // only)
+// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-8(9)]
 #ifdef KEEP_BAND_DATA
-#  define I_PARAMS 5 + 9
+#  define I_PARAMS 5 + 5 + 9  // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
 enum params_t {
   _NULL,
   VOLUME,
@@ -4948,7 +4945,7 @@ enum params_t {
 };
 #else
 // IMPORTANT: Both enum params_t definitions MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA only)
-#  define I_PARAMS 5
+#  define I_PARAMS 10  // FREQA-VERS(5) + SR-PARAM_C(5) = 10; N_ALL=57
 enum params_t {
   _NULL,
   VOLUME,

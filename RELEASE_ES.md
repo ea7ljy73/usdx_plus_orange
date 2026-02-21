@@ -1,9 +1,39 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.15
+**Versión:** 5.16
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
+
+---
+
+## v5.16 - Baseline TX Legacy + Corrección de Menú
+
+**Memoria:** 31.170 bytes flash (96%), 1.465 bytes RAM (71%)
+
+### TX: Reversión a la cadena DSP del legacy
+
+Se restaura la cadena de audio TX para que coincida exactamente con `usdx-legazy`, como punto de partida antes de futuras mejoras.
+
+**Causa raíz del "siseo al comienzo de cada palabra":** El EEPROM de v5.13 tenía `comp_enable=1` y `pre_emph=1` guardados. Las versiones v5.14/v5.15 cambiaron los valores por defecto a 0 pero no incrementaron la VERSION, por lo que los valores antiguos del EEPROM seguían cargándose al arrancar. El filtro de pre-énfasis (`in + (in - pre_z1) * pre_emph`) es un diferenciador de primer orden que amplifica los transientes de inicio — produciendo exactamente sibilancia al comienzo de cada palabra.
+
+#### Cambios
+
+- **Incremento de VERSION** "5.15" → "5.16": fuerza reset del EEPROM en el primer arranque, limpiando los valores obsoletos `comp_enable=1` y `pre_emph=1`
+- **Coeficiente Hilbert revertido** (path `!MORE_MIC_GAIN`): `*16` → `*15` — coincide exactamente con el legacy
+- **Orden de `dsp_tx()` revertido** (ambos paths MULTI_ADC y single ADC): `SendPLLRegisterBulk()` se ejecuta ahora **antes** de `OCR1BL = amp`, restaurando la alineación amplitud-fase del legacy (~30-50µs)
+
+#### Notas
+
+- `comp_enable`, `pre_emph`, `eq_low/high` permanecen en el menú (disponibles para experimentación)
+- Todos los parámetros de procesamiento TX quedan a 0/desactivado tras el reset del EEPROM
+- La cadena RX no se modifica
+
+### Menú: Corrección de posiciones basura tras 10.1
+
+- **`N_PARAMS` corregido**: 65 → 47 — `BACKL` (0xA1, "10.1 Light") es siempre el último parámetro visible; los valores por encima de 47 son parámetros internos invisibles (FREQA/FREQB/etc.) que se trataban incorrectamente como entradas válidas del menú
+- **`I_PARAMS` corregido** (KEEP_BAND_DATA): `5+9` → `5+5+9=19` — añade los 5 parámetros SR-PARAM_C que faltaban; `N_ALL_PARAMS` alcanza correctamente BAND_DATA8=66
+- **`I_PARAMS` corregido** (sin KEEP_BAND_DATA): `5` → `10` — `N_ALL_PARAMS` alcanza correctamente PARAM_C=57
 
 ---
 
@@ -177,12 +207,12 @@ Impacto: ~3-4% reducción CPU
 
 ---
 
-## Uso de Memoria (v5.14)
+## Uso de Memoria (v5.16)
 
 | Recurso | Uso | Disponible |
 |---------|-----|------------|
-| Flash | ~30.700 bytes (95%) | ~1556 bytes |
-| RAM | ~1.464 bytes (71%) | 584 bytes |
+| Flash | 31.170 bytes (96%) | ~1086 bytes |
+| RAM | 1.465 bytes (71%) | 583 bytes |
 
 ## Compilación
 

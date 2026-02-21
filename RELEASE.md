@@ -1,9 +1,39 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.15
+**Version:** 5.16
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
+
+---
+
+## v5.16 - TX Legacy Baseline + Menu Fix
+
+**Memory:** 31,170 bytes flash (96%), 1,465 bytes RAM (71%)
+
+### TX: Revert to legacy DSP chain
+
+Restore the TX audio chain to match `usdx-legazy` exactly, as baseline before further improvements.
+
+**Root cause of "hissing at word onset":** EEPROM from v5.13 had `comp_enable=1` and `pre_emph=1` stored. Versions v5.14/v5.15 changed defaults to 0 but did not bump VERSION, so the old EEPROM values kept loading on boot. The pre-emphasis filter (`in + (in - pre_z1) * pre_emph`) is a first-order differentiator that boosts transient onsets — exactly producing sibilance at the start of each word.
+
+#### Changes
+
+- **VERSION bump** "5.15" → "5.16": forces EEPROM reset on first boot, clearing stale `comp_enable=1` and `pre_emph=1` values
+- **Hilbert coeff reverted** (`!MORE_MIC_GAIN` path): `*16` → `*15` — matches legacy exactly
+- **`dsp_tx()` order reverted** (both MULTI_ADC and single ADC paths): `SendPLLRegisterBulk()` now runs **before** `OCR1BL = amp`, restoring the legacy ~30-50µs amplitude-phase alignment
+
+#### Notes
+
+- `comp_enable`, `pre_emph`, `eq_low/high` remain in the menu (available for experimentation)
+- All TX processing features default to 0/disabled after EEPROM reset
+- RX chain unchanged
+
+### Menu: Fix garbage positions after 10.1
+
+- **`N_PARAMS` corrected**: 65 → 47 — `BACKL` (0xA1, "10.1 Light") is always the last visible parameter; values above 47 are invisible internal params (FREQA/FREQB/etc.) that were incorrectly treated as valid menu entries
+- **`I_PARAMS` corrected** (KEEP_BAND_DATA): `5+9` → `5+5+9=19` — adds missing SR-PARAM_C(5) to invisible count; `N_ALL_PARAMS` now correctly reaches BAND_DATA8=66
+- **`I_PARAMS` corrected** (without KEEP_BAND_DATA): `5` → `10` — `N_ALL_PARAMS` now correctly reaches PARAM_C=57
 
 ---
 
@@ -177,12 +207,12 @@ Impact: ~3-4% CPU reduction
 
 ---
 
-## Memory Usage (v5.14)
+## Memory Usage (v5.16)
 
 | Resource | Usage | Available |
 |----------|-------|-----------|
-| Flash | ~30,700 bytes (95%) | ~1556 bytes |
-| RAM | ~1,464 bytes (71%) | 584 bytes |
+| Flash | 31,170 bytes (96%) | ~1086 bytes |
+| RAM | 1,465 bytes (71%) | 583 bytes |
 
 ## Compilation
 
