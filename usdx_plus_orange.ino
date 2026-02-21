@@ -4923,6 +4923,13 @@ enum params_t {
   IQ_ADJ,
   CAT_ACTIVE,
   QUAD_ACTIVE,
+#  ifdef DEBUG
+  SR,
+  CPULOAD,
+  PARAM_A,
+  PARAM_B,
+  PARAM_C,
+#  endif
   CALIB,
   BACKL,
   FREQA,
@@ -4998,13 +5005,6 @@ enum params_t {
   IQ_ADJ,
   CAT_ACTIVE,
   QUAD_ACTIVE,
-  CALIB,
-  BACKL,
-  FREQA,
-  FREQB,
-  MODEA,
-  MODEB,
-  VERS,
 #  ifdef DEBUG
   SR,
   CPULOAD,
@@ -5012,6 +5012,13 @@ enum params_t {
   PARAM_B,
   PARAM_C,
 #  endif
+  CALIB,
+  BACKL,
+  FREQA,
+  FREQB,
+  MODEA,
+  MODEB,
+  VERS,
   ALL = 0xff
 };
 #endif
