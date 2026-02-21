@@ -1,52 +1,39 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.14
+**Version:** 5.15
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
 
 ---
 
-## v5.14 - TX Modulation Improvements (SPLATTER FIX)
+## v5.15 - TX Menu Improvements
 
-**Memory:** 30,810 bytes flash (95%), 1,464 bytes RAM (71%)
+**Memory:** 31,024 bytes flash (96%), 1,464 bytes RAM (71%)
 
-### Changes to Prevent TX Saturation
+### New TX Menu Features
 
-This release addresses TX saturation/splatter issues reported on 10m band (28.450 MHz).
+#### Microphone EQ (Bass/Treble)
+- Added **EQ Bass** control to TX menu (range: -7 to +7)
+- Added **EQ Treble** control to TX menu (range: -7 to +7)
+- Location: `usdx_plus_orange.ino:5158-5163`
+- Allows fine-tuning of microphone frequency response
 
-#### TX Drive Reduction
-- **Default TX Drive:** 4 → 2
-- **Location:** `usdx_plus_orange.ino:6102`
-- **Impact:** 6dB reduction in TX gain, prevents overdrive on higher bands
-
-#### PA Bias Reduction
-- **Default pwm_max:** 160 → 145
-- **Location:** `usdx_plus_orange.ino:4820`
-- **Impact:** Limits maximum PA output, prevents over-excursion
-
-#### Smoother Voice Compressor
-- **Compression ratio:** 3:1 → 2:1
-- **Location:** `usdx_plus_orange.ino:1993`
-- **Impact:** Softer compression, reduced IMD, more natural voice
-
-#### Faster Compressor Attack
-- **Attack time:** ~3ms → ~1.5ms
-- **Location:** `usdx_plus_orange.ino:2012`
-- **Impact:** Faster response to initial audio peaks, better quality at start of transmission
-
-### Expected Improvements
-
-- Reduced TX saturation / splatter on higher bands (10m, 12m)
-- Better audio quality at the beginning of transmission
-- Improved overall SSB quality with less IMD
-- Closer behavior to original uSDX Legacy (which used drive=2 by default)
+#### TX Menu Reordering
+- Menu items now appear in logical order:
+  1. TX Drive (3.3)
+  2. TX Delay (3.4)
+  3. MOX (3.5)
+  4. TX Comp (3.6)
+  5. TX Emph (3.7)
+  6. EQ Bass (3.8)
+  7. EQ Treble (3.9)
 
 ### Notes
 
-- Users can still adjust TX Drive and PA Bias via menu if more power is needed
-- These are conservative changes to prevent over-modulation while maintaining good audio quality
-- Further adjustments may be needed depending on microphone and operating conditions
+- EQ processing was already implemented in TX path (lines 1997-2033)
+- Now accessible via menu for user adjustment
+- Default values: Bass=0, Treble=0 (flat response)
 
 ---
 

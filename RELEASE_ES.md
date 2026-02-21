@@ -1,52 +1,39 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.14
+**Versión:** 5.15
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
 
 ---
 
-## v5.14 - Mejoras de Modulación TX (CORRECCIÓN SPLATTER)
+## v5.15 - Mejoras del Menú TX
 
-**Memoria:** ~30.700 bytes flash (95%), ~1.464 bytes RAM (71%)
+**Memoria:** 31,024 bytes flash (96%), 1,464 bytes RAM (71%)
 
-### Cambios para Prevenir Saturación TX
+### Nuevas Características del Menú TX
 
-Esta versión corrige problemas de saturación/splatter TX reportados en la banda de 10m (28.450 MHz).
+#### Ecualizador de Micrófono (Graves/Agudos)
+- Agregado control **EQ Bass** al menú TX (rango: -7 a +7)
+- Agregado control **EQ Treble** al menú TX (rango: -7 a +7)
+- Ubicación: `usdx_plus_orange.ino:5158-5163`
+- Permite ajustar la respuesta de frecuencia del micrófono
 
-#### Reducción de TX Drive
-- **TX Drive por defecto:** 4 → 2
-- **Ubicación:** `usdx_plus_orange.ino:6102`
-- **Impacto:** Reducción de 6dB en ganancia TX, previene sobre-excursión en bandas altas
-
-#### Reducción de Bias del PA
-- **pwm_max por defecto:** 160 → 145
-- **Ubicación:** `usdx_plus_orange.ino:4820`
-- **Impacto:** Limita la salida máxima del PA, previene sobre-excursión
-
-#### Compresor de Voz Más Suave
-- **Ratio de compresión:** 3:1 → 2:1
-- **Ubicación:** `usdx_plus_orange.ino:1993`
-- **Impacto:** Compresión más suave, menor IMD, voz más natural
-
-#### Ataque del Compresor Más Rápido
-- **Tiempo de attack:** ~3ms → ~1.5ms
-- **Ubicación:** `usdx_plus_orange.ino:2012`
-- **Impacto:** Respuesta más rápida a picos de audio iniciales, mejor calidad al inicio de la transmisión
-
-### Mejoras Esperadas
-
-- Reducción de saturación/splatter TX en bandas altas (10m, 12m)
-- Mejor calidad de audio al inicio de la transmisión
-- Mejor calidad SSB general con menos IMD
-- Comportamiento más cercano al uSDX Legacy original (que usaba drive=2 por defecto)
+#### Reordenamiento del Menú TX
+- Los elementos del menú ahora aparecen en orden lógico:
+  1. TX Drive (3.3)
+  2. TX Delay (3.4)
+  3. MOX (3.5)
+  4. TX Comp (3.6)
+  5. TX Emph (3.7)
+  6. EQ Bass (3.8)
+  7. EQ Treble (3.9)
 
 ### Notas
 
-- Los usuarios pueden ajustar TX Drive y PA Bias desde el menú si se necesita más potencia
-- Estos son cambios conservadores para prevenir sobre-modulación manteniendo buena calidad de audio
-- Pueden ser necesarios ajustes adicionales según el micrófono y condiciones de operación
+- El procesamiento de EQ ya estaba implementado en el camino TX (líneas 1997-2033)
+- Ahora accesible vía menú para ajuste del usuario
+- Valores por defecto: Bass=0, Treble=0 (respuesta plana)
 
 ---
 
