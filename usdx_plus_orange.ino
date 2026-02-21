@@ -4871,9 +4871,7 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS                                                                                                       \
-  44 + 7 // number of (visible) parameters  // G8RDI mod +3 / EA7LJY v5.13 +5 (AGC_DECAY, COMP_EN, PRE_EMPH, EQ_BASS,
-         // EQ_TREBLE) menu items
+#define N_PARAMS 52 // number of (visible) parameters
 #ifdef KEEP_BAND_DATA
 #  define I_PARAMS 5 + 9
 enum params_t {
