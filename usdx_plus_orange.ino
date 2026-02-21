@@ -5220,6 +5220,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
       paramAction(action, cal_iq_dummy, 0x85, F("IQ Test/Cal."), NULL, 0, 0, false);
     break;
 #endif
+  case BACKL:
+    paramAction(action, backlight, 0xA1, F("Light"), offon_label, 0, 1, false);
+    break;
 #ifdef CAT
 #  if defined(CAT_FAST) || defined(CAT_STREAMING)
   case CAT_ACTIVE:
@@ -5271,10 +5274,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     paramAction(action, param_c, 0x95, F("ParamC"), NULL, INT16_MIN, INT16_MAX, false);
     break;
 #endif
-  case BACKL:
-    paramAction(action, backlight, 0xA1, F("Light"), offon_label, 0, 1, false);
-    break; // GW8RDI "Backlight" workaround for varying N_PARAM and not being
-           // able to overflowing default cases properly Invisible parameters
   case FREQA:
     paramAction(action, vfo[VFOA], 0, NULL, NULL, 0, 0, false);
     break;
