@@ -1,9 +1,35 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.16
+**Versión:** 5.17
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
+
+---
+
+## v5.17 - Calidad de Modulación TX y Naturalidad de Voz
+
+**Memoria:** 31.154 bytes flash (96%), 1.466 bytes RAM (71%) — −16 bytes respecto a v5.16
+
+### TX: Mejoras del compresor y el ecualizador
+
+Construido sobre la base limpia de v5.16 (todos los parámetros reseteados vía EEPROM) para añadir mejoras reales.
+
+#### Cambios
+
+- **Incremento de VERSION** "5.16" → "5.17": fuerza reset del EEPROM en el primer arranque, cargando el nuevo valor por defecto `comp_enable=1`
+- **`comp_enable = 1`** (activado por defecto): activa el compresor de voz; evita hard-clipping en entradas fuertes; el bug de EEPROM de v5.16 está resuelto mediante el incremento de VERSION, por lo que activar el compresor es ahora seguro
+- **Release del compresor `>> 5` → `>> 8`**: el TC cambia de 6.7ms a 53ms (~200ms hasta llegar al 1%); elimina el pumping entre sílabas en habla conversacional (sílabas del español: 50–200ms); el ataque rápido (TC ≈ 0.30ms) no se modifica — asimetría clásica de limitadores de broadcast
+- **Reescritura de `mic_eq()`**: corregidos dos bugs:
+  1. `eq_high` era un LPF (fc ≈ 760Hz) — el boost de "Agudos" amplificaba en realidad 0-760Hz (graves/medios). Sustituido por HPF: `hi = in - eq_high_iir`, de modo que el control de agudos actúa ahora sobre frecuencias realmente altas (>760Hz, presencia/aire)
+  2. `low_gain = 4 + (eq_low << 2)` invertía la fase cuando `eq_low < -1` (ej., eq=-7 → ganancia=-24). Nueva fórmula: `(eq_low_iir * eq_low) >> 3` es lineal, sin inversión de fase
+  3. Frecuencia de corte del LPF de graves ajustada: `>> 3` (191Hz) → `>> 4` (75Hz) — separación más limpia entre graves y medios
+
+#### Notas
+
+- `pre_emph` permanece en 0 (desactivado); sigue accesible desde el menú 3.7 para experimentación del usuario
+- El modo CW no se ve afectado: `dsp_tx_cw()` no usa `voice_compressor()` ni `mic_eq()`
+- El VOX no se ve afectado: el umbral VOX depende de `_amp`, calculado antes del compresor
 
 ---
 
