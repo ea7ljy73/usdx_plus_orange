@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.16"
+#define VERSION "5.17"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -1989,7 +1989,7 @@ static uint8_t error_code = 0; // G8RDI mod - added LCD error code
 
 volatile uint8_t quad = 0;
 
-volatile uint8_t  comp_enable    = 0;   // disabled by default - less delay
+volatile uint8_t  comp_enable    = 1;   // enabled by default — v5.17: natural SSB
 volatile uint8_t  comp_ratio     = 2;   // ratio 2:1 — v5.14: less harmonic distortion
 volatile uint16_t comp_threshold = 128; // threshold for smoother compression
 volatile int16_t  comp_envelope  = 0;
@@ -2011,7 +2011,7 @@ inline int16_t voice_compressor(int16_t in) {
   if(abs_in > comp_envelope)
     comp_envelope = comp_envelope + ((abs_in - comp_envelope) >> 1); // attack ~1.5ms — v5.14: faster onset capture
   else
-    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 5); // release ~7ms (faster)
+    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 8); // release ~53ms TC, ~200ms decay
 
   if(comp_envelope > comp_threshold) {
     int16_t gain = (comp_envelope - comp_threshold) / comp_ratio + comp_threshold;
@@ -2023,14 +2023,10 @@ inline int16_t voice_compressor(int16_t in) {
 inline int16_t mic_eq(int16_t in) {
   if(eq_low == 0 && eq_high == 0)
     return in;
-
-  eq_low_iir  = eq_low_iir + ((in - eq_low_iir) >> 3);
-  eq_high_iir = eq_high_iir + ((in - eq_high_iir) >> 1);
-
-  int16_t low_gain  = 4 + (eq_low << 2);
-  int16_t high_gain = 4 + (eq_high << 2);
-
-  return (in + (eq_low_iir * low_gain) + (eq_high_iir * high_gain)) >> 3;
+  eq_low_iir  += (in - eq_low_iir) >> 4;  // LPF ~75Hz: bass component
+  eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: reference for HPF
+  int16_t hi   = in - eq_high_iir;         // HPF ~760Hz: real treble/presence
+  return in + ((eq_low_iir * eq_low) >> 3) + ((hi * eq_high) >> 3);
 }
 
 inline int16_t ssb(int16_t in) {

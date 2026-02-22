@@ -1,9 +1,35 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.16
+**Version:** 5.17
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
+
+---
+
+## v5.17 - TX Modulation Quality & Voice Naturalness
+
+**Memory:** 31,154 bytes flash (96%), 1,466 bytes RAM (71%) — −16 bytes vs v5.16
+
+### TX: Compressor & EQ improvements
+
+Builds on the clean v5.16 baseline (all defaults reset via EEPROM) to add real improvements.
+
+#### Changes
+
+- **VERSION bump** "5.16" → "5.17": forces EEPROM reset on first boot, loading new `comp_enable=1` default
+- **`comp_enable = 1`** (enabled by default): activates voice compressor; prevents hard-clipping on loud inputs; the v5.16 EEPROM bug is now resolved via VERSION bump, so activating the compressor is safe
+- **Compressor release `>> 5` → `>> 8`**: TC changes from 6.7ms to 53ms (~200ms to reach 1%); eliminates inter-syllable pumping at conversational speech rates (Spanish syllables: 50–200ms); fast attack (TC ≈ 0.30ms) unchanged — classic broadcast limiter asymmetry
+- **`mic_eq()` rewrite**: fixed two bugs:
+  1. `eq_high` was an LPF (fc ≈ 760Hz) — "Treble" boost actually amplified 0-760Hz (bass/mids). Replaced with HPF: `hi = in - eq_high_iir`, so treble control now acts on real high frequencies (>760Hz presence/air)
+  2. `low_gain = 4 + (eq_low << 2)` inverted phase when `eq_low < -1` (e.g., eq=-7 → gain=-24). New formula: `(eq_low_iir * eq_low) >> 3` is linear, no inversion
+  3. Bass LPF cutoff tightened: `>> 3` (191Hz) → `>> 4` (75Hz) — cleaner separation between bass and mid-range
+
+#### Notes
+
+- `pre_emph` remains at 0 (disabled); still accessible via menu 3.7 for user experimentation
+- CW mode unaffected: `dsp_tx_cw()` does not use `voice_compressor()` or `mic_eq()`
+- VOX unaffected: VOX threshold based on `_amp`, calculated before compressor
 
 ---
 
