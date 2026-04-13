@@ -1,9 +1,95 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.13
+**Versión:** 5.17
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
+
+---
+
+## v5.17 - Calidad de Modulación TX y Naturalidad de Voz
+
+**Memoria:** 31.154 bytes flash (96%), 1.466 bytes RAM (71%) — −16 bytes respecto a v5.16
+
+### TX: Mejoras del compresor y el ecualizador
+
+Construido sobre la base limpia de v5.16 (todos los parámetros reseteados vía EEPROM) para añadir mejoras reales.
+
+#### Cambios
+
+- **Incremento de VERSION** "5.16" → "5.17": fuerza reset del EEPROM en el primer arranque, cargando el nuevo valor por defecto `comp_enable=1`
+- **`comp_enable = 1`** (activado por defecto): activa el compresor de voz; evita hard-clipping en entradas fuertes; el bug de EEPROM de v5.16 está resuelto mediante el incremento de VERSION, por lo que activar el compresor es ahora seguro
+- **Release del compresor `>> 5` → `>> 8`**: el TC cambia de 6.7ms a 53ms (~200ms hasta llegar al 1%); elimina el pumping entre sílabas en habla conversacional (sílabas del español: 50–200ms); el ataque rápido (TC ≈ 0.30ms) no se modifica — asimetría clásica de limitadores de broadcast
+- **Reescritura de `mic_eq()`**: corregidos dos bugs:
+  1. `eq_high` era un LPF (fc ≈ 760Hz) — el boost de "Agudos" amplificaba en realidad 0-760Hz (graves/medios). Sustituido por HPF: `hi = in - eq_high_iir`, de modo que el control de agudos actúa ahora sobre frecuencias realmente altas (>760Hz, presencia/aire)
+  2. `low_gain = 4 + (eq_low << 2)` invertía la fase cuando `eq_low < -1` (ej., eq=-7 → ganancia=-24). Nueva fórmula: `(eq_low_iir * eq_low) >> 3` es lineal, sin inversión de fase
+  3. Frecuencia de corte del LPF de graves ajustada: `>> 3` (191Hz) → `>> 4` (75Hz) — separación más limpia entre graves y medios
+
+#### Notas
+
+- `pre_emph` permanece en 0 (desactivado); sigue accesible desde el menú 3.7 para experimentación del usuario
+- El modo CW no se ve afectado: `dsp_tx_cw()` no usa `voice_compressor()` ni `mic_eq()`
+- El VOX no se ve afectado: el umbral VOX depende de `_amp`, calculado antes del compresor
+
+---
+
+## v5.16 - Baseline TX Legacy + Corrección de Menú
+
+**Memoria:** 31.170 bytes flash (96%), 1.465 bytes RAM (71%)
+
+### TX: Reversión a la cadena DSP del legacy
+
+Se restaura la cadena de audio TX para que coincida exactamente con `usdx-legazy`, como punto de partida antes de futuras mejoras.
+
+**Causa raíz del "siseo al comienzo de cada palabra":** El EEPROM de v5.13 tenía `comp_enable=1` y `pre_emph=1` guardados. Las versiones v5.14/v5.15 cambiaron los valores por defecto a 0 pero no incrementaron la VERSION, por lo que los valores antiguos del EEPROM seguían cargándose al arrancar. El filtro de pre-énfasis (`in + (in - pre_z1) * pre_emph`) es un diferenciador de primer orden que amplifica los transientes de inicio — produciendo exactamente sibilancia al comienzo de cada palabra.
+
+#### Cambios
+
+- **Incremento de VERSION** "5.15" → "5.16": fuerza reset del EEPROM en el primer arranque, limpiando los valores obsoletos `comp_enable=1` y `pre_emph=1`
+- **Coeficiente Hilbert revertido** (path `!MORE_MIC_GAIN`): `*16` → `*15` — coincide exactamente con el legacy
+- **Orden de `dsp_tx()` revertido** (ambos paths MULTI_ADC y single ADC): `SendPLLRegisterBulk()` se ejecuta ahora **antes** de `OCR1BL = amp`, restaurando la alineación amplitud-fase del legacy (~30-50µs)
+
+#### Notas
+
+- `comp_enable`, `pre_emph`, `eq_low/high` permanecen en el menú (disponibles para experimentación)
+- Todos los parámetros de procesamiento TX quedan a 0/desactivado tras el reset del EEPROM
+- La cadena RX no se modifica
+
+### Menú: Corrección de posiciones basura tras 10.1
+
+- **`N_PARAMS` corregido**: 65 → 47 — `BACKL` (0xA1, "10.1 Light") es siempre el último parámetro visible; los valores por encima de 47 son parámetros internos invisibles (FREQA/FREQB/etc.) que se trataban incorrectamente como entradas válidas del menú
+- **`I_PARAMS` corregido** (KEEP_BAND_DATA): `5+9` → `5+5+9=19` — añade los 5 parámetros SR-PARAM_C que faltaban; `N_ALL_PARAMS` alcanza correctamente BAND_DATA8=66
+- **`I_PARAMS` corregido** (sin KEEP_BAND_DATA): `5` → `10` — `N_ALL_PARAMS` alcanza correctamente PARAM_C=57
+
+---
+
+## v5.15 - Mejoras del Menú TX
+
+**Memoria:** 31,150 bytes flash (96%), 1,465 bytes RAM (71%)
+
+### Nuevas Características del Menú TX
+
+#### Ecualizador de Micrófono (Graves/Agudos)
+- Agregado control **EQ Bass** al menú TX (rango: -7 a +7)
+- Agregado control **EQ Treble** al menú TX (rango: -7 a +7)
+- Ubicación: `usdx_plus_orange.ino:5158-5163`
+- Permite ajustar la respuesta de frecuencia del micrófono
+
+#### Reordenamiento del Menú TX
+- Los elementos del menú ahora aparecen en orden lógico:
+  1. TX Drive (3.3)
+  2. TX Delay (3.4)
+  3. MOX (3.5)
+  4. TX Comp (3.6)
+  5. TX Emph (3.7)
+  6. EQ Bass (3.8)
+  7. EQ Treble (3.9)
+
+### Notas
+
+- El procesamiento de EQ ya estaba implementado en el camino TX (líneas 1997-2033)
+- Ahora accesible vía menú para ajuste del usuario
+- Valores por defecto: Bass=0, Treble=0 (respuesta plana)
 
 ---
 
@@ -147,12 +233,12 @@ Impacto: ~3-4% reducción CPU
 
 ---
 
-## Uso de Memoria (v5.13)
+## Uso de Memoria (v5.16)
 
 | Recurso | Uso | Disponible |
 |---------|-----|------------|
-| Flash | 30.710 bytes (95%) | 1546 bytes |
-| RAM | 1.464 bytes (71%) | 584 bytes |
+| Flash | 31.170 bytes (96%) | ~1086 bytes |
+| RAM | 1.465 bytes (71%) | 583 bytes |
 
 ## Compilación
 
@@ -179,7 +265,7 @@ Actualmente, las siguientes funciones han sido asignadas a botones de acceso dir
 | 1.1 Vol             | Nivel de audio (0..16) & apagado/encendido (girar izquierda) | **E +turn** |
 | 1.2 Mode            | Modulación (LSB, USB, CW, AM, FM) | **R** |
 | 1.3 FilterBW        | Pasabanda de audio (Full, 300..3000, 300..2400, 300..1800, 500, 200, 100, 50 Hz), también controla el BW TX SSB. | **R double** |
-| 1.4 Band            | Cambio de banda a frec predefinidas CW/FT8 (80,60,40,30,20,17,15,12,10,6m) | **E double** |
+| 1.4 Band            | Cambio de banda a frec predefinidas CW/FT8 (80,60,40,30,20,17,15,10m) | **E double** |
 | 1.5 Tune Rate       | Tamaño de paso de sintonía 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 | **E or E long** |
 | 1.6 VFO Mode        | Selecciona VFO diferente, o VFO split RX/TX (A, B, Split) | **2x R long** |
 | 1.7 RIT             | RX en tránsito (ON, OFF) | **R long** |
@@ -206,6 +292,8 @@ Actualmente, las siguientes funciones han sido asignadas a botones de acceso dir
 | 3.5 MOX             | Monitor en transmisión (audio sin silenciar durante TX) | |
 | 3.6 TX Comp         | Compresor de voz TX (ON/OFF), añade ~6dB de potencia media | |
 | 3.7 TX Emph         | Pre-énfasis micrófono TX (0=off, 1=6dB/oct, 2=12dB/oct, 3=18dB/oct) | |
+| 3.8 EQ Bass         | EQ de graves del micrófono TX (-7 a +7) | |
+| 3.9 EQ Treble       | EQ de agudos del micrófono TX (-7 a +7) | |
 | 4.1 CQ Interval     | Tiempo de inactividad en segundos antes de nuevo Mensaje CQ (0-60) | |
 | 4.2 CQ Msg          | Texto del mensaje CQ, pulsar botón izquierdo en menú iniciará envío | **L** |
 | 8.1 PA bias min     | Nivel PWM de amplitud PA (0-255) para representar 0% de salida RF | |

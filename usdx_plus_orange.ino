@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.13"
+#define VERSION "5.17"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -1989,9 +1989,9 @@ static uint8_t error_code = 0; // G8RDI mod - added LCD error code
 
 volatile uint8_t quad = 0;
 
-volatile uint8_t  comp_enable    = 1;   // v5.10: enabled by default for better SSB modulation
-volatile uint8_t  comp_ratio     = 3;   // v5.10: ratio 3:1 (softer, less IMD vs 4:1)
-volatile uint16_t comp_threshold = 128; // v5.10: lower threshold for smoother compression
+volatile uint8_t  comp_enable    = 1;   // enabled by default — v5.17: natural SSB
+volatile uint8_t  comp_ratio     = 2;   // ratio 2:1 — v5.14: less harmonic distortion
+volatile uint16_t comp_threshold = 128; // threshold for smoother compression
 volatile int16_t  comp_envelope  = 0;
 
 volatile int8_t eq_low      = 0;
@@ -1999,7 +1999,7 @@ volatile int8_t eq_high     = 0;
 static int16_t  eq_low_iir  = 0;
 static int16_t  eq_high_iir = 0;
 
-volatile uint8_t pre_emph = 1; // v5.10: reduced for electret capsules (less sibilance)
+volatile uint8_t pre_emph = 0; // disabled by default - less delay
 static int16_t   pre_z1   = 0;
 
 inline int16_t voice_compressor(int16_t in) {
@@ -2009,9 +2009,9 @@ inline int16_t voice_compressor(int16_t in) {
   int16_t abs_in = in < 0 ? -in : in;
 
   if(abs_in > comp_envelope)
-    comp_envelope = comp_envelope + ((abs_in - comp_envelope) >> 2);   // attack ~3ms
+    comp_envelope = comp_envelope + ((abs_in - comp_envelope) >> 1); // attack ~1.5ms — v5.14: faster onset capture
   else
-    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 7);   // v5.12: release ~27ms (was >>4=3ms, too fast/pumping)
+    comp_envelope = comp_envelope - ((comp_envelope - abs_in) >> 8); // release ~53ms TC, ~200ms decay
 
   if(comp_envelope > comp_threshold) {
     int16_t gain = (comp_envelope - comp_threshold) / comp_ratio + comp_threshold;
@@ -2023,19 +2023,17 @@ inline int16_t voice_compressor(int16_t in) {
 inline int16_t mic_eq(int16_t in) {
   if(eq_low == 0 && eq_high == 0)
     return in;
-
-  eq_low_iir  = eq_low_iir + ((in - eq_low_iir) >> 3);
-  eq_high_iir = eq_high_iir + ((in - eq_high_iir) >> 1);
-
-  int16_t low_gain  = 4 + (eq_low << 2);
-  int16_t high_gain = 4 + (eq_high << 2);
-
-  return (in + (eq_low_iir * low_gain) + (eq_high_iir * high_gain)) >> 3;
+  eq_low_iir  += (in - eq_low_iir) >> 4;  // LPF ~75Hz: bass component
+  eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: reference for HPF
+  int16_t hi   = in - eq_high_iir;         // HPF ~760Hz: real treble/presence
+  return in + ((eq_low_iir * eq_low) >> 3) + ((hi * eq_high) >> 3);
 }
 
 inline int16_t ssb(int16_t in) {
-  in = voice_compressor(in);
-  in = mic_eq(in);
+  if(comp_enable)
+    in = voice_compressor(in);
+  if(eq_low != 0 || eq_high != 0)
+    in = mic_eq(in);
 
   if(pre_emph > 0) {
     int16_t pre_in = in;
@@ -2060,9 +2058,17 @@ inline int16_t ssb(int16_t in) {
 #  else
   int16_t ac = in * 2;                    //   6dB gain (justified since lpf/hpf is losing -3dB)
   ac         = ac + z1;                   // lpf
-  z1         = (in - (2) * z1) / (2 + 1); // lpf: notch at Fs/2 (alias rejecting)
-  dc         = (ac + (2) * dc) / (2 + 1); // hpf: slow average
-  v[15]      = (ac - dc);                 // hpf (dc decoupling)
+  z1         = (in - (8) * z1) / (8 + 1); // lpf
+
+  // smooth clipping limiter (matching legacy)
+  if(ac > 250) {
+    ac = 250 + (ac - 250) / 2;
+  } else if(ac < -250) {
+    ac = -250 - (-250 - ac) / 2;
+  }
+
+  dc    = (ac + (2) * dc) / (2 + 1); // hpf: slow average
+  v[15] = (ac - dc);                 // hpf (dc decoupling)
 #  endif        // DIG_MODE
   i = v[7] * 2; // 6dB gain for i, q  (to prevent quanitization issues in hilbert
                 // transformer and phase calculation, corrected for magnitude calc)
@@ -2084,7 +2090,7 @@ inline int16_t ssb(int16_t in) {
   q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 +
       (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz
                          // (@4kSPS) when used in image-rejection scenario; (Hilbert
-                         // transform require 5 additional bits) [v5.10: coeff 15->16 to match MORE_MIC_GAIN branch]
+                         // transform require 5 additional bits) [legacy coeff 15]
 
   uint16_t _amp = magn(i, q);
 #endif                                // MORE_MIC_GAIN
@@ -2163,12 +2169,9 @@ void           dsp_tx() { // jitter dependent things first
                           // then ADCH
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  OCR1BL = amp; // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
-                // so PA filter can settle before phase changes (original design intent)
   si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over
                                 // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                // then PLL-loopfilter probably needs 50us to
-                                // stabalize)
+                                // then PLL-loopfilter probably needs 50us to stabalize)
 #  ifdef QUAD
   if(quad_enabled) // G8RDI mod - added
   {
@@ -2182,7 +2185,8 @@ void           dsp_tx() { // jitter dependent things first
                         (quad) ? 0x1f : 0x0f); // Invert/non-invert CLK2 in case of a huge phase-change
 #    endif
   }
-#  endif        // QUAD
+#  endif // QUAD
+  OCR1BL = amp;  // amplitude after phase (legacy order: ~30-50us misalignment)
   adc += ADC;
   ADCSRA |= (1 << ADSC);               // causes RFI on QCX-SSB units (not on units with direct
                                        // biasing); ENABLE this line when using direct biasing!!
@@ -2200,14 +2204,12 @@ void           dsp_tx() { // jitter dependent things first
                                       // (to prevent the phase swapping 180 degrees and
                                       // potentially causing negative feedback (RFI)
 #else                                 // SSB with single ADC conversion:
-  ADCSRA |= (1 << ADSC); // start next ADC conversion (trigger ADC interrupt if
-                         // ADIE flag is set)
-  OCR1BL = amp;                       // v5.10: amplitude submitted BEFORE PLL phase (~140us lead),
-                                      // so PA filter can settle before phase changes (original design intent)
+  ADCSRA |= (1 << ADSC);              // start next ADC conversion (trigger ADC interrupt if
+                                      // ADIE flag is set)
   si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over
                                       // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                      // then PLL-loopfilter probably needs 50us to
-                                      // stabalize)
+                                      // then PLL-loopfilter probably needs 50us to stabalize)
+  OCR1BL = amp;                       // amplitude after phase (legacy order: ~30-50us misalignment)
   int16_t adc = ADC - 512;            // current ADC sample 10-bits analog input, NOTE:
                                       // first ADCL, then ADCH
   int16_t df = ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
@@ -2663,9 +2665,9 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr       = 0; // v5.12: default off for SSB voice (nr=2 EA filter cuts at ~900Hz, hurts intelligibility)
-volatile uint8_t att      = 0;
-volatile uint8_t att2     = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
+volatile uint8_t nr   = 0; // v5.12: default off for SSB voice (nr=2 EA filter cuts at ~900Hz, hurts intelligibility)
+volatile uint8_t att  = 0;
+volatile uint8_t att2 = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
 volatile uint8_t rf_atten = 0;
 volatile uint8_t _init    = 0;
 
@@ -2703,9 +2705,9 @@ inline int16_t process_agc_fast(int16_t in) {
 // Variable 'slowdown' allows the decay time to be slowed down so that it is not
 // directly related to the value of centiCount.
 
-static int16_t    centiGain  = 128;
-volatile uint8_t  agc_decay  = 8;   // v5.13: stored 1-16 (actual=value*100); default 8→800 samples
-static uint16_t   decayCount = 800;
+static int16_t   centiGain  = 128;
+volatile uint8_t agc_decay  = 8; // v5.13: stored 1-16 (actual=value*100); default 8→800 samples
+static uint16_t  decayCount = 800;
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
 
@@ -3043,10 +3045,10 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
                     dc += (ac - dc) / 2;		// Limit rate of change
                     ac = ac - dc;
     */
-    static int16_t as_last; // GW8RDI mod - replaced LP filter: DC removal done in sdr_rx()
-    int16_t        as = ac + as_last - (as_last >> 10); // v5.10: alpha=0.999 (was 0.9999f float, same effect, saves CPU)
-    ac                = as - as_last;
-    as_last           = as;
+    static int16_t as_last;                      // GW8RDI mod - replaced LP filter: DC removal done in sdr_rx()
+    int16_t as = ac + as_last - (as_last >> 10); // v5.10: alpha=0.999 (was 0.9999f float, same effect, saves CPU)
+    ac         = as - as_last;
+    as_last    = as;
 
     /* FIR LP filter (must add separate filter setup call and coeffs for this
     alone) - removes carrier tone but does not increase AM quality
@@ -4816,8 +4818,7 @@ static uint8_t pwm_min = 0; // PWM value for which PA reaches its minimum: 29 wh
 static uint8_t pwm_max = 255; // PWM value for which PA reaches its maximum: 96
                               // when C31 installed; 255 when C31 removed;
 #else
-static uint8_t pwm_max = 160; // PWM value for which PA reaches its maximum: 128
-                              // for biasing BS170 directly, 160 for IRFI510G
+static uint8_t pwm_max = 128; // PWM value for which PA reaches its maximum: 128
 #endif
 
 const char* offon_label[2] = {"OFF", "ON"};
@@ -4862,11 +4863,12 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS                                                                                                       \
-  44 + 6 // number of (visible) parameters  // G8RDI mod +3 / EA7LJY v5.13 +3 (AGC_DECAY, COMP_EN, PRE_EMPH)
-         // menu items
+#define N_PARAMS 47 // number of (visible) parameters; BACKL(0xA1) is always the last visible
+// IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
+// only)
+// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-8(9)]
 #ifdef KEEP_BAND_DATA
-#  define I_PARAMS 5 + 9
+#  define I_PARAMS 5 + 5 + 9  // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
 enum params_t {
   _NULL,
   VOLUME,
@@ -4882,6 +4884,7 @@ enum params_t {
   ATT2,
   SMETER,
   SWRMETER,
+  AGC_DECAY,
   CWDEC,
   CWTONE,
   CWOFF,
@@ -4896,6 +4899,10 @@ enum params_t {
   DRIVE,
   TXDELAY,
   MOX,
+  COMP_EN,
+  PRE_EMPH,
+  EQ_BASS,
+  EQ_TREBLE,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
@@ -4910,20 +4917,17 @@ enum params_t {
   CAT_ACTIVE,
   QUAD_ACTIVE,
   CALIB,
-  SR,
-  CPULOAD,
-  PARAM_A,
-  PARAM_B,
-  PARAM_C,
-  AGC_DECAY,
-  COMP_EN,
-  PRE_EMPH,
   BACKL,
   FREQA,
   FREQB,
   MODEA,
   MODEB,
   VERS,
+  SR,
+  CPULOAD,
+  PARAM_A,
+  PARAM_B,
+  PARAM_C,
   BAND_DATA0,
   BAND_DATA1,
   BAND_DATA2,
@@ -4936,7 +4940,8 @@ enum params_t {
   ALL = 0xff
 };
 #else
-#  define I_PARAMS 5
+// IMPORTANT: Both enum params_t definitions MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA only)
+#  define I_PARAMS 10  // FREQA-VERS(5) + SR-PARAM_C(5) = 10; N_ALL=57
 enum params_t {
   _NULL,
   VOLUME,
@@ -4952,6 +4957,7 @@ enum params_t {
   ATT2,
   SMETER,
   SWRMETER,
+  AGC_DECAY,
   CWDEC,
   CWTONE,
   CWOFF,
@@ -4966,6 +4972,10 @@ enum params_t {
   DRIVE,
   TXDELAY,
   MOX,
+  COMP_EN,
+  PRE_EMPH,
+  EQ_BASS,
+  EQ_TREBLE,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
@@ -4980,20 +4990,17 @@ enum params_t {
   CAT_ACTIVE,
   QUAD_ACTIVE,
   CALIB,
-  SR,
-  CPULOAD,
-  PARAM_A,
-  PARAM_B,
-  PARAM_C,
-  AGC_DECAY,
-  COMP_EN,
-  PRE_EMPH,
   BACKL,
   FREQA,
   FREQB,
   MODEA,
   MODEB,
   VERS,
+  SR,
+  CPULOAD,
+  PARAM_A,
+  PARAM_B,
+  PARAM_C,
   ALL = 0xff
 };
 #endif
@@ -5152,6 +5159,18 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false);
     break;
 #endif
+  case COMP_EN:
+    paramAction(action, comp_enable, 0x36, F("TX Comp"), offon_label, 0, 1, false);
+    break;
+  case PRE_EMPH:
+    paramAction(action, pre_emph, 0x37, F("TX Emph"), NULL, 0, 3, false);
+    break;
+  case EQ_BASS:
+    paramAction(action, eq_low, 0x38, F("EQ Bass"), NULL, -7, 7, false);
+    break;
+  case EQ_TREBLE:
+    paramAction(action, eq_high, 0x39, F("EQ Treble"), NULL, -7, 7, false);
+    break;
 #ifdef CW_MESSAGE
   case CWINTERVAL:
     paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false);
@@ -5201,6 +5220,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
       paramAction(action, cal_iq_dummy, 0x85, F("IQ Test/Cal."), NULL, 0, 0, false);
     break;
 #endif
+  case BACKL:
+    paramAction(action, backlight, 0xA1, F("Light"), offon_label, 0, 1, false);
+    break;
 #ifdef CAT
 #  if defined(CAT_FAST) || defined(CAT_STREAMING)
   case CAT_ACTIVE:
@@ -5252,10 +5274,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     paramAction(action, param_c, 0x95, F("ParamC"), NULL, INT16_MIN, INT16_MAX, false);
     break;
 #endif
-  case BACKL:
-    paramAction(action, backlight, 0xA1, F("Light"), offon_label, 0, 1, false);
-    break; // GW8RDI "Backlight" workaround for varying N_PARAM and not being
-           // able to overflowing default cases properly Invisible parameters
   case FREQA:
     paramAction(action, vfo[VFOA], 0, NULL, NULL, 0, 0, false);
     break;
@@ -5288,9 +5306,29 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     }
 #endif
 
-    if((action == NEXT_MENU) && (id != N_PARAMS))
-      id = paramAction(action, max(1 /*0*/, min(N_PARAMS, id + ((encoder_val > 0) ? 1 : -1))));
-    break; // keep iterating util menu item found
+    if(action == NEXT_MENU) {
+      int8_t new_id = id + ((encoder_val > 0) ? 1 : -1);
+      if(new_id < 1)
+        new_id = N_PARAMS;
+      if(new_id > N_PARAMS)
+        new_id = 1;
+      // Keep trying until we find a valid ID with a case
+      for(uint8_t attempts = 0; attempts < N_PARAMS; attempts++) {
+        int8_t result = paramAction(action, new_id);
+        if(result == new_id) {
+          id = result;
+          break;
+        }
+        // Try next ID
+        new_id += (encoder_val > 0) ? 1 : -1;
+        if(new_id < 1)
+          new_id = N_PARAMS;
+        if(new_id > N_PARAMS)
+          new_id = 1;
+      }
+      break;
+    }
+    break;
   }
   return id;
 }
@@ -6099,7 +6137,7 @@ void setup() {
 #  endif // TX_ENABLE
 #endif   // DIAG
 
-  drive = 4; // Init settings
+  drive = 4; // Init settings — v5.14: reduced to prevent TX saturation with drive=4
 #ifdef QCX
   if(!ssb_cap) {
     vfomode[0] = CW;
