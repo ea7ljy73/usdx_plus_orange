@@ -2087,7 +2087,7 @@ inline int16_t ssb(int16_t in) {
   z1    = ac;
 
   i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 15) / 128 +
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 +
       (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz
                          // (@4kSPS) when used in image-rejection scenario; (Hilbert
                          // transform require 5 additional bits) [legacy coeff 15]
@@ -5142,6 +5142,12 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
 #endif
   case DRIVE:
     paramAction(action, drive, 0x33, F("TX Drive"), NULL, 0, 8, false);
+    break;
+  case COMP_EN:
+    paramAction(action, comp_enable, 0x36, F("TX Comp"), offon_label, 0, 1, false);
+    break;
+  case PRE_EMPH:
+    paramAction(action, pre_emph, 0x37, F("TX Emph"), NULL, 0, 3, false);
     break;
 #ifdef TX_DELAY
   case TXDELAY:
