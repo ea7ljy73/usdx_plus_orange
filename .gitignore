@@ -4,16 +4,12 @@
 # Documentación y herramientas de desarrollo (no necesarias en repositorio)
 /docs/
 /usdx-legazy/
+/usdxWHITEBUTTONS/
 /prompt.txt
 /AGENTS.md
 /CLAUDE.md
-
-# Hardware variant directories
-/usdxWHITEBUTTONS/
 
 # Claude Code agent directories
 /.agent/
 /.agents/
 /.claude/
-*claude*
-*claude*

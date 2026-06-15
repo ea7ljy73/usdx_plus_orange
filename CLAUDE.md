@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-uSDX Plus Orange v1.12 is a refactored firmware for ATMEGA328P-based SDR transceivers. It implements SSB/CW/AM/FM transmission and reception with DSP features including filters, AGC, noise reduction, and VOX.
+uSDX Plus Orange **v5.13** is a firmware for ATMEGA328P-based SDR transceivers. It implements SSB/CW/AM/FM transmission and reception with DSP features including filters, AGC, noise reduction, and VOX.
 
 **Platform:** ATMEGA328P @ 20MHz (Arduino Uno compatible)
-**Base:** uSDX Legacy 1.02x
+**Base:** usdxWHITEBUTTONS v4.00d by GW8RDI (extends uSDX Legacy 1.02x by PE1NNZ)
 **Author:** EA7LJY - Julian
+**Branch:** `dev` (main development branch)
 **License:** MIT
 
 ## Build Commands
@@ -19,6 +20,9 @@ uSDX Plus Orange v1.12 is a refactored firmware for ATMEGA328P-based SDR transce
 # Compile for Arduino Uno
 arduino-cli compile -b arduino:avr:uno
 
+# Compile and check memory usage
+arduino-cli compile -b arduino:avr:uno 2>&1 | grep -E "bytes.*usado|bytes.*used|Sketch uses|Global"
+
 # Compile with hex file generation
 arduino-cli compile -b arduino:avr:uno -e
 
@@ -26,283 +30,224 @@ arduino-cli compile -b arduino:avr:uno -e
 arduino-cli upload -b arduino:avr:uno -p /dev/ttyUSB0
 ```
 
-### Arduino IDE
-
-1. Open `usdx_plus_orange.ino`
-2. Select **Tools > Board > Arduino Uno**
-3. Select **Tools > Port** (your programmer)
-4. **Sketch > Upload** (Ctrl+U) to compile and flash
-
 ### Firmware Upload via ISP
-
-Use `avrdude` with ISP programmer:
 
 ```bash
 avrdude -c avrisp -b 19200 -P /dev/ttyACM0 -p m328p -U flash:w:firmware.hex:i
 ```
 
-**Important:** Do not modify fuse settings during ISP programming. Default fuses are: E=FD H=D6 L=FF
+**Important:** Do not modify fuse settings during ISP programming. Default fuses: E=FD H=D6 L=FF
 
-## Architecture
-
-### File Structure
+## File Structure
 
 ```
 usdx_plus_orange/
-├── usdx_plus_orange.ino     # Main firmware (~56K lines, monolithic)
-├── usdx_settings.h          # Compile-time configuration
-├── usdx_filter.h            # DSP filter implementations (IIR)
-├── ina219.h                 # INA219 power meter definitions
-└── usdx-legazy/             # REFERENCE ONLY - DO NOT MODIFY
-    ├── usdx.ino             # Original firmware for comparison
+├── usdx_plus_orange.ino     # Main firmware (~7200 lines, monolithic)
+├── usdx_settings.h          # Compile-time configuration — EDIT THIS
+├── usdx_filter.h            # DSP IIR biquad filter implementations
+├── RELEASE.md               # Version changelog
+├── README.md                # Project documentation
+│
+├── usdxWHITEBUTTONS/        # REFERENCE ONLY — DO NOT MODIFY, DO NOT COPY FROM
+│   └── usdxWHITEBUTTONS.ino # Original GW8RDI firmware (base for this project)
+│
+└── usdx-legazy/             # REFERENCE ONLY — DO NOT MODIFY, DO NOT COPY FROM
+    ├── usdx.ino             # PE1NNZ legacy uSDX firmware
     ├── usdx_settings.h
     └── usdx_filter.h
 ```
 
-### Main Firmware Architecture (usdx_plus_orange.ino)
+### Reference Folder Rules
 
-The firmware is organized into sections:
+**CRITICAL:** Never modify or copy code from reference folders.
 
-1. **Hardware Pin Definitions** (lines 1-100)
-   - LCD/OLED display pins
-   - Rotary encoder pins
-   - Audio I/O pins
-   - SI5351 I2C configuration
-
-2. **SI5351 Clock Synthesis**
-   - Generates RF carriers for TX/RX
-   - Phase control for SSB generation
-   - I2C communication @ 800kbit/s
-
-3. **DSP Processing Chain**
-   - **RX Path:** Quadrature sampling → Hilbert transform → Sideband selection → Filter → AGC → Noise reduction → Audio out
-   - **TX Path:** Audio in → Hilbert transform → Phase/amplitude extraction → SI5351 control + PWM envelope → PA
-
-4. **Key DSP Algorithms**
-   - **Hilbert Transform:** 90-degree phase shift for I/Q processing (15-element shift register)
-   - **IIR Filters:** SSB (300-2900Hz) and CW (50-1000Hz) bandpass filters in `usdx_filter.h`
-   - **AGC:** Automatic Gain Control with configurable attack/decay thresholds
-   - **Noise Reduction:** Adaptive spectral noise gate with quadratic threshold
-   - **Noise Blanker:** 4-sample suppression with linear interpolation
-
-5. **TX Signal Generation**
-   - Software-based SSB generation (no analog mixer)
-   - Phase modulation via SI5351 frequency changes @ 4800 Hz update rate
-   - Amplitude modulation via PWM envelope to PA
-   - TX power ramping (32 steps, S-curve) to eliminate clicks
-
-6. **CAT Interface**
-   - TS-480 subset protocol over serial (38400 baud)
-   - Supports frequency control, mode switching, PTT
-   - Optional Bluetooth HC-05 support for wireless operation
-
-7. **Menu System**
-   - Rotary encoder + buttons for navigation
-   - Settings stored in EEPROM (1KB)
-   - 3-click exit strategy: exits to frequency and saves changes
-
-### Configuration System (usdx_settings.h)
-
-All compile-time features are controlled via `#define` switches:
-
-**Core Features:**
-- `DIAG` - Hardware diagnostics on startup (+1308 bytes)
-- `CAT` - CAT interface for rig control (+4150 bytes)
-- `KEYER` - CW keyer support
-- `CW_DECODER` - Morse code decoder (+1468 bytes)
-- `SEMI_QSK` - Receive during CW key-up
-- `RIT_ENABLE` - Receive Incremental Tuning (+200 bytes)
-- `VOX_ENABLE` - Voice-activated transmit
-- `CW_MESSAGE` - Predefined CW messages
-
-**Hardware Configuration:**
-- `F_XTAL` - SI5351 crystal frequency (default: 27MHz)
-- `SI5351_ADDR` - I2C address (0x60 or 0x62)
-- `OLED_SSD1306` / `OLED_SH1106` - OLED display support
-- `LCD_I2C` - I2C LCD support (PCF8574)
-- `LPF_SWITCHING_*` - Multi-band filter switching via I2C GPIO extenders
-- `BLUETOOTH_HC05` - Bluetooth module for CAT control
-
-**AGC Parameters:**
-- `DEFAULT_AGC_MODE` - AGC mode (0=OFF, 1=FAST, 2=MEDIUM, 3=SLOW)
-- `AGC_ATTACK_THRESHOLD` - 1024 (optimized for fast attack)
-- `AGC_DECAY_THRESHOLD` - 768 (gentler decay)
-
-**TX Optimization:**
-- `TX_ENABLE` - Disable for RX-only operation
-- `KEY_CLICK` - Envelope shaping to reduce key clicks
-- `TX_COMPRESSION_GAIN` - Compression gain (1-8)
-
-### DSP Filters (usdx_filter.h)
-
-Implements `filt_var()` function with 7 filter modes:
-
-**SSB Filters (filt 1-3):**
-- 300Hz high-pass + configurable low-pass
-- Mode 1: 300-2900Hz (full bandwidth)
-- Mode 2: 300-2400Hz (standard SSB)
-- Mode 3: 300-1800Hz (narrower, elliptic response)
-
-**CW Filters (filt 4-7):**
-- Centered at 600Hz (selectable 400, 500, 600, 700, 800Hz)
-- Mode 4: ±250Hz (500-1000Hz)
-- Mode 5: ±100Hz (650-840Hz)
-- Mode 6: ±50Hz (650-750Hz)
-- Mode 7: ±18Hz (630-680Hz)
-
-Filters use Direct Form I IIR biquad sections with bit-shift optimization.
+- `usdxWHITEBUTTONS/` — The direct base of this project. Consult only to understand original GW8RDI behavior when a feature needs investigation.
+- `usdx-legazy/` — The PE1NNZ legacy firmware. Consult only for algorithm reference.
+- All DSP improvements and fixes go into `usdx_plus_orange.ino` and `usdx_settings.h`.
 
 ## Critical Constraints
 
-### Memory Budget
-- **Flash:** 32KB total, current usage ~28940 bytes (89% full)
-- **RAM:** 2KB total, current usage ~1417 bytes (69% full)
-- **EEPROM:** 1KB for persistent settings
+### Memory Budget (HARD LIMITS)
 
-**Memory is critically constrained.** Always check flash/RAM usage after changes:
+| Resource | Total | Used (v5.13) | % | Safety limit |
+|----------|-------|-------------|---|-------------|
+| Flash    | 32256 bytes | 30710 bytes | 95% | **31000 bytes (96%)** |
+| RAM      | 2048 bytes  | 1464 bytes  | 71% | 1700 bytes |
+| EEPROM   | 1024 bytes  | ~512 bytes  | ~50% | — |
+
+**Rule:** Always compile and check memory after every change. STOP if flash > 31000 bytes.
+
 ```bash
-arduino-cli compile -b arduino:avr:uno --verbose 2>&1 | grep "bytes.*used"
+arduino-cli compile -b arduino:avr:uno 2>&1 | tail -3
 ```
 
 ### Performance Requirements
-- **ADC Sampling:** 62kHz oversampled, decimated to ~7.8kHz
-- **DSP Update Rate:** 4800 Hz for TX signal generation
-- **I2C Speed:** 800 kbit/s for SI5351 control
-- **Interrupt-driven:** Timer interrupts for audio processing
 
-### Hardware Limitations
-- **16MHz or 20MHz CPU clock** (configurable with fuses)
-- **10-bit ADC** for audio input
-- **PWM output** for PA envelope control
-- **No floating-point unit** - use fixed-point arithmetic
+- **TX DSP update rate:** 4800 Hz (Timer2 ISR)
+- **RX ADC sampling:** 62.5 kHz oversampled, decimated to ~7.8 kHz
+- **I2C speed:** ~800 kbit/s for SI5351 (88 µs per bulk register write)
+- **No floating-point:** Use integer arithmetic and bit shifts only
+
+## Architecture
+
+### DSP Chain
+
+**RX Path:**
+```
+ADC 62.5kHz → CIC decimator (N=3, R=4, 7.8kHz) → Hilbert 15-tap → Demodulator
+→ process_agc() → noise_reduction() → filt_var() IIR → PWM audio out
+```
+
+**TX Path (SSB):**
+```
+Mic ADC 4800Hz → voice_compressor() → mic_eq() → pre_emph → ssb() Hilbert 15-tap
+→ arctan3(q,i) [phase] + magn(i,q) [amplitude]
+→ SI5351 freq_calc_fast() [I2C 88µs] + OCR1BL=lut[amp] [PWM]
+```
+
+**TX Path (CW):**
+```
+Timer2 ISR → dsp_tx_cw() → KEY_CLICK ramp (31 steps) → process_minsky() sidetone
+→ SI5351 SendPLLRegisterBulk()
+```
+
+### Key DSP Algorithms
+
+**Hilbert Transform (TX, ~line 2069/2084):**
+- 15-tap FIR, 90° phase shift
+- `q = ((v[0]-v[14])*2 + (v[2]-v[12])*8 + (v[4]-v[10])*21 + (v[6]-v[8])*16) / 128 + (v[6]-v[8])/2`
+- **v5.10 fix:** coeff unified to 16 in both branches (was 15 in !MORE_MIC_GAIN path)
+
+**Voice Compressor (TX, ~line 2005):**
+- Envelope follower: attack `>>2`, decay `>>7` (v5.12: ~27ms release, was >>4=3ms → pumping)
+- Gain reduction when envelope > threshold
+- **v5.10 defaults:** enabled=1, ratio=3, threshold=128
+
+**AGC (~line 2720):**
+- `process_agc()`: centiGain/128 representation, 0.25x–255x range (~60dB)
+- `process_agc_fast()`: gain/1024 representation, fast attack only
+- **v5.13:** `agc_decay = 8` (stored as uint8_t 1-16; actual samples = value × 100; default 8 → 800ms)
+
+**FM Demodulator (~line 3082):**
+- Product differentiator: `ac = (ac + i) * zi; zi = i`
+- **v5.10 fix:** `zi` initialized to 0 (was runtime `=i`, caused click on mode entry)
+
+**AM DC Removal (~line 3054):**
+- IIR HP: `as = ac + as_last - (as_last >> 10)` (alpha ≈ 0.999)
+- **v5.10 fix:** replaced `(float)as_last * 0.9999f` with integer shift (saves ~128 bytes)
+
+**IIR Filters (usdx_filter.h):**
+- `filt_var()` with 7 modes (SSB: 1-3, CW: 4-7)
+- SSB Mode 1: 0-2900Hz / Mode 2: 0-2400Hz / Mode 3: 0-1800Hz
+- CW Mode 4: ±250Hz / Mode 5: ±100Hz / Mode 6: ±50Hz / Mode 7: ±18Hz
+
+**KEY_CLICK (~line 2267):**
+- 31-step raised-cosine ramp on CW TX/RX transitions
+- Stored in PROGMEM: `ramp[]`
+- **v5.10:** enabled by default via `#define KEY_CLICK 1`
+
+### SI5351 Phase Modulation
+
+- `freq_calc_fast(df)`: computes PLL registers from frequency shift `df`
+- `SendPLLRegisterBulk()`: sends 4 bytes over I2C (88 µs)
+- Update rate: 4800 Hz (every 208 µs); I2C latency creates ~30-50 µs phase-amplitude misalignment
+
+### TX Amplitude Control
+
+- `magn(i,q)` → `_amp`: Chebyshev approximation of √(i²+q²), error < 0.95 dB
+- `_amp << drive` → clipped to 255 → `lut[_amp]` → `OCR1BL` (PWM)
+- `build_lut()`: linear mapping `lut[i] = i * (pwm_max - pwm_min) / 255 + pwm_min`
+- WHITE_BUTTONS: `pwm_min = 0`, `pwm_max = 160`
+
+## Configuration System (usdx_settings.h)
+
+Edit `usdx_settings.h` for all compile-time configuration. Never put `#define` switches directly in the `.ino`.
+
+### Current Active Configuration (v5.13)
+
+```
+Hardware model:    WHITE_BUTTONS
+SI5351 address:    0x60
+LPF bank:          LPF_SWITCHING_DL2MAN_USDX_REV3 (8-band latching)
+CAT:               enabled (115200 baud, CAT_FAST)
+CW:                KEY_CLICK enabled / KEYER disabled (memory) / CW_DECODER enabled
+VOX:               VOX_ENABLE
+RIT:               RIT_ENABLE
+Semi-QSK:          SEMI_QSK
+TX:                TX_ENABLE
+```
+
+### Feature Cost Reference
+
+| Feature | Flash cost | RAM cost |
+|---------|-----------|---------|
+| DIAG | +1308 bytes | — |
+| CAT | +4150 bytes | — |
+| KEYER | +500 bytes | +20 bytes |
+| CW_DECODER | +1468 bytes | — |
+| KEY_CLICK | +128 bytes | — |
+| NR_FIR | +120 bytes | +52 bytes |
+| RIT_ENABLE | +200 bytes | — |
 
 ## Development Guidelines
 
 ### Code Style
-- **Memory-first mindset:** Prefer bit shifts over division/multiplication
-- **Use PROGMEM:** Store constants in flash using `F()` macro or `PROGMEM` attribute
-- **Fixed-width types:** Use `int8_t`, `uint8_t`, `int16_t`, `uint32_t` from `<stdint.h>`
-- **Inline small functions:** Mark frequently-called DSP functions as `inline`
-- **Avoid dynamic allocation:** No `malloc()` or `new`, use static buffers
 
-### Optimization Patterns
+- **Memory-first:** bit shifts over division (`>> 3` not `/ 8`)
+- **PROGMEM:** constants in flash (`const uint8_t arr[] PROGMEM = {...}`)
+- **Fixed-width types:** `int8_t`, `uint16_t`, `int32_t` — no plain `int` in DSP
+- **Inline DSP:** `inline` on frequently-called functions
+- **No dynamic allocation:** no `malloc()`/`new`, use static buffers
+- **No float in ISR:** float operations are slow on AVR; use integer arithmetic
 
-**Prefer bit shifts:**
-```cpp
-// Bad
-int result = value / 8;
+### Workflow
 
-// Good
-int result = value >> 3;
-```
-
-**Use PROGMEM for constant data:**
-```cpp
-// Bad - wastes RAM
-const char message[] = "Hello";
-
-// Good - stores in flash
-const char message[] PROGMEM = "Hello";
-```
-
-**Minimize stack usage:**
-```cpp
-// Bad - large stack allocation
-void process() {
-  int16_t buffer[256];
-  // ...
-}
-
-// Good - static buffer (shared across calls)
-void process() {
-  static int16_t buffer[256];
-  // ...
-}
-```
+1. Read relevant code section before any change
+2. Make one targeted change at a time
+3. Compile and check memory after EACH change
+4. Stop if flash > 31000 bytes
+5. Test on hardware before committing
 
 ### Conditional Compilation
-All hardware features use `#ifdef` guards. When modifying code:
-- Maintain compatibility with all configuration combinations
-- Test with features enabled/disabled
-- Use `usdx_settings.h` for configuration, not inline `#define`
 
-### Legacy Reference Code
-The `usdx-legazy/` folder contains the **original firmware for reference only**.
+All optional features use `#ifdef` guards. When modifying:
+- Never break non-guarded code paths
+- Test that the build compiles both with and without a feature
+- Only add `#define` switches to `usdx_settings.h`
 
-**Rules:**
-- **NEVER modify** files in `usdx-legazy/`
-- Use it to understand original behavior when implementing features
-- Compare implementations to ensure feature parity
-- Reference algorithms and DSP techniques
+## Current Known Issues (post v5.13)
 
-### Serial Debug Output
-When `CAT` or `DIAG` is enabled:
-```cpp
-#ifdef CAT
-  Serial.println(F("Debug message"));
-#endif
+These are identified but not yet fixed — require careful memory analysis before attempting:
+
+1. **Drive boost hard clip** (line ~2102): `_amp << drive` with hard clip at 255. With compressor active, mitigated but can still clip on very loud input.
+
+2. **MIC_ATTEN always 0** (line 2151): no configurable microphone attenuation.
+
+## Testing Protocol
+
+### After Every Change
+
+```bash
+arduino-cli compile -b arduino:avr:uno 2>&1 | tail -3
+# Verify: flash < 31000 bytes, RAM < 1700 bytes
 ```
 
-### Testing Procedure
-1. **Compile:** Verify no errors/warnings
-2. **Check memory:** Ensure flash/RAM within budget
-3. **Upload:** Test on hardware
-4. **Diagnostics:** Enable `DIAG` for startup checks
-5. **Functional test:** Verify RX/TX operation
+### Functional Tests (on hardware)
 
-## Common Tasks
-
-### Adding a New Menu Item
-1. Add EEPROM parameter definition
-2. Add menu item structure
-3. Implement parameter get/set logic
-4. Update menu navigation code
-5. Test with rotary encoder and buttons
-
-### Modifying DSP Filters
-1. Edit `usdx_filter.h` → `filt_var()` function
-2. Adjust IIR coefficients for desired frequency response
-3. Use bit shifts instead of division for efficiency
-4. Test with audio signals to verify behavior
-
-### Adjusting AGC Behavior
-1. Modify thresholds in `usdx_settings.h`:
-   - `AGC_ATTACK_THRESHOLD` (default: 1024)
-   - `AGC_DECAY_THRESHOLD` (default: 768)
-2. Adjust decay rates: `AGC_FAST_DECAY`, `AGC_MEDIUM_DECAY`, `AGC_SLOW_DECAY`
-3. Test with weak/strong signals
-
-### Adding Hardware Support
-1. Define pin mappings at top of `.ino` file
-2. Add `#ifdef` guards for optional hardware
-3. Add configuration switch to `usdx_settings.h`
-4. Implement initialization in `setup()`
-5. Update documentation
-
-## Current Feature Status (v1.12)
-
-### Enabled Features
-- DIAG, KEYER, CAT, CW_DECODER, SEMI_QSK, RIT_ENABLE, CW_MESSAGE, CW_INTERMEDIATE
-- LPF_SWITCHING_DL2MAN_USDX_REV3 (8-band filter switching)
-- VOX with hysteresis (3-cycle hold)
-- TX power ramping (32 steps, eliminates clicks)
-
-### Default Settings
-- Volume: 10 (range 0-16)
-- S-meter mode: 2 (S-units)
-- AGC mode: 2 (MEDIUM for SSB)
-
-### Known Limitations
-- No automated test suite (manual testing only)
-- Flash memory near capacity (89% used)
-- RAM constrained (69% used)
-- Monolithic firmware (single large .ino file)
+1. **RX SSB:** S-meter stable, no AGC pumping, audio clear
+2. **RX CW:** CW filters 4-7 working, decoder active
+3. **RX FM:** Enter FM mode — no click or transient
+4. **TX SSB:** Voice clear, no distortion, compressor active
+5. **TX CW:** No click on key ON/OFF (KEY_CLICK ramp)
+6. **Menu:** All items navigate correctly, EEPROM save/restore
+7. **CAT:** TS-480 commands respond at 115200 baud
+8. **LPF bank:** Band switching activates correct filter relay
 
 ## References
 
-- **Original uSDX:** https://github.com/threeme3/usdx
+- **Original uSDX (PE1NNZ):** https://github.com/threeme3/usdx
 - **uSDX Forum:** https://groups.io/g/ucx
-- **SI5351 Datasheet:** Silicon Labs AN619
+- **SI5351 Application Note:** Silicon Labs AN619
 - **ATMEGA328P Datasheet:** Microchip ATmega328P-DS40002061A
 
 ## Contact
