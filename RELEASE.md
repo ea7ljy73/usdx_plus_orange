@@ -1,13 +1,133 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.17
+**Version:** 5.18
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
 
 ---
 
-## v5.17 - TX Modulation Quality & Voice Naturalness
+## v5.18 - RX/TX Overhaul & Code Optimization
+
+**Memory:** 30,760 bytes flash (95%), 1,342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM vs v5.17
+
+### ROADMAP: 9 items implemented
+
+Systematic code quality and DSP enhancement project based on ROADMAP.md.
+
+#### Changes
+
+- **AGC overflow fix** — `int32_t` cast prevents `int16_t` multiplication overflow on strong signals; previously caused gain jumps at high audio levels
+- **PROGMEM strings** — moved 12 label tables (`mode_label`, `offon_label`, `filt_label`, `band_label`, `stepsize_label`, `att_label`, `smode_label`, `swr_label`, `cw_tone_label`, `keyer_mode_label`, `agc_label`, `stepsizes[]`) from RAM to flash via `pgm_read_ptr()`/`pgm_read_dword()` access in `paramAction()`; saves ~134 bytes RAM
+- **Dead code eliminated** — removed BLIND class (unused), SIMPLE_RX branch (unused), TESTBENCH NCO functions, `process_nr_old()` / `process_nr_old2()` (unused), `Command_TX1()`/`Command_TX2()` (duplicates of `Command_TX0()`), `Command_AI0()` reordered to avoid forward-declaration, `ref_V` float (never read); net −212 lines
+- **Bit shifts** — `adc/4` → `adc>>2`, `(in+dc)/2` → `(in+dc)>>1`, clipper `/2` → `>>1`; consistent with project style guide
+- **CESSB clipper I/Q** — Controlled Envelope SSB: limits I/Q vector magnitude when `_amp > 200` with 4:1 soft compression ratio; increases effective talk power ~2-3dB without expanding occupied bandwidth
+- **AGC hang timer** — `hang_cnt` counter (600 samples ≈ 77ms @ 7812Hz) prevents AGC gain increase during SSB word pauses; reset on signal detection; eliminates noise pumping between syllables
+- **LMS adaptive auto-notch (2-tap)** — adaptive FIR notch filter cancels narrowband heterodynes/birdies; **removed in final v5.18** — interfered with speech when NR was active; the standard `process_nr()` EA/FIR filter provides better noise reduction without speech distortion
+- **Phase unwrapping** — replaces `if(dp < 0) dp = dp + _UA` with proper shortest-path unwrapping (`if(dp > _UA/2) dp -= _UA`); prevents spectral spurs from wraparound on asymmetric audio content
+- **Fixed-point readSWR** — `float` eliminated from SWR calculations; VSWR computed from ADC sum ratio using `uint32_t` fixed-point; power in milliwatts via `sum² / 67000`; 3-digit display (x.xx format)
+
+### Code Review Fixes
+
+- **CESSB scope** — `#define CESSB_THRESH 200` inside `ssb()` changed to local `const uint16_t CESSB_THRESH = 200;` (best practice: `#define` ignores C++ scope, could cause name collisions)
+- **QUAD removed entirely** — all 3 `#ifdef QUAD` blocks removed along with `quad_enabled` variable, `quad` flag, and menu entry; QUAD was disabled by default and the author's own comments state "This worsens TX SSB voice quality, more Dalex sounding"; phase unwrapping handles large phase transitions correctly
+- **PROGMEM access fix** — `lcd.print()` was using `reinterpret_cast<const __FlashStringHelper*>` to print label strings from PROGMEM pointer arrays. In Arduino AVR, string literals are in RAM (`.rodata` copied to RAM at boot), not flash. The `__FlashStringHelper` cast caused `lcd.print()` to read from flash address space, producing garbage. Fixed to `(const char*)pgm_read_ptr(...)` — reads the pointer from PROGMEM array, then prints the string from RAM. Affected: `paramAction()` (all menu labels), `display_vfo()` (mode label), `show_banner()` (cap label).
+
+### Float Elimination (major flash savings)
+
+- **`smeter()` float removed** — `10*log10()` replaced by fixed-point lookup table (128-byte PROGMEM) with MSB-based normalization; SDR offset −185dB, non-SDR offset −176dB; saves ~2-4KB by eliminating entire float math library
+- **`cap_label` to PROGMEM** — last remaining string table in RAM, saves ~18 bytes
+- **DIAG fixed-point** — 6 voltage measurements (`vdd`, `vee`, `avcc`, `dvm`, `audio1`, `audio2`) converted from `float` to millivolt integers (`uint32_t * 5000UL / 1024`); saves ~300 bytes flash
+- **`FWD`/`SWR` `uint16_t`** — SWR meter globals changed from `float` to `uint16_t` (stored as VSWR×100); saves ~12 bytes RAM
+- **`ref_V` dead removal** — declared `float ref_V = 5 * 1.15` was never read
+
+### AM-PM Predistortion Enhancement
+
+- **Table expanded 16→64 entries** — 4× finer compensation of class-E PA phase shift vs amplitude; indexed as `_amp >> 2` (was `_amp >> 4`); linear interpolation from original values; cost: +48 bytes PROGMEM
+
+### AGC Per-Mode Decay
+
+- **CW mode** — `decayCount` automatically set to 200 samples (~25ms) when `mode == CW`, vs 800 samples (~102ms) in SSB; zero flash cost, improves CW comfort significantly
+
+### Voice Compressor Soft Knee + Make-up Gain
+
+- **Soft knee** — quadratic transition zone (64 units below threshold) smooths compression onset; eliminates audible "click" when signal crosses threshold
+- **Make-up gain** — `comp_threshold >> 1` (~64) automatically restores ~6dB level lost by compression; compressed audio now matches uncompressed loudness
+- **`/ comp_ratio` eliminated** — ratio fixed at 2:1, division replaced with `>> 1`; saves CPU cycles and removes unused variable `comp_ratio` (−2 bytes RAM)
+
+### Noise Blanker (NB)
+
+- **Impulse noise blanker** — detects short high-amplitude pulses (power line noise, ignition, appliance interference) and replaces them with the previous sample; placed before AGC to prevent AGC pumping
+- **Algorithm**: tracks average signal level via slow IIR (`>> 5`); triggers when abs(ac) > 3x average; blanks for 8 samples (~1ms); cost: +158 bytes flash, +6 bytes RAM
+
+### TX Low-Cut Filter (HPF)
+
+- **Yaesu/Icom-style low-cut** — first-order IIR HPF on mic audio, removes sub-audio frequencies before SSB modulation; reduces wasted power and IMD from breath/handling noise
+- **Implementation**: HPF = signal − LPF, where LPF has alpha = 1/2^k (k = 3, 2, 1 for 100, 200, 400Hz respectively); placed after mic EQ, before pre-emphasis
+- **Cost**: +112 bytes flash, +7 bytes RAM
+
+### Full Menu Reference
+
+| # | Item | Function | Notes |
+|---|------|----------|-------|
+| 1.1 | Vol | Audio level (0..16) & power-off | |
+| 1.2 | Mode | Modulation (LSB, USB, CW, AM, FM) | |
+| 1.3 | FilterBW | Audio passband / TX BW | |
+| 1.4 | Band | Band-switch to pre-defined freqs | |
+| 1.5 | Tune Rate | Tuning step size | |
+| 1.6 | VFO Mode | VFO A/B, Split | |
+| 1.7 | RIT | RX in transit | |
+| 1.8 | AGC | Automatic Gain Control (OFF/ON) | |
+| 1.9 | NR | Noise-reduction (0-8), LMS notch when ON | |
+| 1.10 | ATT | Analog Attenuator (0..-73dB) | |
+| 1.11 | ATT2 | Digital Attenuator (0-16 x6dB steps) | |
+| 1.12 | S-Meter | S-meter type (OFF, dBm, S, S-bar) | |
+| 1.13 | SWR Meter | SWR/Power meter | *if SWR_METER* |
+| 1.14 | AGC Dcy | AGC decay time 1-16 (×100 samples) | |
+| 1.15 | **Noise Blk** | **Noise Blanker ON/OFF** | **NEW v5.18** |
+| 2.1 | CW Decoder | Enable/disable CW decoder | *if CW_DECODER* |
+| 2.2 | CW Tone | CW filter+side-tone | *if FILTER_700HZ* |
+| 2.3 | CW Off | CW offset | *if QCX* |
+| 2.4 | Semi QSK | Semi-QSK on CW | *if SEMI_QSK* |
+| 2.5 | Keyer Speed | CW keyer speed (1-60 WPM) | *if KEYER* |
+| 2.6 | Keyer Mode | Iambic-A/B, Straight | *if KEYER* |
+| 2.7 | Keyer Swap | Swap DIT/DAH | *if KEYER* |
+| 2.8 | Practice | Disable TX for practice | |
+| 2.9 | Tone Vol | CW side-tone volume | *if CW_DECODER* |
+| 3.1 | VOX | Voice Operated Xmit | *if VOX_ENABLE* |
+| 3.2 | Noise Gate | Audio threshold for VOX | |
+| 3.3 | TX Drive | Transmit audio gain (0-8) | |
+| 3.4 | TX Delay | TX relay delay | *if TX_DELAY* |
+| 3.5 | MOX | Monitor on Xmit | *if MOX_ENABLE* |
+| 3.6 | TX Comp | TX voice compressor ON/OFF | |
+| 3.7 | TX Emph | Microphone pre-emphasis | |
+| 3.8 | EQ Bass | TX mic bass EQ (-7..+7) | |
+| 3.9 | EQ Treble | TX mic treble EQ (-7..+7) | |
+| 3.10 | **TX LoCut** | **TX low-cut HPF (Off/100/200/400Hz)** | **NEW v5.18** |
+| 4.1 | CQ Interval | CQ message interval | *if CW_MESSAGE* |
+| 4.2 | CQ Msg | CQ message text | *if CW_MESSAGE* |
+| 8.1 | PA bias min | PA amplitude for 0% RF | |
+| 8.2 | PA max | PA amplitude for 100% RF | |
+| 8.3 | Ref frq | Si5351 crystal calibration | |
+| 8.4 | IQ phase | RX I/Q phase offset | |
+| 8.5 | IQ Cal | RX I/Q calibration | *if IQ_CALIBRATION* |
+| 8.6 | CAT115K | CAT baud rate 115200 (vs 38400) | *if CAT* |
+| 9.1 | Sample rate | Display sample rate | *invisible* |
+| 9.2 | CPU load | Display CPU load % | *invisible* |
+| 9.3 | ParamA | Internal parameter A | *invisible* |
+| 9.4 | ParamB | Internal parameter B | *invisible* |
+| 9.5 | ParamC | Internal parameter C | *invisible* |
+| 10.1 | Light | Display backlight ON/OFF | |
+
+### Summary
+
+| Metric | v5.17 | v5.18 | Δ |
+|--------|-------|-------|---|
+| Flash | 31,154 (96%) | 30,760 (95%) | **−394 bytes** |
+| RAM | 1,466 (71%) | 1,342 (65%) | **−124 bytes** |
+| Free RAM | 582 | 706 | **+124 bytes** |
+
+---
 
 **Memory:** 31,154 bytes flash (96%), 1,466 bytes RAM (71%) — −16 bytes vs v5.16
 
@@ -255,58 +375,6 @@ arduino-cli compile -b arduino:avr:uno
 - ✅ AGC working
 
 ---
-
-## Operation
-
-Currently, the following functions have been assigned to shortcut buttons (L=left, E=encoder, R=right) and menu-items:
-
-| Menu Item           | Function                                     | Button |
-| ------------------- | -------------------------------------------- | ------ |
-| 1.1 Vol             | Audio level (0..16) & power-off/on (turn left) | **E +turn** |
-| 1.2 Mode            | Modulation (LSB, USB, CW, AM, FM) | **R** |
-| 1.3 FilterBW        | Audio passband (Full, 300..3000, 300..2400, 300..1800, 500, 200, 100, 50 Hz), this also controls the SSB TX BW. | **R double** |
-| 1.4 Band            | Band-switch to pre-defined CW/FT8 freqs (80,60,40,30,20,17,15,10m) | **E double** |
-| 1.5 Tune Rate       | Tuning step size 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 | **E or E long** |
-| 1.6 VFO Mode        | Selects different VFO, or RX/TX split-VFO (A, B, Split) | **2x R long** |
-| 1.7 RIT             | RX in transit (ON, OFF) | **R long** |
-| 1.8 AGC             | Automatic Gain Control (OFF, Fast, Slow) | |
-| 1.9 NR              | Noise-reduction level (0-8), load-pass & smooth | |
-| 1.10 ATT            | Analog Attenuator (0, -13, -20, -33, -40, -53, -60, -73 dB) | |
-| 1.11 ATT2           | Digital Attenuator in CIC-stage (0-16) in steps of 6dB | |
-| 1.12 S-Meter        | Type of S-Meter (OFF, dBm, S, S-bar) | |
-| 1.13 SWR Meter      | SWR Meter (OFF, ON) | |
-| 1.14 AGC Dcy        | AGC decay time 1-16 (x100 samples), default 8 (~800ms) | |
-| 2.1 CW Decoder      | Enable/disable CW Decoder (ON, OFF) | |
-| 2.2 CW Tone         | CW Filter+Side-tone (600, 700) | |
-| 2.3 CW Off          | CW Offset (300..2000 Hz) | |
-| 2.4 Semi QSK        | On TX silents RX on CW sign and word spaces | |
-| 2.5 Keyer Speed     | CW Keyer speed in Paris-WPM (1..60) | |
-| 2.6 Keyer Mode      | Type of keyer (Iambic-A, -B, Straight) | |
-| 2.7 Keyer Swap      | to swap keyer DIH, DAH inputs (ON, OFF) | |
-| 2.8 Practice        | to disable TX for practice purposes (ON, OFF) | |
-| 2.9 Tone Vol        | CW Side-tone volume (0..16) | |
-| 3.1 VOX             | Voice Operated Xmit (ON, OFF) | |
-| 3.2 Noise Gate      | Audio threshold for SSB TX and VOX (0-255) | |
-| 3.3 TX Drive        | Transmit audio gain (0-8) in steps of 6dB, 8=constant amplitude for SSB | |
-| 3.4 TX Delay        | Delays TX to allow PA relay to be fully switched on before TX (0-255 ms) | |
-| 3.5 MOX             | Monitor on Xmit (audio unmuted during transmit) | |
-| 3.6 TX Comp         | TX voice compressor (ON/OFF), adds ~6dB average talk power | |
-| 3.7 TX Emph         | TX microphone pre-emphasis (0=off, 1=6dB/oct, 2=12dB/oct, 3=18dB/oct) | |
-| 3.8 EQ Bass         | TX microphone bass EQ (-7 to +7) | |
-| 3.9 EQ Treble       | TX microphone treble EQ (-7 to +7) | |
-| 4.1 CQ Interval     | Idle time in seconds before new CQ Message is given (0-60) | |
-| 4.2 CQ Msg          | CQ Message text, pressing left-button in menu will start sending | **L** |
-| 8.1 PA bias min     | PA amplitude PWM level (0-255) for representing 0% RF output | |
-| 8.2 PA max          | PA amplitude PWM level (0-255) for representing 100% RF output | |
-| 8.3 Ref frq          | Actual si5351 crystal frequency, used for frequency-calibration | |
-| 8.4 IQ phase        | RX I/Q phase offset in degrees (0..180 degrees) | |
-| 10.1 Backlight      | Display backlight (ON, OFF) | |
-| power-up             | Reset to factory settings | **E long** |
-| main                | Tune frequency (20kHz..99MHz) | **turn** |
-| main                | Quick menu | **L +turn** |
-| main                | Menu enter | **L** |
-| RIT                 | RIT back | **R** |
-| menu                | Menu back | **R** |
 
 ---
 
