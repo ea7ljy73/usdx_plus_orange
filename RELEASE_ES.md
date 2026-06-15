@@ -1,13 +1,133 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.17
+**Versión:** 5.18
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
 
 ---
 
-## v5.17 - Calidad de Modulación TX y Naturalidad de Voz
+## v5.18 - Revisión RX/TX y Optimización de Código
+
+**Memoria:** 30.760 bytes flash (95%), 1.342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM respecto a v5.17
+
+### ROADMAP: 9 ítems implementados
+
+Proyecto sistemático de mejora de calidad de código y DSP basado en ROADMAP.md.
+
+#### Cambios
+
+- **Corrección overflow AGC** — cast a `int32_t` evita desbordamiento de multiplicación `int16_t` en señales fuertes; antes causaba saltos de ganancia en niveles altos de audio
+- **PROGMEM strings** — 12 tablas de etiquetas movidas de RAM a flash vía `pgm_read_ptr()`/`pgm_read_dword()` en `paramAction()`; ahorra ~134 bytes RAM
+- **Código muerto eliminado** — clase BLIND, rama SIMPLE_RX, funciones TESTBENCH NCO, `process_nr_old()`, `Command_TX1()/TX2()` (duplicados), `ref_V` float (nunca leída); neto −212 líneas
+- **Bit shifts** — `adc/4` → `adc>>2`, `(in+dc)/2` → `(in+dc)>>1`, clipper `/2` → `>>1`
+- **CESSB clipper I/Q** — limitación de magnitud del vector I/Q cuando `_amp > 200` con compresión 4:1; ~2-3dB más potencia efectiva sin ensanchar ancho de banda
+- **AGC hang timer** — contador `hang_cnt` (600 muestras ≈ 77ms @ 7812Hz) evita que el AGC suba ganancia en pausas entre palabras; resetea al detectar señal; elimina bombeo de ruido entre sílabas
+- **LMS auto-notch adaptativo (2 taps)** — filtro notch adaptivo cancela heterodinos/birdies; **eliminado en v5.18 final** — interfería con la voz cuando NR estaba activo; el `process_nr()` estándar (EA/FIR) ofrece mejor reducción de ruido sin distorsionar la voz
+- **Phase unwrapping** — reemplaza `if(dp < 0) dp = dp + _UA` por desenrollado de fase correcto; evita espurios espectrales
+- **readSWR fixed-point** — `float` eliminado; VSWR calculado desde suma ADC con `uint32_t` fixed-point; potencia en milivatios; display de 3 dígitos (formato x.xx)
+
+### Correcciones de revisión de código
+
+- **Scope CESSB** — `#define CESSB_THRESH 200` cambiado a `const uint16_t CESSB_THRESH = 200;` local (buena práctica: `#define` ignora scope C++)
+- **QUAD eliminado** — los 3 bloques `#ifdef QUAD` eliminados junto con `quad_enabled`, `quad` y entrada de menú; QUAD desactivado por defecto y los comentarios del autor dicen "empeora la calidad de voz TX SSB"
+- **Corrección acceso PROGMEM** — `lcd.print()` usaba `reinterpret_cast<const __FlashStringHelper*>` para imprimir etiquetas desde arrays PROGMEM. En Arduino AVR, los string literales están en RAM (`.rodata` copiado a RAM al arrancar), no en flash. El cast `__FlashStringHelper` hacía que `lcd.print()` leyese del espacio de direcciones flash, produciendo basura. Corregido a `(const char*)pgm_read_ptr(...)` — lee el puntero del array PROGMEM, luego imprime el string desde RAM.
+
+### Eliminación de float (gran ahorro flash)
+
+- **`smeter()` sin float** — `10*log10()` reemplazado por tabla de lookup PROGMEM de 128 bytes con normalización MSB; ahorra ~2-4KB eliminando la librería float completa
+- **`cap_label` a PROGMEM** — última tabla de strings en RAM, ahorra ~18 bytes
+- **DIAG fixed-point** — 6 mediciones de voltaje convertidas de `float` a enteros en milivoltios; ahorra ~300 bytes flash
+- **`FWD`/`SWR` `uint16_t`** — variables del medidor SWR cambiadas de `float` a `uint16_t`; ahorra ~12 bytes RAM
+- **`ref_V` eliminada** — `float ref_V = 5 * 1.15` declarada pero nunca leída
+
+### Predistorsión AM-PM mejorada
+
+- **Tabla expandida 16→64 entradas** — compensación 4× más fina del desplazamiento de fase del PA clase-E; indexada como `_amp >> 2` (antes `_amp >> 4`); coste: +48 bytes PROGMEM
+
+### Decay AGC por modo
+
+- **Modo CW** — `decayCount` automático de 200 muestras (~25ms) cuando `mode == CW`, vs 800 (~102ms) en SSB; coste flash cero, mejora significativa en CW
+
+### Compresor de voz: Soft Knee + Make-up Gain
+
+- **Soft knee** — zona de transición cuadrática (64 unidades bajo el umbral) suaviza el inicio de la compresión; elimina el "click" audible al cruzar el umbral
+- **Make-up gain** — `comp_threshold >> 1` (~64) restaura automáticamente ~6dB del nivel perdido por la compresión; el audio comprimido iguala el volumen del original
+- **`/ comp_ratio` eliminado** — ratio fijo 2:1, división reemplazada por `>> 1`; ahorra ciclos CPU y elimina la variable `comp_ratio` no usada (−2 bytes RAM)
+
+### Noise Blanker (NB)
+
+- **Eliminador de ruido impulsivo** — detecta pulsos cortos de alta amplitud (ruido de líneas, encendido, interferencia de electrodomésticos) y los reemplaza por la muestra anterior; colocado antes del AGC para evitar bombeo del AGC
+- **Algoritmo**: rastrea nivel medio vía IIR lento (`>> 5`); dispara cuando abs(ac) > 3x el promedio; blanquea durante 8 muestras (~1ms); coste: +158 bytes flash, +6 bytes RAM
+
+### Filtro TX Low-Cut (HPF)
+
+- **Low-cut estilo Yaesu/Icom** — HPF IIR de primer orden en audio de micrófono, elimina frecuencias sub-audio antes de la modulación SSB; reduce potencia desperdiciada e IMD por ruido de respiración/manipulación
+- **Implementación**: HPF = señal − LPF, donde LPF tiene alpha = 1/2^k (k = 3, 2, 1 para 100, 200, 400Hz); colocado después del EQ de micrófono, antes del pre-énfasis
+- **Coste**: +112 bytes flash, +7 bytes RAM
+
+### Referencia Completa de Menú
+
+| # | Item | Función | Notas |
+|---|------|---------|-------|
+| 1.1 | Vol | Nivel de audio (0..16) y apagado | |
+| 1.2 | Mode | Modulación (LSB, USB, CW, AM, FM) | |
+| 1.3 | FilterBW | Pasabanda de audio / BW TX | |
+| 1.4 | Band | Cambio de banda a frecs predefinidas | |
+| 1.5 | Tune Rate | Paso de sintonía | |
+| 1.6 | VFO Mode | VFO A/B, Split | |
+| 1.7 | RIT | RX en tránsito | |
+| 1.8 | AGC | Control Automático de Ganancia (OFF/ON) | |
+| 1.9 | NR | Reducción de ruido (0-8), LMS notch si ON | |
+| 1.10 | ATT | Atenuador analógico (0..-73dB) | |
+| 1.11 | ATT2 | Atenuador digital (0-16 x6dB) | |
+| 1.12 | S-Meter | Tipo S-meter (OFF, dBm, S, S-bar) | |
+| 1.13 | SWR Meter | Medidor SWR/Potencia | *si SWR_METER* |
+| 1.14 | AGC Dcy | Tiempo decay AGC 1-16 (×100 muestras) | |
+| 1.15 | **Noise Blk** | **Noise Blanker ON/OFF** | **NUEVO v5.18** |
+| 2.1 | CW Decoder | Activar/desactivar decodificador CW | *si CW_DECODER* |
+| 2.2 | CW Tone | Filtro CW + tono lateral | *si FILTER_700HZ* |
+| 2.3 | CW Off | Offset CW | *si QCX* |
+| 2.4 | Semi QSK | Semi-QSK en CW | *si SEMI_QSK* |
+| 2.5 | Keyer Speed | Velocidad manipulador CW (1-60 WPM) | *si KEYER* |
+| 2.6 | Keyer Mode | Iambic-A/B, Straight | *si KEYER* |
+| 2.7 | Keyer Swap | Intercambiar DIT/DAH | *si KEYER* |
+| 2.8 | Practice | Deshabilitar TX para práctica | |
+| 2.9 | Tone Vol | Volumen tono lateral CW | *si CW_DECODER* |
+| 3.1 | VOX | Transmisión Operada por Voz | *si VOX_ENABLE* |
+| 3.2 | Noise Gate | Umbral de audio para VOX | |
+| 3.3 | TX Drive | Ganancia de audio TX (0-8) | |
+| 3.4 | TX Delay | Retardo relé TX | *si TX_DELAY* |
+| 3.5 | MOX | Monitor en TX | *si MOX_ENABLE* |
+| 3.6 | TX Comp | Compresor de voz TX ON/OFF | |
+| 3.7 | TX Emph | Pre-énfasis de micrófono | |
+| 3.8 | EQ Bass | EQ de graves TX (-7..+7) | |
+| 3.9 | EQ Treble | EQ de agudos TX (-7..+7) | |
+| 3.10 | **TX LoCut** | **Filtro paso alto TX (Off/100/200/400Hz)** | **NUEVO v5.18** |
+| 4.1 | CQ Interval | Intervalo mensaje CQ | *si CW_MESSAGE* |
+| 4.2 | CQ Msg | Texto mensaje CQ | *si CW_MESSAGE* |
+| 8.1 | PA bias min | Amplitud PA para 0% RF | |
+| 8.2 | PA max | Amplitud PA para 100% RF | |
+| 8.3 | Ref frq | Calibración cristal Si5351 | |
+| 8.4 | IQ phase | Offset fase I/Q RX | |
+| 8.5 | IQ Cal | Calibración I/Q RX | *si IQ_CALIBRATION* |
+| 8.6 | CAT115K | Velocidad CAT 115200 (vs 38400) | *si CAT* |
+| 9.1 | Sample rate | Mostrar tasa de muestreo | *invisible* |
+| 9.2 | CPU load | Mostrar carga CPU % | *invisible* |
+| 9.3 | ParamA | Parámetro interno A | *invisible* |
+| 9.4 | ParamB | Parámetro interno B | *invisible* |
+| 9.5 | ParamC | Parámetro interno C | *invisible* |
+| 10.1 | Light | Iluminación pantalla ON/OFF | |
+
+### Resumen
+
+| Métrica | v5.17 | v5.18 | Δ |
+|---------|-------|-------|---|
+| Flash | 31.154 (96%) | 30.760 (95%) | **−394 bytes** |
+| RAM | 1.466 (71%) | 1.342 (65%) | **−124 bytes** |
+| RAM libre | 582 | 706 | **+124 bytes** |
+
+---
 
 **Memoria:** 31.154 bytes flash (96%), 1.466 bytes RAM (71%) — −16 bytes respecto a v5.16
 
@@ -255,58 +375,6 @@ arduino-cli compile -b arduino:avr:uno
 - ✅ AGC funcionando
 
 ---
-
-## Operación
-
-Actualmente, las siguientes funciones han sido asignadas a botones de acceso directo (L=izquierdo, E=encoder, R=derecho) y elementos de menú:
-
-| Elemento Menú       | Función                                     | Botón |
-| ------------------- | -------------------------------------------- | ------ |
-| 1.1 Vol             | Nivel de audio (0..16) & apagado/encendido (girar izquierda) | **E +turn** |
-| 1.2 Mode            | Modulación (LSB, USB, CW, AM, FM) | **R** |
-| 1.3 FilterBW        | Pasabanda de audio (Full, 300..3000, 300..2400, 300..1800, 500, 200, 100, 50 Hz), también controla el BW TX SSB. | **R double** |
-| 1.4 Band            | Cambio de banda a frec predefinidas CW/FT8 (80,60,40,30,20,17,15,10m) | **E double** |
-| 1.5 Tune Rate       | Tamaño de paso de sintonía 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 | **E or E long** |
-| 1.6 VFO Mode        | Selecciona VFO diferente, o VFO split RX/TX (A, B, Split) | **2x R long** |
-| 1.7 RIT             | RX en tránsito (ON, OFF) | **R long** |
-| 1.8 AGC             | Control Automático de Ganancia (OFF, Fast, Slow) | |
-| 1.9 NR              | Nivel de reducción de ruido (0-8), load-pass & smooth | |
-| 1.10 ATT            | Atenuador Analógico (0, -13, -20, -33, -40, -53, -60, -73 dB) | |
-| 1.11 ATT2           | Atenuador Digital en etapa CIC (0-16) en pasos de 6dB | |
-| 1.12 S-Meter        | Tipo de S-Meter (OFF, dBm, S, S-bar) | |
-| 1.13 SWR Meter      | Medidor SWR (OFF, ON) | |
-| 1.14 AGC Dcy        | Tiempo decay AGC 1-16 (x100 muestras), defecto 8 (~800ms) | |
-| 2.1 CW Decoder      | Habilitar/deshabilitar decodificador CW (ON, OFF) | |
-| 2.2 CW Tone         | Filtro CW+Tono lateral (600, 700) | |
-| 2.3 CW Off          | Offset CW (300..2000 Hz) | |
-| 2.4 Semi QSK        | En TX silencia RX en espacios de signo y palabra CW | |
-| 2.5 Keyer Speed     | Velocidad del manipulador CW en Paris-WPM (1..60) | |
-| 2.6 Keyer Mode      | Tipo de manipulador (Iambic-A, -B, Straight) | |
-| 2.7 Keyer Swap      | Intercambiar entradas DIH, DAH del manipulador (ON, OFF) | |
-| 2.8 Practice        | Deshabilitar TX para práctica (ON, OFF) | |
-| 2.9 Tone Vol        | Volumen tono lateral CW (0..16) | |
-| 3.1 VOX             | Transmisión Operada por Voz (ON, OFF) | |
-| 3.2 Noise Gate      | Umbral de audio para TX SSB y VOX (0-255) | |
-| 3.3 TX Drive        | Ganancia de audio de transmisión (0-8) en pasos de 6dB, 8=amplitud constante para SSB | |
-| 3.4 TX Delay        | Retrasa TX para permitir que el relé PA conmute completamente antes de TX (0-255 ms) | |
-| 3.5 MOX             | Monitor en transmisión (audio sin silenciar durante TX) | |
-| 3.6 TX Comp         | Compresor de voz TX (ON/OFF), añade ~6dB de potencia media | |
-| 3.7 TX Emph         | Pre-énfasis micrófono TX (0=off, 1=6dB/oct, 2=12dB/oct, 3=18dB/oct) | |
-| 3.8 EQ Bass         | EQ de graves del micrófono TX (-7 a +7) | |
-| 3.9 EQ Treble       | EQ de agudos del micrófono TX (-7 a +7) | |
-| 4.1 CQ Interval     | Tiempo de inactividad en segundos antes de nuevo Mensaje CQ (0-60) | |
-| 4.2 CQ Msg          | Texto del mensaje CQ, pulsar botón izquierdo en menú iniciará envío | **L** |
-| 8.1 PA bias min     | Nivel PWM de amplitud PA (0-255) para representar 0% de salida RF | |
-| 8.2 PA max          | Nivel PWM de amplitud PA (0-255) para representar 100% de salida RF | |
-| 8.3 Ref frq          | Frecuencia real del cristal si5351, usada para calibración de frecuencia | |
-| 8.4 IQ phase        | Offset de fase I/Q RX en grados (0..180 grados) | |
-| 10.1 Backlight      | Iluminación de pantalla (ON, OFF) | |
-| power-up             | Restablecer a ajustes de fábrica | **E long** |
-| main                | Sintonizar frecuencia (20kHz..99MHz) | **turn** |
-| main                | Menú rápido | **L +turn** |
-| main                | Entrar en menú | **L** |
-| RIT                 | RIT atrás | **R** |
-| menu                | Menú atrás | **R** |
 
 ---
 

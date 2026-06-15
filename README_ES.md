@@ -2,6 +2,39 @@
 
 **uSDX Plus Orange** es un fork refactorizado y mejorado del firmware uSDX, basado en usdxWHITEBUTTONS v4.00d de GW8RDI y el proyecto original uSDX de PE1NNZ. Incluye mejoras significativas en calidad de TX, corrección de errores y funciones de protección, manteniendo compatibilidad total con ATMEGA328P (2KB RAM, 32KB flash).
 
+## Guía de configuración recomendada
+
+### Para TX óptima (voz SSB)
+| Ajuste | Valor | Beneficio |
+|--------|-------|-----------|
+| 3.6 TX Comp | ON | Añade ~3dB de potencia media; soft knee evita recorte |
+| 3.8 EQ Bass | +2 a +4 | Restaura cuerpo/grueso que el PA clase-E atenúa |
+| 3.9 EQ Treble | +1 a +3 | Añade presencia/articulación sin sibilancias |
+| 3.10 TX LoCut | 200Hz | Elimina sub-audibles; reduce IMD, ahorra potencia |
+| 3.3 TX Drive | 4-6 | Ajusta para ~5W PEP; empieza bajo y sube viendo SWR |
+| 8.1 PA bias min | Calibrar | PWM mínimo donde empieza la salida RF |
+| 8.2 PA max | Calibrar | PWM máximo para la potencia deseada |
+
+### Para RX óptima
+| Ajuste | Valor | Beneficio |
+|--------|-------|-----------|
+| 1.8 AGC | ON | Evita saturación en señales fuertes |
+| 1.14 AGC Dcy | 8 (SSB) / 2 (CW) | Hang natural en SSB; recuperación rápida en CW |
+| 1.9 NR | 1-2 (SSB) / 3-5 (CW) | Filtro EA suave para voz; FIR más agresivo para CW |
+| 1.10 ATT | 0 (inicio) | Subir solo si señales fuertes saturan RX |
+| 1.11 ATT2 | 2 (defecto) | Atenuación digital; subir si ADC recorta |
+| 1.15 Noise Blk | ON (bandas ruidosas) | Suprime ruido impulsivo de red/encendido |
+| 1.12 S-Meter | S o dBm | Indicador visual de intensidad de señal |
+
+### Consejos de grabación de voz
+- **Micrófono**: Cápsula electret con polarización ~2V (diseño uSDX estándar). Mantener 15-30cm de distancia.
+- **Pre-énfasis**: 3.7 TX Emph = 0 (plano). Activar solo si usas micrófono dinámico o audio oscuro.
+- **Compresor**: 3.6 TX Comp = ON (siempre). El soft knee lo hace transparente.
+- **VOX**: 3.1 VOX = ON, 3.2 Noise Gate = 20-40. Ajustar según ruido ambiente.
+- **Monitor**: 3.5 MOX = ON para oírte. Si suena distorsionado, reduce TX Drive.
+
+---
+
 ## Mejoras específicas del fork:
 
 ### Mejoras en TX:
@@ -10,10 +43,31 @@
 - **Rampa de inicio suave de envolvente TX** — rampa de ~1.7ms elimina los clics de PTT
 - **Limitador suave MAX_DP** — compresión 4:1 en lugar de recorte brusco para mejor pureza espectral
 - **SWR foldback** — reducción automática de drive cuando SWR>2.5; apagado de TX cuando SWR>4.0
-- **Predistorsión AM-PM** — tabla PROGMEM de 16 entradas que compensa el desplazamiento de fase del PA clase-E según la amplitud
+- **Predistorsión AM-PM (64 entradas)** — expandida de 16 a 64 entradas, compensación 4x más fina del desplazamiento de fase del PA clase-E
 - **Desvanecimiento de portadora** — transición suave a ~18% antes de desactivar CLK, eliminando el corte abrupto de portadora
+- **CESSB envelope clipper** — limitación de magnitud del vector I/Q para eliminar overshoots SSB, ~2-3dB más potencia efectiva sin ensanchar BW
+- **Phase unwrapping** — cálculo de diferencia de fase por camino más corto, reduce espurios espectrales en tonos de audio asimétricos
+- **TX Low-Cut HPF** — filtro paso alto ajustable 100/200/400Hz elimina sub-audibles del micrófono; reduce potencia desperdiciada e IMD (estilo Yaesu/Icom, menú 3.10)
+
+### Mejoras en RX:
+- **AGC hang timer (~77ms)** — mantiene la ganancia AGC durante pausas entre palabras SSB, evita bombeo de ruido entre sílabas
+- **Decay AGC rápido en CW** — 200 muestras (vs 800 en SSB) para operación CW cómoda
+- **LMS auto-notch adaptativo (2 taps)** — cancela heterodinos y birdies adaptativamente (eliminado del path NR en v5.18, interfería con la voz)
+- **S-meter sin float** — tabla de lookup para dBm/S-meter, eliminado log10() de coma flotante
+- **Medidor SWR mejorado** — cálculo fixed-point con precisión de 3 dígitos (ej. 1.05:1)
+- **Noise Blanker (1.15)** — eliminador de ruido impulsivo suprime picos de red/encendido antes del AGC
+
+### Optimizaciones de código:
+- **float eliminado del path principal** — `smeter()`, `readSWR()`, DIAG convertidos a fixed-point (~1252 bytes flash ahorrados)
+- **PROGMEM strings** — todas las tablas de etiquetas movidas a flash (~134 bytes RAM ahorrados)
+- **Código muerto eliminado** — BLIND, SIMPLE_RX, TESTBENCH NCO, `#ifdef x`, `ref_V`, y ~212 líneas de código legacy/comentado
+- **Bit shifts** — divisiones reemplazadas por shifts en toda la cadena DSP
+- **`cap_label` PROGMEM** — última tabla de strings que quedaba en RAM, movida a flash
 
 ### Corrección de errores:
+- **Overflow AGC** — cast a `int32_t` evita overflow int16 en señales fuertes
+- **Scope CESSB** — `#define` cambiado a `const uint16_t` local para evitar fuga de macro
+- **QUAD eliminado** — bloques `#ifdef QUAD` removidos (dañaban la calidad TX SSB según comentarios del propio autor); el phase unwrapping maneja transiciones de fase grandes correctamente
 - Compresor de voz desactivado por defecto (causaba mala calidad de audio SSB)
 - Acceso PROGMEM a la rampa de CW key-click corregido (dirección pgm_read_byte_near/off-by-one)
 - Etiquetas de case duplicadas en paramAction() eliminadas
