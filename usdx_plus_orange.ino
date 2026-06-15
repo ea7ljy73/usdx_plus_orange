@@ -1141,9 +1141,9 @@ Display<LCD> lcd; // highly-optimized LCD driver, OK for QCX supplied displays
 int fir_value = 0;
 #endif
 
-volatile int8_t encoder_val  = 0;
-volatile int8_t encoder_step = 0;
-static uint8_t  last_state;
+volatile int8_t         encoder_val  = 0;
+volatile int8_t         encoder_step = 0;
+volatile static uint8_t last_state;
 ISR(PCINT2_vect) { // Interrupt on rotary encoder turn
   // noInterrupts();
   // PCMSK2 &= ~((1 << PCINT22) | (1 << PCINT23));  // mask ROT_A, ROT_B
@@ -3091,18 +3091,22 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
   else
     absavg256 += abs(acm); // G8RDI mod - acm
 
-  // Noise blanker: detect and remove impulse noise before AGC
+// Noise blanker: detect and remove impulse noise before AGC
+#define NB_RATE_SHIFT 5   // level tracking attack/decay (>>5 = /32)
+#define NB_THRESH_MULT 5  // trigger threshold: abs_ac > avg * NB_THRESH_MULT
+#define NB_MIN_LEVEL 10   // minimum avg level to enable blanking
+#define NB_HOLD_SAMPLES 4 // samples to hold after trigger
   if(nb_enable) {
     static int16_t  nb_prev  = 0;
     static uint16_t nb_level = 0;
     static uint8_t  nb_hold  = 0;
     int16_t         abs_ac   = ac < 0 ? -ac : ac;
-    nb_level += ((int16_t)(abs_ac - (int16_t)nb_level) >> 5);
+    nb_level += ((int16_t)(abs_ac - (int16_t)nb_level) >> NB_RATE_SHIFT);
     if(nb_hold > 0) {
       nb_hold--;
       ac = nb_prev;
-    } else if(abs_ac > (int16_t)nb_level * 3 && nb_level > 10) {
-      nb_hold = 8;
+    } else if(abs_ac > (int16_t)nb_level * NB_THRESH_MULT && nb_level > NB_MIN_LEVEL) {
+      nb_hold = NB_HOLD_SAMPLES;
       ac      = nb_prev;
     }
     nb_prev = ac;
@@ -3713,8 +3717,8 @@ int analogSafeRead(uint8_t pin,
   if(ref1v1)
     ADMUX &= ~(1 << REFS0); // restore reference voltage AREF (1V1)
   else
-    ADMUX = (1 << REFS0); // restore reference voltage AREF (5V)
-  delay(1);               // settle
+    ADMUX = (1 << REFS0);  // restore reference voltage AREF (5V)
+  delayMicroseconds(1000); // settle
   int val = analogRead(pin);
   ADCSRA  = adcsra;
   ADMUX   = admux;
@@ -5008,26 +5012,26 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     break;
 #  ifdef CW_MESSAGE_EXT
   case CWMSG1:
-    paramAction(action, cw_msg[0], 0x42, F("CQ Msg 1"), sizeof(cw_msg));
+    paramAction(action, cw_msg[0], 0x42, F("CQ Msg 1"), sizeof(cw_msg[0]));
     break;
   case CWMSG2:
-    paramAction(action, cw_msg[1], 0x43, F("CW Msg 2"), sizeof(cw_msg));
+    paramAction(action, cw_msg[1], 0x43, F("CW Msg 2"), sizeof(cw_msg[0]));
     break;
   case CWMSG3:
-    paramAction(action, cw_msg[2], 0x44, F("CW Msg 3"), sizeof(cw_msg));
+    paramAction(action, cw_msg[2], 0x44, F("CW Msg 3"), sizeof(cw_msg[0]));
     break;
   case CWMSG4:
-    paramAction(action, cw_msg[3], 0x45, F("CW Msg 4"), sizeof(cw_msg));
+    paramAction(action, cw_msg[3], 0x45, F("CW Msg 4"), sizeof(cw_msg[0]));
     break;
   case CWMSG5:
-    paramAction(action, cw_msg[4], 0x46, F("CW Msg 5"), sizeof(cw_msg));
+    paramAction(action, cw_msg[4], 0x46, F("CW Msg 5"), sizeof(cw_msg[0]));
     break;
   case CWMSG6:
-    paramAction(action, cw_msg[5], 0x47, F("CW Msg 6"), sizeof(cw_msg));
+    paramAction(action, cw_msg[5], 0x47, F("CW Msg 6"), sizeof(cw_msg[0]));
     break;
 #  else
   case CWMSG1:
-    paramAction(action, cw_msg[0], 0x42, F("CQ Msg"), sizeof(cw_msg));
+    paramAction(action, cw_msg[0], 0x42, F("CQ Msg"), sizeof(cw_msg[0]));
     break;
 #  endif
 #endif
@@ -6944,23 +6948,25 @@ void loop() {
     if(prev_bandval != bandval) { // If band changed
       prev_bandval = bandval;
 
-#ifdef KEEP_BAND_DATA                 // G8RDI mod
-      if(freq_last[bandval - 1] != 0) // G8RDI mod
-      {
-        freq = freq_last[bandval - 1]; // Change to last freq used on this band
-        if(freq > 60000000)            // Keep in range to avoid lots of twiddling
+#ifdef KEEP_BAND_DATA // G8RDI mod
+      if(bandval > 0) {
+        if(freq_last[bandval - 1] != 0) // G8RDI mod
         {
-          freq                   = band[bandval];
-          freq_last[bandval - 1] = freq;
+          freq = freq_last[bandval - 1]; // Change to last freq used on this band
+          if(freq > 60000000)            // Keep in range to avoid lots of twiddling
+          {
+            freq                   = band[bandval];
+            freq_last[bandval - 1] = freq;
+          }
+        } else
+          freq = band[bandval]; // Load default
+        if(mode_last[bandval - 1] > AM) {
+          mode_last[bandval - 1] = LSB; // Should never happen, error! G8RDI mod
+          error_code             = 3;
         }
-      } else
-        freq = band[bandval]; // Load default
-      if(mode_last[bandval - 1] > AM) {
-        mode_last[bandval - 1] = LSB; // Should never happen, error! G8RDI mod
-        error_code             = 3;
-      }
 
-      mode = mode_last[bandval - 1]; // Change to last used mode on this band
+        mode = mode_last[bandval - 1]; // Change to last used mode on this band
+      }
 
       // G8RDI mod 2022/07/19 updated filter, step and NR as per mode change.
       // NOTE: TODO We could save previous filter and maybe noise settings, CW
@@ -7067,14 +7073,16 @@ void loop() {
                                                         // EEPROM writes as 10k limit to burnout (G8RDI)!
     paramAction(SAVE, (vfosel % 2) ? FREQB : FREQA);    // save vfoa/b changes
 
-#ifdef KEEP_BAND_DATA                             // G8RDI mod
-    freq_last[bandval - 1] = vfo[vfosel % 2];     // = freq;
-    mode_last[bandval - 1] = vfomode[vfosel % 2]; // = mode;
+#ifdef KEEP_BAND_DATA // G8RDI mod
+    if(bandval > 0) {
+      freq_last[bandval - 1] = vfo[vfosel % 2];     // = freq;
+      mode_last[bandval - 1] = vfomode[vfosel % 2]; // = mode;
 
-    if((bandval - 1) <= 8)
-      paramAction(SAVE, BAND_DATA0 + (bandval - 1)); // Save updated data only
-    else
-      error_code = 1; // Flag error
+      if((bandval - 1) <= 8)
+        paramAction(SAVE, BAND_DATA0 + (bandval - 1)); // Save updated data only
+      else
+        error_code = 1; // Flag error
+    }
 
 #endif
     save_event_time = 0;
