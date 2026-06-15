@@ -1,4 +1,30 @@
-# uSDX: micro Software Defined Transceiver
+# uSDX Plus Orange: micro Software Defined Transceiver
+
+**uSDX Plus Orange** is a refactored and enhanced fork of the uSDX firmware, based on GW8RDI's usdxWHITEBUTTONS v4.00d and the original PE1NNZ uSDX project. It includes significant TX quality improvements, bug fixes, and protection features while maintaining full compatibility with ATMEGA328P (2KB RAM, 32KB flash).
+
+## Fork-specific improvements:
+
+### TX enhancements:
+- **GW8RDI audio filter coefficient** (K=2) — restores low-end body/warmth to transmitted SSB audio
+- **Non-linear PA linearization LUT** — power-law curve for improved SSB linearity
+- **TX envelope soft-start ramp** — ~1.7ms ramp eliminates PTT key-clicks
+- **Soft MAX_DP limiter** — 4:1 compression instead of hard clip for better spectral purity
+- **SWR foldback** — automatic drive reduction when SWR>2.5; TX shutdown at SWR>4.0
+- **AM-PM predistortion** — 16-entry PROGMEM table compensates class-E PA phase shift vs amplitude
+- **Carrier fade** — smooth transition to ~18% before killing CLK, eliminating abrupt carrier shutoff
+
+### Bug fixes:
+- Voice compressor disabled by default (was causing poor SSB audio reports)
+- CW key-click ramp PROGMEM access fixed (pgm_read_byte_near address/off-by-one)
+- Duplicate case labels in paramAction() switch removed
+
+### Additional features:
+- Smooth clipping limiter, Voice compressor, Microphone EQ, Pre-emphasis (all configurable via menu)
+
+Original uSDX description below:
+
+---
+
 uSDX is a simple and experimental (Class-E driven) SSB and CW SDR transceiver. It can be used to make QRP SSB contacts, or (in combination with a PC) used for the digital modes such as FT8, JS8, FT4. It can be fully-continuous tuned through bands 80m-10m in the LSB/USB-modes with a 2400Hz bandwidth has up to 5W PEP SSB output and features a software-based full Break-In VOX for fast RX/TX switching in voice and digital operations.
 
 The SSB transmit-stage is implemented entirely in digital and software-based manner: at the heart the ATMEGA328P is sampling the input-audio and reconstructing a SSB-signal by controlling the SI5351 PLL phase (through tiny frequency changes over 800kbit/s I2C) and controlling the PA Power (through PWM on the key-shaping circuit). In this way a highly power-efficient class-E driven SSB-signal can be realized; a PWM driven class-E design keeps the SSB transceiver simple, tiny, cool, power-efficient and low-cost (ie. no need for power-inefficient and complex linear amplifier with bulky heat-sink as often is seen in SSB transceivers).
@@ -177,7 +203,9 @@ The following performance measurements were made, a modified RTL-SDR, Spektrum-S
 ### Credits:
 The uSDX was originally announced in the [QRPLabs Forum] as a SSB modification for a [QCX]: [QCX] is a QRP Labs CW Xcvr kit designed by _Hans Summers (G0UPL)_, originally built for RSGB's YOTA summer camp 2017, a high performance, image rejecting DC transceiver; it is basically a simplified implementation of the [NorCal 2030] by _Dan Tayloe (N7VE)_ designed in 2004 combined with a [Hi-Per-Mite] Active Audio CW Filter by _David Cripe (NMØS)_, [Low Pass Filters] from _Ed (W3NQN)_ 1983 Articles, a key-shaping circuit by _Donald Huff (W6JL)_, a BS170 switched [CMOS driven MOSFET PA] architecture as used in the [ATS] designs by _Steven Weber (KD1JV)_ (originating from the [Power MOSFET revolution] in the mid 70s), a [Ghetto-class-E] filter-network published by _Paul Harden (NA5N)_ and an Atmel [ATMEGA328P] microprocessor, a Hitachi [HD44780] LCD display and a Silicon Labs [SI5351] Clock Generator (and using a [phase shift in the SI5351 clocks]).
 
-The [uSDX] transmitter and receiver stage both running on a ATMEGA328P, including its multiband front-end and direct PA biasing/envelope-generation technique; its concept, circuit, code are a design by _Guido (PE1NNZ)_; the software-based SSB transmit stage is a derivate of earlier experiments with a [digital SSB generation technique] on a Raspberry Pi. The uSDX sandwitch PCB and class-E LPF design, is the work of _Manuel (DL2MAN)_. Many thanks to all of you who got interested in this project and took the challege and effort to try out and further develop the uSDX; without your valuable feedback and contributions the project could not have kept moving on, improving and challenging new ideas!
+The [uSDX] transmitter and receiver stage both running on a ATMEGA328P, including its multiband front-end and direct PA biasing/envelope-generation technique; its concept, circuit, code are a design by _Guido (PE1NNZ)_; the software-based SSB transmit stage is a derivate of earlier experiments with a [digital SSB generation technique] on a Raspberry Pi. The uSDX sandwitch PCB and class-E LPF design, is the work of _Manuel (DL2MAN)_. 
+
+**uSDX Plus Orange** is maintained by **EA7LJY**, building upon GW8RDI's usdxWHITEBUTTONS v4.00d enhancements. Many thanks to all who continue developing and improving the uSDX ecosystem!
 
 <!---
 ### References
