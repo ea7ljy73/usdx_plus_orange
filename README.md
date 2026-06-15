@@ -2,6 +2,8 @@
 
 **uSDX Plus Orange** is a refactored and enhanced fork of the uSDX firmware, based on GW8RDI's usdxWHITEBUTTONS v4.00d and the original PE1NNZ uSDX project. It includes significant TX quality improvements, bug fixes, and protection features while maintaining full compatibility with ATMEGA328P (2KB RAM, 32KB flash).
 
+> **⚠️ After flashing:** Power off, then power on while holding the **encoder button (menu)** to reset EEPROM to factory defaults. This ensures all settings are initialized correctly.
+
 ## Quick setup guide (recommended settings)
 
 ### For optimal TX (SSB voice)
