@@ -115,10 +115,10 @@
 // =============================================================================
 // DSP / NOISE REDUCTION
 // =============================================================================
-// #define NR_FIR        1  // FIR noise reduction (needs space - disable CW
-// msgs) #define FAST_AGC      1  // Fast AGC mode option (good for CW) #define
-// FM_ARCTAN     1  // FM differentiator (experimental) #define AM_MOD_MAGN_SQRT
-// 1  // More accurate AM magnitude (sqrt method)
+// #define NR_FIR        1  // FIR noise reduction (needs space - disable CW msgs)
+// #define FAST_AGC      1  // Fast AGC mode option (good for CW)
+// #define FM_ARCTAN     1  // FM differentiator (experimental)
+// #define AM_MOD_MAGN_SQRT 1  // More accurate AM magnitude (sqrt method)
 
 // =============================================================================
 // DIAGNOSTICS / DEBUG
