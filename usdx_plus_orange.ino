@@ -1989,7 +1989,7 @@ static uint8_t error_code = 0; // G8RDI mod - added LCD error code
 
 volatile uint8_t quad = 0;
 
-volatile uint8_t  comp_enable    = 1;   // enabled by default — v5.17: natural SSB
+volatile uint8_t  comp_enable    = 0;   // disabled by default (matching legacy behavior)
 volatile uint8_t  comp_ratio     = 2;   // ratio 2:1 — v5.14: less harmonic distortion
 volatile uint16_t comp_threshold = 128; // threshold for smoother compression
 volatile int16_t  comp_envelope  = 0;
@@ -2023,9 +2023,9 @@ inline int16_t voice_compressor(int16_t in) {
 inline int16_t mic_eq(int16_t in) {
   if(eq_low == 0 && eq_high == 0)
     return in;
-  eq_low_iir  += (in - eq_low_iir) >> 4;  // LPF ~75Hz: bass component
+  eq_low_iir += (in - eq_low_iir) >> 4;   // LPF ~75Hz: bass component
   eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: reference for HPF
-  int16_t hi   = in - eq_high_iir;         // HPF ~760Hz: real treble/presence
+  int16_t hi = in - eq_high_iir;          // HPF ~760Hz: real treble/presence
   return in + ((eq_low_iir * eq_low) >> 3) + ((hi * eq_high) >> 3);
 }
 
@@ -2185,8 +2185,8 @@ void           dsp_tx() { // jitter dependent things first
                         (quad) ? 0x1f : 0x0f); // Invert/non-invert CLK2 in case of a huge phase-change
 #    endif
   }
-#  endif // QUAD
-  OCR1BL = amp;  // amplitude after phase (legacy order: ~30-50us misalignment)
+#  endif        // QUAD
+  OCR1BL = amp; // amplitude after phase (legacy order: ~30-50us misalignment)
   adc += ADC;
   ADCSRA |= (1 << ADSC);               // causes RFI on QCX-SSB units (not on units with direct
                                        // biasing); ENABLE this line when using direct biasing!!
@@ -2209,7 +2209,7 @@ void           dsp_tx() { // jitter dependent things first
   si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over
                                       // 731kbit/s I2C (transfer takes 64/731 = 88us,
                                       // then PLL-loopfilter probably needs 50us to stabalize)
-  OCR1BL = amp;                       // amplitude after phase (legacy order: ~30-50us misalignment)
+  OCR1BL      = amp;                  // amplitude after phase (legacy order: ~30-50us misalignment)
   int16_t adc = ADC - 512;            // current ADC sample 10-bits analog input, NOTE:
                                       // first ADCL, then ADCH
   int16_t df = ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
@@ -2269,7 +2269,7 @@ void dsp_tx_cw() { // jitter dependent things first
 #ifdef KEY_CLICK
   if(OCR1BL < lut[255]) {               // check if already ramped up: ramp up of amplitude
     for(uint16_t i = 31; i != 0; i--) { // soft rising slope against key-clicks
-      OCR1BL = lut[pgm_read_byte_near(ramp[i])];
+      OCR1BL = lut[pgm_read_byte_near(&ramp[i - 1])];
       delayMicroseconds(60);
     }
   }
@@ -4261,7 +4261,7 @@ void switch_rxtx(uint8_t tx_enable) {
     if(OCR1BL != 0) {
       for(uint16_t i = 0; i != 31; i++) { // ramp down of amplitude: soft
                                           // falling edge to prevent key clicks
-        OCR1BL = lut[pgm_read_byte_near(ramp[i])];
+        OCR1BL = lut[pgm_read_byte_near(&ramp[i])];
         delayMicroseconds(60);
       }
     }
@@ -4868,7 +4868,7 @@ const char* agc_label[] = {"OFF", "Fast", "Slow"};
 // only)
 // I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-8(9)]
 #ifdef KEEP_BAND_DATA
-#  define I_PARAMS 5 + 5 + 9  // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
+#  define I_PARAMS 5 + 5 + 9 // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
 enum params_t {
   _NULL,
   VOLUME,
@@ -4941,7 +4941,7 @@ enum params_t {
 };
 #else
 // IMPORTANT: Both enum params_t definitions MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA only)
-#  define I_PARAMS 10  // FREQA-VERS(5) + SR-PARAM_C(5) = 10; N_ALL=57
+#  define I_PARAMS 10 // FREQA-VERS(5) + SR-PARAM_C(5) = 10; N_ALL=57
 enum params_t {
   _NULL,
   VOLUME,
