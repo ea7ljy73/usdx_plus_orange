@@ -1989,6 +1989,8 @@ static uint8_t error_code = 0; // G8RDI mod - added LCD error code
 
 volatile uint8_t quad = 0;
 
+volatile uint8_t tx_ramp = 255; // TX envelope ramp: 0=start, 255=full
+
 volatile uint8_t  comp_enable    = 0;   // disabled by default (matching legacy behavior)
 volatile uint8_t  comp_ratio     = 2;   // ratio 2:1 — v5.14: less harmonic distortion
 volatile uint16_t comp_threshold = 128; // threshold for smoother compression
@@ -2058,7 +2060,7 @@ inline int16_t ssb(int16_t in) {
 #  else
   int16_t ac = in * 2;                    //   6dB gain (justified since lpf/hpf is losing -3dB)
   ac         = ac + z1;                   // lpf
-  z1         = (in - (8) * z1) / (8 + 1); // lpf
+  z1         = (in - (2) * z1) / (2 + 1); // lpf: notch at Fs/2 (GW8RDI mod)
 
   // smooth clipping limiter (matching legacy)
   if(ac > 250) {
@@ -2104,9 +2106,20 @@ inline int16_t ssb(int16_t in) {
   //_amp = (_amp > vox_thresh) ? _amp : 0;   // vox_thresh = 4 is a good setting
   // if(!(_amp > vox_thresh)) return 0;
 
-  _amp = _amp << (drive);
-  _amp = ((_amp > 255) || (drive == 8)) ? 255 : _amp; // clip or when drive=8 use max output
-  amp  = (tx) ? lut[_amp] : 0;
+  uint8_t eff_drive = drive;
+#ifdef SWR_METER
+  if(swr_fold)
+    eff_drive = (drive > 2) ? drive - 2 : 0; // reduce drive by 2 during foldback
+#endif
+  _amp = _amp << eff_drive;
+  _amp = ((_amp > 255) || (eff_drive == 8)) ? 255 : _amp; // clip or when drive=8 use max output
+  if(tx_ramp < 255) {
+    tx_ramp += 32;
+    if(tx_ramp > 255)
+      tx_ramp = 255;
+    _amp = ((uint16_t)_amp * tx_ramp) >> 8;
+  }
+  amp = (tx) ? lut[_amp] : 0;
 
   static int16_t prev_phase;
   int16_t        phase = arctan3(q, i);
@@ -2114,6 +2127,12 @@ inline int16_t ssb(int16_t in) {
   int16_t dp = phase - prev_phase; // phase difference and restriction
   // dp = (amp) ? dp : 0;  // dp = 0 when amp = 0
   prev_phase = phase;
+
+  // AM-PM predistortion: compensate class-E PA phase shift vs amplitude
+  if(_amp > 0) {
+    static const uint8_t am_pm_tab[] PROGMEM = {0, 0, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 6, 7, 8, 10};
+    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp >> 4]);
+  }
 
   if(dp < 0)
     dp = dp + _UA; // make negative phase shifts positive: prevents negative
@@ -2129,10 +2148,15 @@ inline int16_t ssb(int16_t in) {
 #endif
 
 #ifdef MAX_DP
-  if(dp > MAX_DP) {                     // dp should be less than half unit-angle in order to keep
-                                        // frequencies below F_SAMP_TX/2
-    prev_phase = phase - (dp - MAX_DP); // substract restdp
-    dp         = MAX_DP;
+  if(dp > MAX_DP) { // dp should be less than half unit-angle in order to keep
+                    // frequencies below F_SAMP_TX/2
+    int16_t excess = dp - MAX_DP;
+    dp             = MAX_DP + (excess >> 2); // 4:1 soft compression
+    prev_phase     = phase - (excess - (excess >> 2));
+  } else if(dp < -MAX_DP) {
+    int16_t excess = -dp - MAX_DP;
+    dp             = -MAX_DP - (excess >> 2);
+    prev_phase     = phase - (-excess + (excess >> 2));
   }
 #endif
   if(mode == USB)
@@ -2220,10 +2244,11 @@ void           dsp_tx() { // jitter dependent things first
 
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
   if(tx == 1) {
-    OCR1BL = 0;
+    OCR1BL = ((uint16_t)OCR1BL * 3) >> 4; // fade to ~18% before killing CLK
     si5351.SendRegister(SI_CLK_OE, TX0RX0);
   } // disable carrier
   if(tx == 255) {
+    OCR1BL = 1; // start from near-zero (ramp-up via tx_ramp handles the rest)
     si5351.SendRegister(SI_CLK_OE, TX1RX0);
   } // enable carrier
 #endif
@@ -2332,6 +2357,7 @@ void dsp_tx_fm() {              // jitter dependent things first
 
 #ifdef SWR_METER
 volatile uint8_t swrmeter = 1;
+volatile uint8_t swr_fold = 0; // SWR foldback active counter
 #endif
 
 const char m2c[] PROGMEM = "~ "
@@ -4133,6 +4159,8 @@ void switch_rxtx(uint8_t tx_enable) {
     }
 #endif // TX_DELAY
   tx = tx_enable;
+  if(tx_enable)
+    tx_ramp = 0; // reset TX envelope ramp
 
 #ifdef CAT_XO_CMD
   if(rit || tit)
@@ -5159,12 +5187,6 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     paramAction(action, mox, 0x35, F("MOX"), NULL, 0, 2, false);
     break;
 #endif
-  case COMP_EN:
-    paramAction(action, comp_enable, 0x36, F("TX Comp"), offon_label, 0, 1, false);
-    break;
-  case PRE_EMPH:
-    paramAction(action, pre_emph, 0x37, F("TX Emph"), NULL, 0, 3, false);
-    break;
   case EQ_BASS:
     paramAction(action, eq_low, 0x38, F("EQ Bass"), NULL, -7, 7, false);
     break;
@@ -5832,9 +5854,7 @@ void fatal(const __FlashStringHelper* msg, int value = 0, char unit = '\0') {
 // refresh LUT based on pwm_min, pwm_max
 void build_lut() {
   for(uint16_t i = 0; i != 256; i++) // refresh LUT based on pwm_min, pwm_max
-    lut[i] = (i * (pwm_max - pwm_min)) / 255 + pwm_min;
-  // lut[i] = min(pwm_max, (float)106*log(i) + pwm_min);  // compressed
-  // microphone output: drive=0, pwm_min=115, pwm_max=220
+    lut[i] = pwm_min + (uint8_t)((uint32_t)(pwm_max - pwm_min) * (uint32_t)i * i / 65025);
 }
 
 #ifdef SWR_METER
@@ -5885,6 +5905,21 @@ void readSWR() {
     }
     FWD = p_FWD;
     SWR = VSWR;
+  }
+
+  // SWR foldback: reduce drive on high SWR to protect PA
+  if(VSWR > 2.5) {
+    swr_fold = 10; // hold foldback for ~10 loop cycles
+    if(VSWR > 4.0) {
+      error_code = 1;
+      lcd.setCursor(0, 3);
+      lcd.print(F("SWR HIGH!"));
+      if(tx)
+        switch_rxtx(0);
+    }
+  } else {
+    if(swr_fold)
+      swr_fold--;
   }
 }
 #endif
@@ -6297,6 +6332,13 @@ void loop() {
   }
 #endif // VOX_ENABLE
 
+#ifdef SWR_METER
+  if(tx && swrmeter > 0 && millis() >= stimer) {
+    readSWR();
+    stimer = millis() + 500;
+  }
+#endif
+
 #ifdef CW_DECODER
   // if((mode == CW) && cwdec) cw_decode();  // if(!(semi_qsk_timeout))
   // cw_decode(); else dec2();
@@ -6423,7 +6465,7 @@ void loop() {
           delay((mode == CW) ? 10 : 100); // keep the tx keyed for a while before sensing
                                           // (helps against RFI issues on DAH/DAH line)
 #  ifdef SWR_METER
-          if(smeter > 0 && mode == CW && millis() >= stimer) {
+          if(smeter > 0 && millis() >= stimer) {
             readSWR();
             stimer = millis() + 500;
           }
