@@ -1,13 +1,72 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.18
+**Version:** 6.00
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
 
 ---
 
-## v5.18 - RX/TX Overhaul & Code Optimization
+## v6.00 - AM/FM Unlocked & 11m Band Support
+
+**Memory:** TBD
+
+### Major Changes
+
+#### AM & FM Modes Fully Enabled
+- **Mode selection unblocked** — `SHOW_USB_LSB_CW_ONLY` removed; mode button now cycles LSB→USB→CW→**FM**→**AM**→LSB (full 5-mode cycle)
+- **Existing AM/FM RX/TX unlocked** — AM/FM demodulation (RX) and modulation (TX) were already implemented in the codebase but blocked from user selection; now fully accessible via menu (1.2 Mode) and right-button cycling
+- **VOX extended** — voice-operated TX now works in AM and FM modes (previously LSB/USB only)
+- **No filters, SI5351, or DSP changes needed** — existing `magn(i,q)` for AM and `_arctan3(q,i)`+differentiator for FM work correctly with current SDR architecture
+- **FM demodulation fixed** — default (non-FM_ARCTAN) path was `ac = ((ac + i) * zi)` using uninitialized local `ac` with no quadrature cross-correlation; replaced with cross-multiply discriminator: `(i·q₋₁ − q·i₋₁) / |I/Q|²` (same algorithm as legacy uSDX, proven in production)
+- **AM DC blocker fixed** — `int16_t` differentiator (`as - as_last`) prone to overflow replaced with `int32_t` DC average: `dc_avg += (ac - dc_avg) >> 6` (alpha=1/64, ~19Hz cutoff)
+- **`_arctan3` improved** — replaced linear `__atan2(z) = (UA/8 + UA/22) * z` with quadratic `(UA/8 + UA/22 - UA/22*z) * z`, matching TX `arctan3`; enables cleaner FM demodulation when `FM_ARCTAN` is enabled
+- **FM noise gate removed** — hard threshold (`mag_sq > 1000 → ac=0`) replaced with adaptive denominator floor `/((mag_sq>>3)+32)`. Weak signals below threshold were completely silenced; now pass through at reduced amplitude without noise amplification
+
+#### 11m Band Added
+- **New band**: 11m (27.0 MHz / CB band) inserted between 12m (24.9 MHz) and 10m (28.0 MHz)
+- **Auto-detection**: frequency thresholds split at 28 MHz — tuning 26-28 MHz selects 11m, 28-32 MHz selects 10m
+- **LPF**: 11m and 10m share the same LPF relay (IO1_3, f > 26 MHz) — no hardware changes needed
+- **Band labels**: menu now shows: 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, **11m**, **10m**
+- **EEPROM**: BAND_DATA9 added (band 10 → 10m); I_PARAMS updated 5+5+9→5+5+10; N_ALL_PARAMS 67→68
+- **VERSION bumped** to "6.00" — forces EEPROM reset on first boot (required for new band data layout)
+
+#### Compatibility Notes
+- ⚠️ **EEPROM reset required** — first boot after flashing v6.00 will reset all settings to defaults (hold encoder button during power-on if automatic reset doesn't trigger)
+- All existing modes (LSB, USB, CW) are **100% unchanged** — no filters, frequencies, or DSP behavior modified
+- Default mode for bands 1-4 remains LSB; bands 5-10 default to USB
+- 6m (50 MHz) remains at index 11 (bandval=11, excluded from menu cycling)
+
+### Bug Fixes & Optimizations
+
+#### FM De-emphasis Corrected
+- **Fix**: `fm_deemph()` time constant changed from `>>3` (τ≈960µs, fc≈166Hz) to `>>1` (τ≈185µs, fc≈860Hz), matching the NBFM 150µs de-emphasis standard. Previous setting severely attenuated all audio above 166Hz, making FM reception muffled. (`usdx_plus_orange.ino:2155`)
+
+#### AM Carrier Bias Fixed
+- **Fix**: `AM_BASE` increased from 32 to 85 (carrier at 33% instead of 12.5%). Provides symmetrical positive/negative modulation headroom (±200%) for clean AM transmission. Previous setting caused asymmetric clipping on positive modulation peaks. (`usdx_plus_orange.ino:2293`)
+
+#### Fast AGC Gain Recovery
+- **Fix**: `process_agc_fast()` now reduces gain on strong signals (previously only increased gain, never recovered). After a loud signal, the AGC would permanently lower sensitivity until frequency change. Now properly balances gain up/down. (`usdx_plus_orange.ino:2681`)
+
+#### TX Low-Cut Filter Corners
+- **Improvement**: Corners changed from 96/191/382Hz to 48/96/191Hz (`k = 5 - tx_lowcut` instead of `4 - tx_lowcut`). The "100Hz" setting now accurately cuts at ~96Hz, and "200Hz" at ~191Hz, preserving more low-end voice energy. (`usdx_plus_orange.ino:2010`)
+
+#### FM Deviation Limiter
+- **Improvement**: Soft-clip limiter added to `dsp_tx_fm()` (±5kHz threshold with 4:1 compression). Prevents over-deviation on loud speech, avoiding adjacent-channel interference. (`usdx_plus_orange.ino:2315`)
+
+#### Voice Compressor Timing
+- **Improvement**: Attack slowed from `>>1` (~1.5ms) to `>>2` (~3ms) — reduces "clicky" compression artifacts on plosives. Release extended from `>>8` (~53ms) to `>>10` (~213ms) — more natural syllable tracking, closer to broadcast limiter behavior. (`usdx_plus_orange.ino:1976-1978`)
+
+#### AM-PM Predistortion LUT
+- **Improvement**: Expanded from 64 to 256 entries (full 8-bit amplitude resolution). Each amplitude value now has its own predistortion coefficient, providing smoother phase correction and better TX spectral purity. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
+
+#### New Feature: FT8 VOX Mode (Menu 3.11)
+- **One-touch FT8 profile**: Menu item `FT8 VOX` (ON/OFF) instantly configures the uSDX for optimal FT8/FT4/JS8 digital mode operation
+- When enabled: forces USB mode, VOX ON (sensitive threshold=4), TX Drive=5, Full filter bandwidth, AGC=Slow. Disables all audio processing (compressor, EQ, pre-emphasis, NR, NB, lowcut, ATT, ATT2) for clean digital waveforms
+- **Auto-restore**: When disabled, all previous settings are restored exactly as they were — no manual reconfiguration needed between voice and digital operation
+- Frequency is NOT changed by FT8 VOX; tune to your desired FT8 frequency independently (`usdx_plus_orange.ino:6138`)
+
+
 
 **Memory:** 30,760 bytes flash (95%), 1,342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM vs v5.17
 
@@ -381,4 +440,4 @@ arduino-cli compile -b arduino:avr:uno
 **Disclaimer:** I am not responsible for any damage this firmware may cause to devices on which it can be applied. Use at your own risk.
 
 **Author:** EA7LJY - Julian
-**Date:** February 2026
+**Date:** June 2026

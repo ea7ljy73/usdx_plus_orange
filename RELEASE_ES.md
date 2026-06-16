@@ -1,13 +1,70 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.18
+**Versión:** 6.00
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
 
 ---
 
-## v5.18 - Revisión RX/TX y Optimización de Código
+## v6.00 - AM/FM Desbloqueados y Soporte para Banda de 11m
+
+**Memoria:** Pendiente
+
+### Cambios Principales
+
+#### Modos AM y FM Completamente Habilitados
+- **Selección de modo desbloqueada** — se eliminó `SHOW_USB_LSB_CW_ONLY`; el botón de modo ahora cicla LSB→USB→CW→**FM**→**AM**→LSB (ciclo completo de 5 modos)
+- **RX/TX de AM/FM existentes desbloqueados** — la demodulación (RX) y modulación (TX) de AM/FM ya estaban implementadas en el código pero bloqueadas; ahora accesibles desde el menú (1.2 Mode) y el botón derecho
+- **VOX extendido** — transmisión operada por voz ahora funciona en AM y FM (antes solo LSB/USB)
+- **Sin cambios en filtros, SI5351 ni DSP** — el `magn(i,q)` para AM y el `_arctan3(q,i)`+diferenciador para FM funcionan correctamente con la arquitectura SDR actual
+- **Demodulación FM corregida** — el path por defecto (no-FM_ARCTAN) usaba `ac = ((ac + i) * zi)` con variable local `ac` sin inicializar y sin correlación cruzada I/Q; reemplazado por discriminador de producto cruzado: `(i·q₋₁ − q·i₋₁) / |I/Q|²` (mismo algoritmo probado del uSDX legacy)
+- **Bloqueador DC AM corregido** — diferenciador `int16_t` (`as - as_last`) propenso a overflow reemplazado por promedio DC `int32_t`: `dc_avg += (ac - dc_avg) >> 6` (α=1/64, cutoff ~19Hz)
+- **`_arctan3` mejorado** — `__atan2(z)` lineal reemplazado por cuadrático, igualando el `arctan3` de TX; permite demodulación FM más limpia cuando se activa `FM_ARCTAN`
+- **Noise gate FM eliminado** — umbral duro (`mag_sq > 1000 → ac=0`) reemplazado por piso adaptativo en denominador `/((mag_sq>>3)+32)`. Señales débiles por debajo del umbral eran silenciadas completamente; ahora pasan con amplitud reducida sin amplificación de ruido
+
+#### Banda de 11m Añadida
+- **Nueva banda**: 11m (27.0 MHz / banda CB) insertada entre 12m (24.9 MHz) y 10m (28.0 MHz)
+- **Auto-detección**: umbrales de frecuencia divididos en 28 MHz — sintonizar 26-28 MHz selecciona 11m, 28-32 MHz selecciona 10m
+- **LPF**: 11m y 10m comparten el mismo relé de LPF (IO1_3, f > 26 MHz) — sin cambios de hardware
+- **Etiquetas de banda**: el menú ahora muestra: 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, **11m**, **10m**
+- **EEPROM**: se añadió BAND_DATA9 (banda 10 → 10m); I_PARAMS actualizado 5+5+9→5+5+10; N_ALL_PARAMS 67→68
+- **VERSION incrementada** a "6.00" — fuerza reseteo de EEPROM en el primer arranque
+
+#### Notas de Compatibilidad
+- ⚠️ **Reseteo de EEPROM requerido** — el primer arranque tras flashear v6.00 reseteará todos los ajustes a valores de fábrica (mantener pulsado el botón del encoder durante el encendido si el reseteo automático no se activa)
+- Todos los modos existentes (LSB, USB, CW) están **100% sin cambios** — ningún filtro, frecuencia o comportamiento DSP ha sido modificado
+- El modo por defecto para bandas 1-4 sigue siendo LSB; bandas 5-10 por defecto USB
+- 6m (50 MHz) permanece en el índice 11 (bandval=11, excluido del ciclo de bandas del menú)
+
+### Correcciones y Optimizaciones
+
+#### De-Énfasis FM Corregido
+- **Corrección**: Constante de tiempo de `fm_deemph()` cambiada de `>>3` (τ≈960µs, fc≈166Hz) a `>>1` (τ≈185µs, fc≈860Hz), coincidiendo con el estándar NBFM 150µs. El valor previo atenuaba severamente todo el audio por encima de 166Hz, haciendo la recepción FM opaca. (`usdx_plus_orange.ino:2155`)
+
+#### Polarización AM Corregida
+- **Corrección**: `AM_BASE` incrementado de 32 a 85 (portadora al 33% en vez de 12.5%). Proporciona margen de modulación simétrica (±200%) para transmisión AM limpia. El valor previo causaba recorte asimétrico en picos de modulación positiva. (`usdx_plus_orange.ino:2293`)
+
+#### Recuperación de Ganancia en AGC Rápido
+- **Corrección**: `process_agc_fast()` ahora reduce la ganancia en señales fuertes (antes solo la incrementaba, nunca recuperaba). Tras una señal fuerte, el AGC reducía permanentemente la sensibilidad hasta cambiar de frecuencia. Ahora balancea subida/bajada de ganancia correctamente. (`usdx_plus_orange.ino:2681`)
+
+#### Filtro Paso Alto TX
+- **Mejora**: Frecuencias de corte cambiadas de 96/191/382Hz a 48/96/191Hz (`k = 5 - tx_lowcut` en vez de `4 - tx_lowcut`). El ajuste "100Hz" ahora corta precisamente a ~96Hz, y "200Hz" a ~191Hz, preservando más energía de graves. (`usdx_plus_orange.ino:2010`)
+
+#### Limitador de Desviación FM
+- **Mejora**: Limitador soft-clip añadido a `dsp_tx_fm()` (±5kHz con compresión 4:1). Previene sobre-desviación en voz fuerte, evitando interferencia en canales adyacentes. (`usdx_plus_orange.ino:2315`)
+
+#### Tiempos del Compresor de Voz
+- **Mejora**: Ataque ralentizado de `>>1` (~1.5ms) a `>>2` (~3ms) — reduce artefactos "click" en explosivas. Release extendido de `>>8` (~53ms) a `>>10` (~213ms) — seguimiento de sílabas más natural, similar a limitadores de broadcast. (`usdx_plus_orange.ino:1976-1978`)
+
+#### Tabla de Predistorsión AM-PM
+- **Mejora**: Expandida de 64 a 256 entradas (resolución completa de 8 bits). Cada valor de amplitud tiene su propio coeficiente de predistorsión, proporcionando corrección de fase más suave y mejor pureza espectral TX. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
+
+#### Nueva Función: Modo FT8 VOX (Menú 3.11)
+- **Perfil FT8 con un toque**: El ítem de menú `FT8 VOX` (ON/OFF) configura instantáneamente el uSDX para operación óptima en modos digitales FT8/FT4/JS8
+- Al activar: fuerza modo USB, VOX ON (umbral sensible=4), TX Drive=5, filtro Full, AGC=Slow. Desactiva todo procesamiento de audio (compresor, EQ, pre-énfasis, NR, NB, lowcut, ATT, ATT2) para formas de onda digitales limpias
+- **Auto-restauración**: Al desactivar, todos los ajustes previos se restauran exactamente — sin necesidad de reconfiguración manual entre operación de voz y digital
+- La frecuencia NO es modificada por FT8 VOX; sintoniza tu frecuencia FT8 deseada de forma independiente (`usdx_plus_orange.ino:6138`)
 
 **Memoria:** 30.760 bytes flash (95%), 1.342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM respecto a v5.17
 
@@ -381,4 +438,4 @@ arduino-cli compile -b arduino:avr:uno
 **Descargo de responsabilidad:** No me responsabilizo de los daños que este firmware pueda causar en los dispositivos en los que se pueda aplicar. Úsalo bajo tu propia responsabilidad.
 
 **Autor:** EA7LJY - Julian
-**Fecha:** Febrero 2026
+**Fecha:** Junio 2026
