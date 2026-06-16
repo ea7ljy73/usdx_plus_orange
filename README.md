@@ -46,8 +46,8 @@
 - **11m band (27.0 MHz)** — added as a separate band between 12m and 10m, sharing the same LPF relay; band detection auto-splits at 28 MHz
 - **VOX extended** — voice-operated transmission now works in AM and FM too
 - **EEPROM layout updated** — BAND_DATA9 added for 10m band persistence; v6.00 resets EEPROM on first boot
-- **Bug fixes**: FM de-emphasis τ corrected (>>3→>>1), AM_BASE 32→85, Fast AGC gain recovery added
-- **Optimizations**: FM deviation limiter, compressor attack/release timing, AM-PM LUT 64→256, TX lowcut corners adjusted
+- **Bug fixes**: FM de-emphasis τ corrected (>>3→>>1), AM_BASE 32→85, Fast AGC gain recovery added, **FM demodulation fixed** (broken `ac=((ac+i)*zi)` replaced with cross-multiply discriminator from legacy), **AM DC blocker fixed** (int16_t differentiator overflow replaced with int32_t DC average)
+- **Optimizations**: FM deviation limiter, compressor attack/release timing, AM-PM LUT 64→256, TX lowcut corners adjusted, **_arctan3 quadratic approximation** (was linear, now matches TX arctan3)
 - **FT8 VOX mode** (Menu 3.11): One-touch FT8 profile with auto-restore — forces USB, VOX ON, full bandwidth, disables all audio processing for clean digital waveforms
 
 ### TX enhancements:

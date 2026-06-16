@@ -18,6 +18,10 @@
 - **RX/TX de AM/FM existentes desbloqueados** — la demodulación (RX) y modulación (TX) de AM/FM ya estaban implementadas en el código pero bloqueadas; ahora accesibles desde el menú (1.2 Mode) y el botón derecho
 - **VOX extendido** — transmisión operada por voz ahora funciona en AM y FM (antes solo LSB/USB)
 - **Sin cambios en filtros, SI5351 ni DSP** — el `magn(i,q)` para AM y el `_arctan3(q,i)`+diferenciador para FM funcionan correctamente con la arquitectura SDR actual
+- **Demodulación FM corregida** — el path por defecto (no-FM_ARCTAN) usaba `ac = ((ac + i) * zi)` con variable local `ac` sin inicializar y sin correlación cruzada I/Q; reemplazado por discriminador de producto cruzado: `(i·q₋₁ − q·i₋₁) / |I/Q|²` (mismo algoritmo probado del uSDX legacy)
+- **Bloqueador DC AM corregido** — diferenciador `int16_t` (`as - as_last`) propenso a overflow reemplazado por promedio DC `int32_t`: `dc_avg += (ac - dc_avg) >> 6` (α=1/64, cutoff ~19Hz)
+- **`_arctan3` mejorado** — `__atan2(z)` lineal reemplazado por cuadrático, igualando el `arctan3` de TX; permite demodulación FM más limpia cuando se activa `FM_ARCTAN`
+- **Noise gate FM eliminado** — umbral duro (`mag_sq > 1000 → ac=0`) reemplazado por piso adaptativo en denominador `/((mag_sq>>3)+32)`. Señales débiles por debajo del umbral eran silenciadas completamente; ahora pasan con amplitud reducida sin amplificación de ruido
 
 #### Banda de 11m Añadida
 - **Nueva banda**: 11m (27.0 MHz / banda CB) insertada entre 12m (24.9 MHz) y 10m (28.0 MHz)

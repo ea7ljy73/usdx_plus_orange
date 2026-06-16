@@ -77,6 +77,9 @@
 
 ### Corrección de errores:
 - **Overflow AGC** — cast a `int32_t` evita overflow int16 en señales fuertes
+- **Demodulación FM corregida** — reemplazado `ac=((ac+i)*zi)` (algoritmo incorrecto, variable local sin inicializar) por discriminador de producto cruzado con normalización (mismo algoritmo probado del firmware legacy)
+- **Bloqueador DC AM corregido** — diferenciador int16_t propenso a overflow reemplazado por promedio DC int32_t con α=1/64
+- **`_arctan3` mejorado** — aproximación cuadrática en lugar de lineal (usado por `FM_ARCTAN`)
 - **Scope CESSB** — `#define` cambiado a `const uint16_t` local para evitar fuga de macro
 - **QUAD eliminado** — bloques `#ifdef QUAD` removidos (dañaban la calidad TX SSB según comentarios del propio autor); el phase unwrapping maneja transiciones de fase grandes correctamente
 - Compresor de voz desactivado por defecto (causaba mala calidad de audio SSB)

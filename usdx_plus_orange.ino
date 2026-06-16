@@ -1938,8 +1938,8 @@ inline int16_t arctan3(int16_t q, int16_t i) // error ~ 0.8 degree
 }
 
 #define magn(i, q)                                                                                                     \
-  (abs(i) > abs(q) ? abs(i) + (abs(q) / 4) : abs(q) + (abs(i) / 4)) // approximation of: magnitude =
-                                                                    // sqrt(i*i + q*q); error 0.95dB
+  (abs(i) > abs(q) ? abs(i) + (abs(q) >> 2) : abs(q) + (abs(i) >> 2)) // approximation of: magnitude =
+                                                                      // sqrt(i*i + q*q); error 0.95dB
 
 uint8_t          lut[256];
 volatile uint8_t amp;
@@ -2954,18 +2954,28 @@ uint8_t prev_filt[] = {0, 4}; // default filter for modes resp. CW, SSB
 
 #define __UA 256
 inline int16_t _arctan3(int16_t q, int16_t i) {
-#define __atan2(z) (__UA / 8 + __UA / 22) * z // very much of a simplification...not accurate at all, but fast
-  // #define __atan2(z)  (__UA/8 - __UA/22 * z + __UA/22) * z  //derived from
-  // (5) [1]
-  int16_t r;
-  if(abs(q) > abs(i))
-    r = __UA / 4 - __atan2(abs(i) / abs(q)); // arctan(z) = 90-arctan(1/z)
-  else
-    r = (i == 0) ? 0 : __atan2(abs(q) / abs(i)); // arctan(z)
-  r = (i < 0) ? __UA / 2 - r : r;                // arctan(-z) = -arctan(z)
-  return (q < 0) ? -r : r;                       // arctan(-z) = -arctan(z)
+  // Full-resolution atan2, fixed-point 0.8 format
+  // atan(z) ≈ (44*z - 12*z²) / 256  for z ∈ [0,1], scaled to __UA=256
+  if(i == 0 && q == 0)
+    return 0;
+  uint16_t r;
+  if(abs(q) > abs(i)) {
+    uint16_t z  = ((uint32_t)abs(i) << 8) / abs(q);
+    uint16_t z2 = (z * z) >> 8;
+    r           = 64 - ((uint16_t)44 * z - (uint16_t)12 * z2) / 256;
+  } else {
+    if(i == 0)
+      return (q < 0) ? -64 : 0;
+    uint16_t z = ((uint32_t)abs(q) << 8) / abs(i);
+    if(z > 255)
+      z = 255;
+    uint16_t z2 = (z * z) >> 8;
+    r           = ((uint16_t)44 * z - (uint16_t)12 * z2) / 256;
+  }
+  if(i < 0)
+    r = __UA / 2 - r;
+  return (q < 0) ? -r : r;
 }
-
 static uint32_t   absavg256  = 0;
 volatile uint32_t _absavg256 = 0;
 volatile int16_t  i, q;
@@ -3048,10 +3058,9 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
                     dc += (ac - dc) / 2;		// Limit rate of change
                     ac = ac - dc;
     */
-    static int16_t as_last;                      // GW8RDI mod - replaced LP filter: DC removal done in sdr_rx()
-    int16_t as = ac + as_last - (as_last >> 10); // v5.10: alpha=0.999 (was 0.9999f float, same effect, saves CPU)
-    ac         = as - as_last;
-    as_last    = as;
+    static int32_t dc_avg = 0;
+    dc_avg += (ac - dc_avg) >> 6; // alpha = 1/64, ~19 Hz cutoff @ 7812 Hz
+    ac = ac - dc_avg;
 
     /* FIR LP filter (must add separate filter setup call and coeffs for this
     alone) - removes carrier tone but does not increase AM quality
@@ -3081,21 +3090,17 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
 
     // ac = atan(q * i_old - i * q_old, i * i_old + q * q_old);  // Taken from
     // the excellent description by Clint, KA7OEI
-#ifdef FM_ARCTAN // G8RDI mod - enabled FM differentiator
-    int16_t        z0 = _arctan3(q, i);
-    static int16_t z1 = z0;      // G8RDI mod - initialised static
-    ac                = z0 - z1; // Differentiator
-    z1                = z0;
-#else
-    static int16_t zi = 0;               // v5.10: fixed init to 0 (was =i, runtime non-zero init)
-    ac                = ((ac + i) * zi); // -qh = ac + i
-    zi                = i;
-#endif
-    /*static int16_t _q = 0;
-    _q = (_q + q) / 2;
-    ac = i * _q;  // quadrature detector */
-
-    // ac = ((q > 0) == !(i > 0)) ? 128 : -128; // XOR I/Q zero-cross detector
+    // Normalized cross-multiply (no LPF, less hiss than arctan with strong signals)
+    static int16_t prev_i = 0, prev_q = 0;
+    int32_t        product = (int32_t)i * prev_q - (int32_t)q * prev_i;
+    int32_t        mag_sq  = (int32_t)i * i + (int32_t)q * q;
+    if(mag_sq > 1000) {
+      ac = (product << 4) / (mag_sq >> 3);
+    } else {
+      ac = 0;
+    }
+    prev_i = i;
+    prev_q = q;
   } // needs: p.12
     // https://www.veron.nl/wp-content/uploads/2014/01/FmDemodulator.pdf
   else {            // USB, LSB, CW
