@@ -1,5 +1,7 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
+**Version:** 6.00 — AM/FM Unlocked & 11m Band Support
+
 **uSDX Plus Orange** is a refactored and enhanced fork of the uSDX firmware, based on GW8RDI's usdxWHITEBUTTONS v4.00d and the original PE1NNZ uSDX project. It includes significant TX quality improvements, bug fixes, and protection features while maintaining full compatibility with ATMEGA328P (2KB RAM, 32KB flash).
 
 > **⚠️ After flashing:** Power off, then power on while holding the **encoder button (menu)** to reset EEPROM to factory defaults. This ensures all settings are initialized correctly.
@@ -44,6 +46,8 @@
 - **11m band (27.0 MHz)** — added as a separate band between 12m and 10m, sharing the same LPF relay; band detection auto-splits at 28 MHz
 - **VOX extended** — voice-operated transmission now works in AM and FM too
 - **EEPROM layout updated** — BAND_DATA9 added for 10m band persistence; v6.00 resets EEPROM on first boot
+- **Bug fixes**: FM de-emphasis τ corrected (>>3→>>1), AM_BASE 32→85, Fast AGC gain recovery added
+- **Optimizations**: FM deviation limiter, compressor attack/release timing, AM-PM LUT 64→256, TX lowcut corners adjusted
 
 ### TX enhancements:
 - **GW8RDI audio filter coefficient** (K=2) — restores low-end body/warmth to transmitted SSB audio

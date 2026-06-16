@@ -33,6 +33,29 @@
 - Default mode for bands 1-4 remains LSB; bands 5-10 default to USB
 - 6m (50 MHz) remains at index 11 (bandval=11, excluded from menu cycling)
 
+### Bug Fixes & Optimizations
+
+#### FM De-emphasis Corrected
+- **Fix**: `fm_deemph()` time constant changed from `>>3` (τ≈960µs, fc≈166Hz) to `>>1` (τ≈185µs, fc≈860Hz), matching the NBFM 150µs de-emphasis standard. Previous setting severely attenuated all audio above 166Hz, making FM reception muffled. (`usdx_plus_orange.ino:2155`)
+
+#### AM Carrier Bias Fixed
+- **Fix**: `AM_BASE` increased from 32 to 85 (carrier at 33% instead of 12.5%). Provides symmetrical positive/negative modulation headroom (±200%) for clean AM transmission. Previous setting caused asymmetric clipping on positive modulation peaks. (`usdx_plus_orange.ino:2293`)
+
+#### Fast AGC Gain Recovery
+- **Fix**: `process_agc_fast()` now reduces gain on strong signals (previously only increased gain, never recovered). After a loud signal, the AGC would permanently lower sensitivity until frequency change. Now properly balances gain up/down. (`usdx_plus_orange.ino:2681`)
+
+#### TX Low-Cut Filter Corners
+- **Improvement**: Corners changed from 96/191/382Hz to 48/96/191Hz (`k = 5 - tx_lowcut` instead of `4 - tx_lowcut`). The "100Hz" setting now accurately cuts at ~96Hz, and "200Hz" at ~191Hz, preserving more low-end voice energy. (`usdx_plus_orange.ino:2010`)
+
+#### FM Deviation Limiter
+- **Improvement**: Soft-clip limiter added to `dsp_tx_fm()` (±5kHz threshold with 4:1 compression). Prevents over-deviation on loud speech, avoiding adjacent-channel interference. (`usdx_plus_orange.ino:2315`)
+
+#### Voice Compressor Timing
+- **Improvement**: Attack slowed from `>>1` (~1.5ms) to `>>2` (~3ms) — reduces "clicky" compression artifacts on plosives. Release extended from `>>8` (~53ms) to `>>10` (~213ms) — more natural syllable tracking, closer to broadcast limiter behavior. (`usdx_plus_orange.ino:1976-1978`)
+
+#### AM-PM Predistortion LUT
+- **Improvement**: Expanded from 64 to 256 entries (full 8-bit amplitude resolution). Each amplitude value now has its own predistortion coefficient, providing smoother phase correction and better TX spectral purity. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
+
 
 
 **Memory:** 30,760 bytes flash (95%), 1,342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM vs v5.17

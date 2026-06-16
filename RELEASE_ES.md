@@ -33,6 +33,29 @@
 - El modo por defecto para bandas 1-4 sigue siendo LSB; bandas 5-10 por defecto USB
 - 6m (50 MHz) permanece en el índice 11 (bandval=11, excluido del ciclo de bandas del menú)
 
+### Correcciones y Optimizaciones
+
+#### De-Énfasis FM Corregido
+- **Corrección**: Constante de tiempo de `fm_deemph()` cambiada de `>>3` (τ≈960µs, fc≈166Hz) a `>>1` (τ≈185µs, fc≈860Hz), coincidiendo con el estándar NBFM 150µs. El valor previo atenuaba severamente todo el audio por encima de 166Hz, haciendo la recepción FM opaca. (`usdx_plus_orange.ino:2155`)
+
+#### Polarización AM Corregida
+- **Corrección**: `AM_BASE` incrementado de 32 a 85 (portadora al 33% en vez de 12.5%). Proporciona margen de modulación simétrica (±200%) para transmisión AM limpia. El valor previo causaba recorte asimétrico en picos de modulación positiva. (`usdx_plus_orange.ino:2293`)
+
+#### Recuperación de Ganancia en AGC Rápido
+- **Corrección**: `process_agc_fast()` ahora reduce la ganancia en señales fuertes (antes solo la incrementaba, nunca recuperaba). Tras una señal fuerte, el AGC reducía permanentemente la sensibilidad hasta cambiar de frecuencia. Ahora balancea subida/bajada de ganancia correctamente. (`usdx_plus_orange.ino:2681`)
+
+#### Filtro Paso Alto TX
+- **Mejora**: Frecuencias de corte cambiadas de 96/191/382Hz a 48/96/191Hz (`k = 5 - tx_lowcut` en vez de `4 - tx_lowcut`). El ajuste "100Hz" ahora corta precisamente a ~96Hz, y "200Hz" a ~191Hz, preservando más energía de graves. (`usdx_plus_orange.ino:2010`)
+
+#### Limitador de Desviación FM
+- **Mejora**: Limitador soft-clip añadido a `dsp_tx_fm()` (±5kHz con compresión 4:1). Previene sobre-desviación en voz fuerte, evitando interferencia en canales adyacentes. (`usdx_plus_orange.ino:2315`)
+
+#### Tiempos del Compresor de Voz
+- **Mejora**: Ataque ralentizado de `>>1` (~1.5ms) a `>>2` (~3ms) — reduce artefactos "click" en explosivas. Release extendido de `>>8` (~53ms) a `>>10` (~213ms) — seguimiento de sílabas más natural, similar a limitadores de broadcast. (`usdx_plus_orange.ino:1976-1978`)
+
+#### Tabla de Predistorsión AM-PM
+- **Mejora**: Expandida de 64 a 256 entradas (resolución completa de 8 bits). Cada valor de amplitud tiene su propio coeficiente de predistorsión, proporcionando corrección de fase más suave y mejor pureza espectral TX. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
+
 **Memoria:** 30.760 bytes flash (95%), 1.342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM respecto a v5.17
 
 ### ROADMAP: 9 ítems implementados

@@ -1973,9 +1973,9 @@ inline int16_t voice_compressor(int16_t in) {
   int16_t abs_in = in < 0 ? -in : in;
 
   if(abs_in > comp_envelope)
-    comp_envelope += (abs_in - comp_envelope) >> 1; // attack ~1.5ms
+    comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms (smoother on plosives)
   else
-    comp_envelope -= (comp_envelope - abs_in) >> 8; // release ~53ms TC
+    comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms (more natural)
 
   if(comp_envelope > comp_threshold) {
     int16_t excess = comp_envelope - comp_threshold;
@@ -2007,7 +2007,7 @@ inline int16_t ssb(int16_t in) {
 
   if(tx_lowcut > 0) {
     static int16_t tx_hpf_z1 = 0;
-    uint8_t        k         = 4 - tx_lowcut; // 100Hz→3, 200Hz→2, 400Hz→1
+    uint8_t        k         = 5 - tx_lowcut; // 50Hz→4, 100Hz→3, 200Hz→2
     int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
     tx_hpf_z1                = lp;
     in                       = in - lp;
@@ -2120,10 +2120,15 @@ inline int16_t ssb(int16_t in) {
   // AM-PM predistortion: compensate class-E PA phase shift vs amplitude
   if(_amp > 0) {
     static const uint8_t am_pm_tab[] PROGMEM = {
-        0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,  3,  3,  3,  3,
-        3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 9, 10, 10, 10, 10, 10,
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+        2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+        3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+        4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,
+        7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
     };
-    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp >> 2]);
+    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp]);
   }
 #ifdef MAX_DP
   if(dp > MAX_DP) { // dp should be less than half unit-angle in order to keep
@@ -2149,7 +2154,7 @@ static int16_t   deemph_z1 = 0;
 inline int16_t fm_deemph(int16_t in) {
   if(!deemph_fm)
     return in;
-  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 3);
+  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 1); // NBFM 150µs de-emphasis (fc≈860Hz@7812Hz)
   return deemph_z1;
 }
 
@@ -2287,7 +2292,7 @@ void dsp_tx_am() {         // jitter dependent things first
   // static int16_t dc;
   // dc += (in - dc) / 2;
   // in = in - dc;     // DC decoupling
-#define AM_BASE 32
+#define AM_BASE 85 // carrier at 33% for symmetrical ±200% modulation
   in  = max(0, min(255, (in + AM_BASE)));
   amp = in; // lut[in];
 }
@@ -2307,6 +2312,11 @@ void dsp_tx_fm() {              // jitter dependent things first
   int16_t in = (adc >> MIC_ATTEN);
   in         = in << (drive);
   int16_t df = in;
+  // FM deviation soft limiter: prevent adjacent-channel QRM
+  if(df > 5000)
+    df = 5000 + ((df - 5000) >> 2);
+  else if(df < -5000)
+    df = -5000 + ((df + 5000) >> 2);
   si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency
                              // shift and carrier frequency
 }
@@ -2669,12 +2679,22 @@ volatile uint8_t _init     = 0;
 // sample value between 1024 and 2048.
 static int16_t gain = 1024;
 inline int16_t process_agc_fast(int16_t in) {
-  int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
-  int16_t accum = (1 - abs(out >> 10));
-  if((INT16_MAX - gain) > accum)
-    gain = gain + accum;
+  int16_t out     = (gain >= 1024) ? (gain >> 10) * in : in;
+  int16_t abs_out = abs(out);
+  int16_t hi      = abs_out >> 10; // 0=weak, 1=medium, 2+=strong
+  if(hi > 1) {                     // strong signal: reduce gain
+    gain -= (abs_out >> 3);
+    if(gain < 1024)
+      gain = 1024;
+  } else { // weak signal: increase gain
+    int16_t accum = 1 - hi;
+    if(accum > 0 && (INT16_MAX - gain) > accum)
+      gain += accum;
+  }
   if(gain < 1)
     gain = 1;
+  if(gain > 32767)
+    gain = 32767;
   return out;
 }
 
