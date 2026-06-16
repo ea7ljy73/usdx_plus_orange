@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.18"
+#define VERSION "6.00"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -1872,7 +1872,12 @@ const uint8_t dsp_cap = SDR;
 #endif
 
 enum mode_t { LSB, USB, CW, FM, AM };
-volatile uint8_t  mode       = USB;
+volatile uint8_t  mode     = USB;
+volatile uint8_t  ft8_vox  = 0; // FT8 VOX mode profile (menu on/off)
+uint8_t           ft8_prev = 0; // previous state for change detection
+uint8_t           ft8_sv_mode, ft8_sv_vox, ft8_sv_vt, ft8_sv_drv, ft8_sv_filt;
+uint8_t           ft8_sv_nr, ft8_sv_nb, ft8_sv_comp, ft8_sv_pre, ft8_sv_lc, ft8_sv_agc, ft8_sv_att, ft8_sv_att2;
+int8_t            ft8_sv_eql, ft8_sv_eqh; // FT8 saved settings
 volatile uint16_t numSamples = 0;
 
 volatile uint8_t tx   = 0;
@@ -1933,8 +1938,8 @@ inline int16_t arctan3(int16_t q, int16_t i) // error ~ 0.8 degree
 }
 
 #define magn(i, q)                                                                                                     \
-  (abs(i) > abs(q) ? abs(i) + (abs(q) / 4) : abs(q) + (abs(i) / 4)) // approximation of: magnitude =
-                                                                    // sqrt(i*i + q*q); error 0.95dB
+  (abs(i) > abs(q) ? abs(i) + (abs(q) >> 2) : abs(q) + (abs(i) >> 2)) // approximation of: magnitude =
+                                                                      // sqrt(i*i + q*q); error 0.95dB
 
 uint8_t          lut[256];
 volatile uint8_t amp;
@@ -1973,9 +1978,9 @@ inline int16_t voice_compressor(int16_t in) {
   int16_t abs_in = in < 0 ? -in : in;
 
   if(abs_in > comp_envelope)
-    comp_envelope += (abs_in - comp_envelope) >> 1; // attack ~1.5ms
+    comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms (smoother on plosives)
   else
-    comp_envelope -= (comp_envelope - abs_in) >> 8; // release ~53ms TC
+    comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms (more natural)
 
   if(comp_envelope > comp_threshold) {
     int16_t excess = comp_envelope - comp_threshold;
@@ -2007,7 +2012,7 @@ inline int16_t ssb(int16_t in) {
 
   if(tx_lowcut > 0) {
     static int16_t tx_hpf_z1 = 0;
-    uint8_t        k         = 4 - tx_lowcut; // 100Hz→3, 200Hz→2, 400Hz→1
+    uint8_t        k         = 5 - tx_lowcut; // 50Hz→4, 100Hz→3, 200Hz→2
     int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
     tx_hpf_z1                = lp;
     in                       = in - lp;
@@ -2120,10 +2125,15 @@ inline int16_t ssb(int16_t in) {
   // AM-PM predistortion: compensate class-E PA phase shift vs amplitude
   if(_amp > 0) {
     static const uint8_t am_pm_tab[] PROGMEM = {
-        0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3,  3,  3,  3,  3,
-        3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 9, 10, 10, 10, 10, 10,
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
+        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
+        2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+        3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+        4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,
+        7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
     };
-    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp >> 2]);
+    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp]);
   }
 #ifdef MAX_DP
   if(dp > MAX_DP) { // dp should be less than half unit-angle in order to keep
@@ -2149,7 +2159,7 @@ static int16_t   deemph_z1 = 0;
 inline int16_t fm_deemph(int16_t in) {
   if(!deemph_fm)
     return in;
-  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 3);
+  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 1); // NBFM 150µs de-emphasis (fc≈860Hz@7812Hz)
   return deemph_z1;
 }
 
@@ -2287,7 +2297,7 @@ void dsp_tx_am() {         // jitter dependent things first
   // static int16_t dc;
   // dc += (in - dc) / 2;
   // in = in - dc;     // DC decoupling
-#define AM_BASE 32
+#define AM_BASE 85 // carrier at 33% for symmetrical ±200% modulation
   in  = max(0, min(255, (in + AM_BASE)));
   amp = in; // lut[in];
 }
@@ -2307,6 +2317,11 @@ void dsp_tx_fm() {              // jitter dependent things first
   int16_t in = (adc >> MIC_ATTEN);
   in         = in << (drive);
   int16_t df = in;
+  // FM deviation soft limiter: prevent adjacent-channel QRM
+  if(df > 5000)
+    df = 5000 + ((df - 5000) >> 2);
+  else if(df < -5000)
+    df = -5000 + ((df + 5000) >> 2);
   si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency
                              // shift and carrier frequency
 }
@@ -2669,12 +2684,22 @@ volatile uint8_t _init     = 0;
 // sample value between 1024 and 2048.
 static int16_t gain = 1024;
 inline int16_t process_agc_fast(int16_t in) {
-  int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
-  int16_t accum = (1 - abs(out >> 10));
-  if((INT16_MAX - gain) > accum)
-    gain = gain + accum;
+  int16_t out     = (gain >= 1024) ? (gain >> 10) * in : in;
+  int16_t abs_out = abs(out);
+  int16_t hi      = abs_out >> 10; // 0=weak, 1=medium, 2+=strong
+  if(hi > 1) {                     // strong signal: reduce gain
+    gain -= (abs_out >> 3);
+    if(gain < 1024)
+      gain = 1024;
+  } else { // weak signal: increase gain
+    int16_t accum = 1 - hi;
+    if(accum > 0 && (INT16_MAX - gain) > accum)
+      gain += accum;
+  }
   if(gain < 1)
     gain = 1;
+  if(gain > 32767)
+    gain = 32767;
   return out;
 }
 
@@ -2929,18 +2954,28 @@ uint8_t prev_filt[] = {0, 4}; // default filter for modes resp. CW, SSB
 
 #define __UA 256
 inline int16_t _arctan3(int16_t q, int16_t i) {
-#define __atan2(z) (__UA / 8 + __UA / 22) * z // very much of a simplification...not accurate at all, but fast
-  // #define __atan2(z)  (__UA/8 - __UA/22 * z + __UA/22) * z  //derived from
-  // (5) [1]
-  int16_t r;
-  if(abs(q) > abs(i))
-    r = __UA / 4 - __atan2(abs(i) / abs(q)); // arctan(z) = 90-arctan(1/z)
-  else
-    r = (i == 0) ? 0 : __atan2(abs(q) / abs(i)); // arctan(z)
-  r = (i < 0) ? __UA / 2 - r : r;                // arctan(-z) = -arctan(z)
-  return (q < 0) ? -r : r;                       // arctan(-z) = -arctan(z)
+  // Full-resolution atan2, fixed-point 0.8 format
+  // atan(z) ≈ (44*z - 12*z²) / 256  for z ∈ [0,1], scaled to __UA=256
+  if(i == 0 && q == 0)
+    return 0;
+  uint16_t r;
+  if(abs(q) > abs(i)) {
+    uint16_t z  = ((uint32_t)abs(i) << 8) / abs(q);
+    uint16_t z2 = (z * z) >> 8;
+    r           = 64 - ((uint16_t)44 * z - (uint16_t)12 * z2) / 256;
+  } else {
+    if(i == 0)
+      return (q < 0) ? -64 : 0;
+    uint16_t z = ((uint32_t)abs(q) << 8) / abs(i);
+    if(z > 255)
+      z = 255;
+    uint16_t z2 = (z * z) >> 8;
+    r           = ((uint16_t)44 * z - (uint16_t)12 * z2) / 256;
+  }
+  if(i < 0)
+    r = __UA / 2 - r;
+  return (q < 0) ? -r : r;
 }
-
 static uint32_t   absavg256  = 0;
 volatile uint32_t _absavg256 = 0;
 volatile int16_t  i, q;
@@ -3023,10 +3058,9 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
                     dc += (ac - dc) / 2;		// Limit rate of change
                     ac = ac - dc;
     */
-    static int16_t as_last;                      // GW8RDI mod - replaced LP filter: DC removal done in sdr_rx()
-    int16_t as = ac + as_last - (as_last >> 10); // v5.10: alpha=0.999 (was 0.9999f float, same effect, saves CPU)
-    ac         = as - as_last;
-    as_last    = as;
+    static int32_t dc_avg = 0;
+    dc_avg += (ac - dc_avg) >> 6; // alpha = 1/64, ~19 Hz cutoff @ 7812 Hz
+    ac = ac - dc_avg;
 
     /* FIR LP filter (must add separate filter setup call and coeffs for this
     alone) - removes carrier tone but does not increase AM quality
@@ -3056,21 +3090,17 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
 
     // ac = atan(q * i_old - i * q_old, i * i_old + q * q_old);  // Taken from
     // the excellent description by Clint, KA7OEI
-#ifdef FM_ARCTAN // G8RDI mod - enabled FM differentiator
-    int16_t        z0 = _arctan3(q, i);
-    static int16_t z1 = z0;      // G8RDI mod - initialised static
-    ac                = z0 - z1; // Differentiator
-    z1                = z0;
-#else
-    static int16_t zi = 0;               // v5.10: fixed init to 0 (was =i, runtime non-zero init)
-    ac                = ((ac + i) * zi); // -qh = ac + i
-    zi                = i;
-#endif
-    /*static int16_t _q = 0;
-    _q = (_q + q) / 2;
-    ac = i * _q;  // quadrature detector */
-
-    // ac = ((q > 0) == !(i > 0)) ? 128 : -128; // XOR I/Q zero-cross detector
+    // Normalized cross-multiply (no LPF, less hiss than arctan with strong signals)
+    static int16_t prev_i = 0, prev_q = 0;
+    int32_t        product = (int32_t)i * prev_q - (int32_t)q * prev_i;
+    int32_t        mag_sq  = (int32_t)i * i + (int32_t)q * q;
+    if(mag_sq > 1000) {
+      ac = (product << 4) / (mag_sq >> 3);
+    } else {
+      ac = 0;
+    }
+    prev_i = i;
+    prev_q = q;
   } // needs: p.12
     // https://www.veron.nl/wp-content/uploads/2014/01/FmDemodulator.pdf
   else {            // USB, LSB, CW
@@ -4239,7 +4269,7 @@ void calibrate_iq() {
 uint8_t prev_bandval = 3;
 uint8_t bandval      = 3;
 
-#define N_BANDS 11 // See KEEP_BAND_DATA if more than 9 bands required.
+#define N_BANDS 12 // See KEEP_BAND_DATA if more than 9 bands required.
 
 #ifdef CW_FREQS_QRP
 uint32_t band[N_BANDS] = {/*472000,*/ 1810000,
@@ -4251,6 +4281,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1810000,
                           18096000,
                           21060000,
                           24906000,
+                          27000000,
                           28060000,
                           50096000 /*, 70160000, 144060000*/}; // CW QRP freqs
 #else
@@ -4264,6 +4295,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1818000,
                           18085000,
                           21058000,
                           24908000,
+                          27000000,
                           28058000,
                           50058000 /*, 70158000, 144058000*/}; // CW FISTS freqs
 #  else
@@ -4276,6 +4308,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1840000,
                           18100000,
                           21074000,
                           24915000,
+                          27000000,
                           28074000,
                           50313000 /*, 70101000, 144125000*/}; // FT8 freqs
 #  endif
@@ -4672,7 +4705,7 @@ const int filt_val[N_FILT + 1] = {3000, 2700, 2200, 1800, 400, 150, 80, 30}; // 
 #endif
 
 const char* const band_label[N_BANDS] PROGMEM = {"x",   "80m", "60m", "40m", "30m", "20m",
-                                                 "17m", "15m", "12m", "10m", "x"};
+                                                 "17m", "15m", "12m", "11m", "10m", "x"};
 const char* const stepsize_label[] PROGMEM    = {"10M", "1M", ".5M", "100k", "10k", "1k", ".5k", "100", "10", "1"};
 const char* const att_label[] PROGMEM         = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
 #ifdef CLOCK
@@ -4695,12 +4728,12 @@ const char* const agc_label[] PROGMEM = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS 48 // number of (visible) parameters; BACKL(0xA1) is always the last visible
+#define N_PARAMS 49 // number of (visible) parameters; BACKL(0xA1) is always the last visible
 // IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
 // only)
-// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-8(9)]
+// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-9(10)]
 #ifdef KEEP_BAND_DATA
-#  define I_PARAMS 5 + 5 + 9 // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
+#  define I_PARAMS 5 + 5 + 10 // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-9(10) = 20; N_ALL=68
 enum params_t {
   _NULL,
   VOLUME,
@@ -4737,9 +4770,11 @@ enum params_t {
   EQ_BASS,
   EQ_TREBLE,
   TX_LOWCUT,
+  FT8VOX,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
+
   CWMSG3,
   CWMSG4,
   CWMSG5,
@@ -4770,6 +4805,7 @@ enum params_t {
   BAND_DATA6,
   BAND_DATA7,
   BAND_DATA8,
+  BAND_DATA9,
   ALL = 0xff
 };
 #else
@@ -4811,6 +4847,7 @@ enum params_t {
   EQ_BASS,
   EQ_TREBLE,
   TX_LOWCUT,
+  FT8VOX,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
@@ -5006,6 +5043,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     static const char* const lowcut_label[] PROGMEM = {"Off", "100", "200", "400"};
     paramAction(action, tx_lowcut, 0x3A, F("TX LoCut"), lowcut_label, 0, 3, false);
   } break;
+  case FT8VOX:
+    paramAction(action, ft8_vox, 0x3B, F("FT8 VOX"), offon_label, 0, 1, false);
+    break;
 #ifdef CW_MESSAGE
   case CWINTERVAL:
     paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false);
@@ -5128,7 +5168,7 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
 
   default:
 #ifdef KEEP_BAND_DATA // 230401 freed 258 bytes!!
-    if(id >= BAND_DATA0 && id <= BAND_DATA8) {
+    if(id >= BAND_DATA0 && id <= BAND_DATA9) {
       uint8_t is = id - BAND_DATA0;
       paramAction(action, freq_last[is], 0, NULL, NULL, 0, 0, false);
       paramAction(action, mode_last[is], 0, NULL, NULL, 0, 0, false);
@@ -5998,7 +6038,8 @@ void setup() {
   memset(freq_last, 0, sizeof(freq_last)); // G8RDI mod - set to default
   // memset(mode_last, LSB, sizeof(mode_last));
   mode_last[0] = mode_last[1] = mode_last[2] = mode_last[3] = LSB;
-  mode_last[4] = mode_last[5] = mode_last[6] = mode_last[7] = mode_last[8] = USB; // Set for up to 9 bands only xyzzy
+  mode_last[4] = mode_last[5] = mode_last[6] = mode_last[7] = mode_last[8] = mode_last[9] =
+      USB; // Set for up to 10 bands
 #endif
 
   // Load parameters from EEPROM, reset to factory defaults when stored values
@@ -6099,12 +6140,66 @@ static int32_t _step = 0;
 // SECTION 14: MAIN LOOP
 //=========================================================================
 void loop() {
+  // FT8 VOX profile management
+  if(ft8_vox != ft8_prev) {
+    if(ft8_vox) { // FT8 VOX enabled: save settings and apply optimal FT8 config
+      ft8_sv_mode = mode;
+      ft8_sv_vox  = vox;
+      ft8_sv_vt   = vox_thresh;
+      ft8_sv_drv  = drive;
+      ft8_sv_filt = filt;
+      ft8_sv_nr   = nr;
+      ft8_sv_nb   = nb_enable;
+      ft8_sv_comp = comp_enable;
+      ft8_sv_pre  = pre_emph;
+      ft8_sv_eql  = eq_low;
+      ft8_sv_eqh  = eq_high;
+      ft8_sv_lc   = tx_lowcut;
+      ft8_sv_agc  = agc;
+      ft8_sv_att  = att;
+      ft8_sv_att2 = att2;
+      mode        = USB;
+      vox         = 1;
+      vox_thresh  = 4;
+      drive       = 5;
+      filt        = 0;
+      nr          = 0;
+      nb_enable   = 0;
+      comp_enable = 0;
+      pre_emph    = 0;
+      eq_low      = 0;
+      eq_high     = 0;
+      tx_lowcut   = 0;
+      agc         = 2;
+      att         = 0;
+      att2        = 0;
+    } else { // FT8 VOX disabled: restore previous settings
+      mode        = ft8_sv_mode;
+      vox         = ft8_sv_vox;
+      vox_thresh  = ft8_sv_vt;
+      drive       = ft8_sv_drv;
+      filt        = ft8_sv_filt;
+      nr          = ft8_sv_nr;
+      nb_enable   = ft8_sv_nb;
+      comp_enable = ft8_sv_comp;
+      pre_emph    = ft8_sv_pre;
+      eq_low      = ft8_sv_eql;
+      eq_high     = ft8_sv_eqh;
+      tx_lowcut   = ft8_sv_lc;
+      agc         = ft8_sv_agc;
+      att         = ft8_sv_att;
+      att2        = ft8_sv_att2;
+    }
+    ft8_prev = ft8_vox;
+  }
+
 #ifdef VOX_ENABLE
-  if((vox) && ((mode == LSB) || (mode == USB))) { // If VOX enabled (and in LSB/USB mode), then take mic samples
-                                                  // and feed ssb processing function, to derive amplitude, and
-                                                  // potentially detect cross vox_threshold to detect a TX or RX
-                                                  // event: this is expressed in tx variable
-    if(!vox_tx) {                                 // VOX not active
+  if((vox) && ((mode == LSB) || (mode == USB) || (mode == AM) ||
+               (mode == FM))) { // If VOX enabled (and in LSB/USB/AM/FM mode), then take mic samples
+                                // and feed ssb processing function, to derive amplitude, and
+                                // potentially detect cross vox_threshold to detect a TX or RX
+                                // event: this is expressed in tx variable
+    if(!vox_tx) {               // VOX not active
 #  ifdef MULTI_ADC
       if(vox_sample++ == 16) {                                         // take N sample, then process
         ssb(((int16_t)(vox_adc / 16) - (512 - AF_BIAS)) >> MIC_ATTEN); // sampling mic
@@ -6705,15 +6800,8 @@ void loop() {
                   // //paramAction(UPDATE, mode, NULL, F("Mode"), mode_label, 0,
                   // _N(mode_label), true);
 
-#ifdef SHOW_USB_LSB_CW_ONLY
-          if(mode > CW) // Mode button only cycles USB, LSB, CW only
-            mode = LSB; // Skip all other modes (only LSB (0), USB, CW(2))
-#else
-          if(mode > AM) // G8RDI mod - *changed from > CW so that all modes can
-                        // be accessed
-            mode = LSB; // *now shows all / skip all other modes (only LSB (0),
-                        // USB, CW(2))
-#endif
+          if(mode > AM)
+            mode = LSB;
         } else {
           if(mode > AM) // G8RDI mod - allow changedModeCAT to change to any
                         // mode including AM
@@ -6974,8 +7062,8 @@ void loop() {
       // both VFO A & B:- if (rit) { rit = 0; stepsize = prev_stepsize[mode ==
       // CW]; }
 
-      if(mode > CW)
-        mode = LSB; // skip all other modes (only LSB (0), USB, CW(2))
+      if(mode > AM)
+        mode = LSB;
 #  ifdef MODE_CHANGE_RESETS
       if(mode != CW)
         stepsize = STEP_1k;
@@ -7041,7 +7129,8 @@ void loop() {
     // noInterrupts();
     uint8_t f = freq / 1000000UL;
     set_lpf(f);
-    bandval      = (f > 32)   ? 10
+    bandval      = (f > 32)   ? 11
+                   : (f > 27) ? 10
                    : (f > 26) ? 9
                    : (f > 22) ? 8
                    : (f > 20) ? 7
@@ -7078,7 +7167,7 @@ void loop() {
       freq_last[bandval - 1] = vfo[vfosel % 2];     // = freq;
       mode_last[bandval - 1] = vfomode[vfosel % 2]; // = mode;
 
-      if((bandval - 1) <= 8)
+      if((bandval - 1) <= 9)
         paramAction(SAVE, BAND_DATA0 + (bandval - 1)); // Save updated data only
       else
         error_code = 1; // Flag error

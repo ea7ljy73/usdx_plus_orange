@@ -1,5 +1,7 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
+**Versión:** 6.00 — AM/FM Desbloqueados y Banda de 11m
+
 **uSDX Plus Orange** es un fork refactorizado y mejorado del firmware uSDX, basado en usdxWHITEBUTTONS v4.00d de GW8RDI y el proyecto original uSDX de PE1NNZ. Incluye mejoras significativas en calidad de TX, corrección de errores y funciones de protección, manteniendo compatibilidad total con ATMEGA328P (2KB RAM, 32KB flash).
 
 > **⚠️ Después de flashear:** Apaga la radio, vuelve a encender mientras mantienes pulsado el **botón del encoder (menú)** para resetear la EEPROM a valores de fábrica. Esto asegura que todos los ajustes se inicialicen correctamente.
@@ -39,6 +41,13 @@
 
 ## Mejoras específicas del fork:
 
+### v6.00 — AM/FM Desbloqueados y Banda de 11m:
+- **Modos AM y FM completamente habilitados** — el botón de modo ahora cicla los 5 modos (LSB, USB, CW, FM, AM); el código de demodulación (RX) y modulación (TX) existente ya era correcto, simplemente desbloqueado
+- **Banda de 11m (27.0 MHz)** — añadida como banda separada entre 12m y 10m, compartiendo el mismo relé de LPF; la detección automática divide en 28 MHz
+- **VOX extendido** — la transmisión operada por voz ahora funciona también en AM y FM
+- **Layout EEPROM actualizado** — se añadió BAND_DATA9 para persistencia de la banda de 10m; v6.00 resetea la EEPROM en el primer arranque
+- **Modo FT8 VOX** (Menú 3.11): Perfil FT8 con un toque y auto-restauración — fuerza USB, VOX ON, ancho de banda completo, desactiva todo procesamiento de audio para formas de onda digitales limpias
+
 ### Mejoras en TX:
 - **Coeficiente de filtro de audio GW8RDI** (K=2) — restaura el cuerpo/calidez en las frecuencias bajas del audio SSB transmitido
 - **LUT de linealización de PA no lineal** — curva de ley de potencia para mejorar la linealidad SSB
@@ -68,6 +77,9 @@
 
 ### Corrección de errores:
 - **Overflow AGC** — cast a `int32_t` evita overflow int16 en señales fuertes
+- **Demodulación FM corregida** — reemplazado `ac=((ac+i)*zi)` (algoritmo incorrecto, variable local sin inicializar) por discriminador de producto cruzado con normalización (mismo algoritmo probado del firmware legacy)
+- **Bloqueador DC AM corregido** — diferenciador int16_t propenso a overflow reemplazado por promedio DC int32_t con α=1/64
+- **`_arctan3` mejorado** — aproximación cuadrática en lugar de lineal (usado por `FM_ARCTAN`)
 - **Scope CESSB** — `#define` cambiado a `const uint16_t` local para evitar fuga de macro
 - **QUAD eliminado** — bloques `#ifdef QUAD` removidos (dañaban la calidad TX SSB según comentarios del propio autor); el phase unwrapping maneja transiciones de fase grandes correctamente
 - Compresor de voz desactivado por defecto (causaba mala calidad de audio SSB)
@@ -87,7 +99,7 @@
 - **Filtros DSP: 4000, 2500, 1700, 500, 200, 100, 50 Hz de ancho de banda**
 - **Funciones DSP: Control Automático de Ganancia (AGC), Reducción de Ruido (NR), Transmisión por Voz (VOX), Atenuadores de RX (ATT), Filtro de ruido de TX, Control de drive TX, Control de volumen, Medidor dBm/S.**
 - Supresión de banda lateral opuesta/portadora **TX: mejor que -45dBc, IMD3 (dos tonos) -33dBc, RX: mejor que -50dBc**
-- **Soporte multibanda**, sintonizable continuamente de **160m a 10m** (y de 20kHz..99MHz con pérdida de rendimiento)
+- **Soporte multibanda**, sintonizable continuamente de **160m a 10m** (y de 20kHz..99MHz con pérdida de rendimiento) — incluyendo la banda CB de 11m
 - **Código abierto**, construido con Arduino IDE; permite experimentación, nuevas funciones y contribuciones vía Github
 - **VOX** software que puede usarse como **Break-In completo rápido** (operación QSK y semi-QSK)
 - **Diseño de hardware simple** con solo **4 CI, un microcontrolador y pocos transistores/pasivos**
@@ -105,6 +117,7 @@
 ## Historial de revisiones:
 | Rev. | Fecha | Características |
 |------|-------|-----------------|
+| [v6.00] | 2026-06-16 | Modos AM/FM desbloqueados, banda 11m, VOX extendido, 7 correcciones/optimizaciones, modo FT8 VOX (3.11). |
 | [v5.17+] | 2024 | Rama `dev` — Corrección de errores TX, coeficiente de filtro K=2, LUT de PA no lineal, rampa de envolvente TX, limitador suave MAX_DP, SWR foldback, predistorsión AM-PM, desvanecimiento de portadora |
 | [v5.16] | 2024 | Línea base TX legacy, corrección de menú |
 | [v5.15] | 2024 | Eliminación de DEBUG ifdef, corrección de navegación de menú |
