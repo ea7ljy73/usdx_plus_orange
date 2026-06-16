@@ -56,6 +56,12 @@
 #### Tabla de Predistorsión AM-PM
 - **Mejora**: Expandida de 64 a 256 entradas (resolución completa de 8 bits). Cada valor de amplitud tiene su propio coeficiente de predistorsión, proporcionando corrección de fase más suave y mejor pureza espectral TX. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
 
+#### Nueva Función: Modo FT8 VOX (Menú 3.11)
+- **Perfil FT8 con un toque**: El ítem de menú `FT8 VOX` (ON/OFF) configura instantáneamente el uSDX para operación óptima en modos digitales FT8/FT4/JS8
+- Al activar: fuerza modo USB, VOX ON (umbral sensible=4), TX Drive=5, filtro Full, AGC=Slow. Desactiva todo procesamiento de audio (compresor, EQ, pre-énfasis, NR, NB, lowcut, ATT, ATT2) para formas de onda digitales limpias
+- **Auto-restauración**: Al desactivar, todos los ajustes previos se restauran exactamente — sin necesidad de reconfiguración manual entre operación de voz y digital
+- La frecuencia NO es modificada por FT8 VOX; sintoniza tu frecuencia FT8 deseada de forma independiente (`usdx_plus_orange.ino:6138`)
+
 **Memoria:** 30.760 bytes flash (95%), 1.342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM respecto a v5.17
 
 ### ROADMAP: 9 ítems implementados

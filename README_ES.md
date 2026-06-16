@@ -46,6 +46,7 @@
 - **Banda de 11m (27.0 MHz)** — añadida como banda separada entre 12m y 10m, compartiendo el mismo relé de LPF; la detección automática divide en 28 MHz
 - **VOX extendido** — la transmisión operada por voz ahora funciona también en AM y FM
 - **Layout EEPROM actualizado** — se añadió BAND_DATA9 para persistencia de la banda de 10m; v6.00 resetea la EEPROM en el primer arranque
+- **Modo FT8 VOX** (Menú 3.11): Perfil FT8 con un toque y auto-restauración — fuerza USB, VOX ON, ancho de banda completo, desactiva todo procesamiento de audio para formas de onda digitales limpias
 
 ### Mejoras en TX:
 - **Coeficiente de filtro de audio GW8RDI** (K=2) — restaura el cuerpo/calidez en las frecuencias bajas del audio SSB transmitido
@@ -113,7 +114,7 @@
 ## Historial de revisiones:
 | Rev. | Fecha | Características |
 |------|-------|-----------------|
-| [v6.00] | 2026-06-16 | Modos AM/FM desbloqueados, banda de 11m añadida, VOX extendido a AM/FM, layout EEPROM actualizado. |
+| [v6.00] | 2026-06-16 | Modos AM/FM desbloqueados, banda 11m, VOX extendido, 7 correcciones/optimizaciones, modo FT8 VOX (3.11). |
 | [v5.17+] | 2024 | Rama `dev` — Corrección de errores TX, coeficiente de filtro K=2, LUT de PA no lineal, rampa de envolvente TX, limitador suave MAX_DP, SWR foldback, predistorsión AM-PM, desvanecimiento de portadora |
 | [v5.16] | 2024 | Línea base TX legacy, corrección de menú |
 | [v5.15] | 2024 | Eliminación de DEBUG ifdef, corrección de navegación de menú |

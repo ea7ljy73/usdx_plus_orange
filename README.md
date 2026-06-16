@@ -48,6 +48,7 @@
 - **EEPROM layout updated** — BAND_DATA9 added for 10m band persistence; v6.00 resets EEPROM on first boot
 - **Bug fixes**: FM de-emphasis τ corrected (>>3→>>1), AM_BASE 32→85, Fast AGC gain recovery added
 - **Optimizations**: FM deviation limiter, compressor attack/release timing, AM-PM LUT 64→256, TX lowcut corners adjusted
+- **FT8 VOX mode** (Menu 3.11): One-touch FT8 profile with auto-restore — forces USB, VOX ON, full bandwidth, disables all audio processing for clean digital waveforms
 
 ### TX enhancements:
 - **GW8RDI audio filter coefficient** (K=2) — restores low-end body/warmth to transmitted SSB audio
@@ -136,7 +137,7 @@ PE1NNZ
 ## Revision History:
 | Rev.  | Date       | Features                                                            |
 | ----- | ---------- | ------------------------------------------------------------------- |
-| [v6.00] | 2026-06-16 | AM/FM modes unlocked, 11m band added, VOX extended to AM/FM, EEPROM layout updated. |
+| [v6.00] | 2026-06-16 | AM/FM modes unlocked, 11m band added, VOX extended, 7 bug fixes/optimizations, FT8 VOX profile mode (3.11). |
 | [latest] | 2021-10-23 | Features for final version. |
 | [R1.02w] | 2021-08-23 | TX quality improvements, better robustness against RFI feedback, fix VOX issue, single encoder/button-only control option, 16MHz Arduino Uno/Nano support, CW Messages. Key click reduction, TX bandwidth control, OLED fixes, CAT remote control features including RX audio streaming. CW support, TS480 CAT support, RX quality improvments, semi-QSK, PA PTT out with TX-delay, VFO-A/B/RIT, LPF switching, backlight saving, 160m. |
 | [R1.02j] | 2020-10-10 | Integrated SDR receiver, CW decoder, DSP filters, AGC, NR, ATT, experimental modes CW, AM, FM, quick menu, persistent settings, improved SSB TX quality. LCD fix, selectable CW pitch. |

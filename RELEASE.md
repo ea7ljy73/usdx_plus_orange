@@ -56,6 +56,12 @@
 #### AM-PM Predistortion LUT
 - **Improvement**: Expanded from 64 to 256 entries (full 8-bit amplitude resolution). Each amplitude value now has its own predistortion coefficient, providing smoother phase correction and better TX spectral purity. (+192 bytes PROGMEM) (`usdx_plus_orange.ino:2123`)
 
+#### New Feature: FT8 VOX Mode (Menu 3.11)
+- **One-touch FT8 profile**: Menu item `FT8 VOX` (ON/OFF) instantly configures the uSDX for optimal FT8/FT4/JS8 digital mode operation
+- When enabled: forces USB mode, VOX ON (sensitive threshold=4), TX Drive=5, Full filter bandwidth, AGC=Slow. Disables all audio processing (compressor, EQ, pre-emphasis, NR, NB, lowcut, ATT, ATT2) for clean digital waveforms
+- **Auto-restore**: When disabled, all previous settings are restored exactly as they were — no manual reconfiguration needed between voice and digital operation
+- Frequency is NOT changed by FT8 VOX; tune to your desired FT8 frequency independently (`usdx_plus_orange.ino:6138`)
+
 
 
 **Memory:** 30,760 bytes flash (95%), 1,342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM vs v5.17

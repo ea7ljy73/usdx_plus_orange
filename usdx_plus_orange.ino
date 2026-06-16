@@ -1872,7 +1872,12 @@ const uint8_t dsp_cap = SDR;
 #endif
 
 enum mode_t { LSB, USB, CW, FM, AM };
-volatile uint8_t  mode       = USB;
+volatile uint8_t  mode     = USB;
+volatile uint8_t  ft8_vox  = 0; // FT8 VOX mode profile (menu on/off)
+uint8_t           ft8_prev = 0; // previous state for change detection
+uint8_t           ft8_sv_mode, ft8_sv_vox, ft8_sv_vt, ft8_sv_drv, ft8_sv_filt;
+uint8_t           ft8_sv_nr, ft8_sv_nb, ft8_sv_comp, ft8_sv_pre, ft8_sv_lc, ft8_sv_agc, ft8_sv_att, ft8_sv_att2;
+int8_t            ft8_sv_eql, ft8_sv_eqh; // FT8 saved settings
 volatile uint16_t numSamples = 0;
 
 volatile uint8_t tx   = 0;
@@ -4718,7 +4723,7 @@ const char* const agc_label[] PROGMEM = {"OFF", "Fast", "Slow"};
 
 #define _N(a) sizeof(a) / sizeof(a[0])
 
-#define N_PARAMS 48 // number of (visible) parameters; BACKL(0xA1) is always the last visible
+#define N_PARAMS 49 // number of (visible) parameters; BACKL(0xA1) is always the last visible
 // IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
 // only)
 // I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-9(10)]
@@ -4760,9 +4765,11 @@ enum params_t {
   EQ_BASS,
   EQ_TREBLE,
   TX_LOWCUT,
+  FT8VOX,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
+
   CWMSG3,
   CWMSG4,
   CWMSG5,
@@ -4835,6 +4842,7 @@ enum params_t {
   EQ_BASS,
   EQ_TREBLE,
   TX_LOWCUT,
+  FT8VOX,
   CWINTERVAL,
   CWMSG1,
   CWMSG2,
@@ -5030,6 +5038,9 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
     static const char* const lowcut_label[] PROGMEM = {"Off", "100", "200", "400"};
     paramAction(action, tx_lowcut, 0x3A, F("TX LoCut"), lowcut_label, 0, 3, false);
   } break;
+  case FT8VOX:
+    paramAction(action, ft8_vox, 0x3B, F("FT8 VOX"), offon_label, 0, 1, false);
+    break;
 #ifdef CW_MESSAGE
   case CWINTERVAL:
     paramAction(action, cw_msg_interval, 0x41, F("CQ Interval"), NULL, 0, 60, false);
@@ -6124,6 +6135,59 @@ static int32_t _step = 0;
 // SECTION 14: MAIN LOOP
 //=========================================================================
 void loop() {
+  // FT8 VOX profile management
+  if(ft8_vox != ft8_prev) {
+    if(ft8_vox) { // FT8 VOX enabled: save settings and apply optimal FT8 config
+      ft8_sv_mode = mode;
+      ft8_sv_vox  = vox;
+      ft8_sv_vt   = vox_thresh;
+      ft8_sv_drv  = drive;
+      ft8_sv_filt = filt;
+      ft8_sv_nr   = nr;
+      ft8_sv_nb   = nb_enable;
+      ft8_sv_comp = comp_enable;
+      ft8_sv_pre  = pre_emph;
+      ft8_sv_eql  = eq_low;
+      ft8_sv_eqh  = eq_high;
+      ft8_sv_lc   = tx_lowcut;
+      ft8_sv_agc  = agc;
+      ft8_sv_att  = att;
+      ft8_sv_att2 = att2;
+      mode        = USB;
+      vox         = 1;
+      vox_thresh  = 4;
+      drive       = 5;
+      filt        = 0;
+      nr          = 0;
+      nb_enable   = 0;
+      comp_enable = 0;
+      pre_emph    = 0;
+      eq_low      = 0;
+      eq_high     = 0;
+      tx_lowcut   = 0;
+      agc         = 2;
+      att         = 0;
+      att2        = 0;
+    } else { // FT8 VOX disabled: restore previous settings
+      mode        = ft8_sv_mode;
+      vox         = ft8_sv_vox;
+      vox_thresh  = ft8_sv_vt;
+      drive       = ft8_sv_drv;
+      filt        = ft8_sv_filt;
+      nr          = ft8_sv_nr;
+      nb_enable   = ft8_sv_nb;
+      comp_enable = ft8_sv_comp;
+      pre_emph    = ft8_sv_pre;
+      eq_low      = ft8_sv_eql;
+      eq_high     = ft8_sv_eqh;
+      tx_lowcut   = ft8_sv_lc;
+      agc         = ft8_sv_agc;
+      att         = ft8_sv_att;
+      att2        = ft8_sv_att2;
+    }
+    ft8_prev = ft8_vox;
+  }
+
 #ifdef VOX_ENABLE
   if((vox) && ((mode == LSB) || (mode == USB) || (mode == AM) ||
                (mode == FM))) { // If VOX enabled (and in LSB/USB/AM/FM mode), then take mic samples
