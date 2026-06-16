@@ -1,13 +1,37 @@
 # uSDX Plus Orange - Notas de Release
 
-**Versión:** 5.18
+**Versión:** 6.00
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Plataforma:** ATMEGA328P @ 20MHz
 **Autor:** EA7LJY - Julian
 
 ---
 
-## v5.18 - Revisión RX/TX y Optimización de Código
+## v6.00 - AM/FM Desbloqueados y Soporte para Banda de 11m
+
+**Memoria:** Pendiente
+
+### Cambios Principales
+
+#### Modos AM y FM Completamente Habilitados
+- **Selección de modo desbloqueada** — se eliminó `SHOW_USB_LSB_CW_ONLY`; el botón de modo ahora cicla LSB→USB→CW→**FM**→**AM**→LSB (ciclo completo de 5 modos)
+- **RX/TX de AM/FM existentes desbloqueados** — la demodulación (RX) y modulación (TX) de AM/FM ya estaban implementadas en el código pero bloqueadas; ahora accesibles desde el menú (1.2 Mode) y el botón derecho
+- **VOX extendido** — transmisión operada por voz ahora funciona en AM y FM (antes solo LSB/USB)
+- **Sin cambios en filtros, SI5351 ni DSP** — el `magn(i,q)` para AM y el `_arctan3(q,i)`+diferenciador para FM funcionan correctamente con la arquitectura SDR actual
+
+#### Banda de 11m Añadida
+- **Nueva banda**: 11m (27.0 MHz / banda CB) insertada entre 12m (24.9 MHz) y 10m (28.0 MHz)
+- **Auto-detección**: umbrales de frecuencia divididos en 28 MHz — sintonizar 26-28 MHz selecciona 11m, 28-32 MHz selecciona 10m
+- **LPF**: 11m y 10m comparten el mismo relé de LPF (IO1_3, f > 26 MHz) — sin cambios de hardware
+- **Etiquetas de banda**: el menú ahora muestra: 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, **11m**, **10m**
+- **EEPROM**: se añadió BAND_DATA9 (banda 10 → 10m); I_PARAMS actualizado 5+5+9→5+5+10; N_ALL_PARAMS 67→68
+- **VERSION incrementada** a "6.00" — fuerza reseteo de EEPROM en el primer arranque
+
+#### Notas de Compatibilidad
+- ⚠️ **Reseteo de EEPROM requerido** — el primer arranque tras flashear v6.00 reseteará todos los ajustes a valores de fábrica (mantener pulsado el botón del encoder durante el encendido si el reseteo automático no se activa)
+- Todos los modos existentes (LSB, USB, CW) están **100% sin cambios** — ningún filtro, frecuencia o comportamiento DSP ha sido modificado
+- El modo por defecto para bandas 1-4 sigue siendo LSB; bandas 5-10 por defecto USB
+- 6m (50 MHz) permanece en el índice 11 (bandval=11, excluido del ciclo de bandas del menú)
 
 **Memoria:** 30.760 bytes flash (95%), 1.342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM respecto a v5.17
 
@@ -381,4 +405,4 @@ arduino-cli compile -b arduino:avr:uno
 **Descargo de responsabilidad:** No me responsabilizo de los daños que este firmware pueda causar en los dispositivos en los que se pueda aplicar. Úsalo bajo tu propia responsabilidad.
 
 **Autor:** EA7LJY - Julian
-**Fecha:** Febrero 2026
+**Fecha:** Junio 2026

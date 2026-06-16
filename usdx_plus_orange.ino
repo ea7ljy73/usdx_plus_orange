@@ -7,7 +7,7 @@
 //=========================================================================
 
 // Version for display
-#define VERSION "5.18"
+#define VERSION "6.00"
 
 // *** Use of this modified software is at the users risk ***  PLEASE READ THE
 // INSTRUCTIONS AVAILABLE IN THE FB GROUP "uSDX uSDR Radios" or uSDX Group IO
@@ -4239,7 +4239,7 @@ void calibrate_iq() {
 uint8_t prev_bandval = 3;
 uint8_t bandval      = 3;
 
-#define N_BANDS 11 // See KEEP_BAND_DATA if more than 9 bands required.
+#define N_BANDS 12 // See KEEP_BAND_DATA if more than 9 bands required.
 
 #ifdef CW_FREQS_QRP
 uint32_t band[N_BANDS] = {/*472000,*/ 1810000,
@@ -4251,6 +4251,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1810000,
                           18096000,
                           21060000,
                           24906000,
+                          27000000,
                           28060000,
                           50096000 /*, 70160000, 144060000*/}; // CW QRP freqs
 #else
@@ -4264,6 +4265,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1818000,
                           18085000,
                           21058000,
                           24908000,
+                          27000000,
                           28058000,
                           50058000 /*, 70158000, 144058000*/}; // CW FISTS freqs
 #  else
@@ -4276,6 +4278,7 @@ uint32_t band[N_BANDS] = {/*472000,*/ 1840000,
                           18100000,
                           21074000,
                           24915000,
+                          27000000,
                           28074000,
                           50313000 /*, 70101000, 144125000*/}; // FT8 freqs
 #  endif
@@ -4672,7 +4675,7 @@ const int filt_val[N_FILT + 1] = {3000, 2700, 2200, 1800, 400, 150, 80, 30}; // 
 #endif
 
 const char* const band_label[N_BANDS] PROGMEM = {"x",   "80m", "60m", "40m", "30m", "20m",
-                                                 "17m", "15m", "12m", "10m", "x"};
+                                                 "17m", "15m", "12m", "11m", "10m", "x"};
 const char* const stepsize_label[] PROGMEM    = {"10M", "1M", ".5M", "100k", "10k", "1k", ".5k", "100", "10", "1"};
 const char* const att_label[] PROGMEM         = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
 #ifdef CLOCK
@@ -4698,9 +4701,9 @@ const char* const agc_label[] PROGMEM = {"OFF", "Fast", "Slow"};
 #define N_PARAMS 48 // number of (visible) parameters; BACKL(0xA1) is always the last visible
 // IMPORTANT: Both enum params_t definitions below MUST have the SAME order (except BAND_DATA which is KEEP_BAND_DATA
 // only)
-// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-8(9)]
+// I_PARAMS = invisible params after N_PARAMS: FREQA-VERS(5) + SR-PARAM_C(5) [+ BAND_DATA0-9(10)]
 #ifdef KEEP_BAND_DATA
-#  define I_PARAMS 5 + 5 + 9 // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-8(9) = 19; N_ALL=66
+#  define I_PARAMS 5 + 5 + 10 // FREQA-VERS(5) + SR-PARAM_C(5) + BAND_DATA0-9(10) = 20; N_ALL=68
 enum params_t {
   _NULL,
   VOLUME,
@@ -4770,6 +4773,7 @@ enum params_t {
   BAND_DATA6,
   BAND_DATA7,
   BAND_DATA8,
+  BAND_DATA9,
   ALL = 0xff
 };
 #else
@@ -5128,7 +5132,7 @@ int8_t paramAction(uint8_t action, uint8_t id = ALL) // list of parameters
 
   default:
 #ifdef KEEP_BAND_DATA // 230401 freed 258 bytes!!
-    if(id >= BAND_DATA0 && id <= BAND_DATA8) {
+    if(id >= BAND_DATA0 && id <= BAND_DATA9) {
       uint8_t is = id - BAND_DATA0;
       paramAction(action, freq_last[is], 0, NULL, NULL, 0, 0, false);
       paramAction(action, mode_last[is], 0, NULL, NULL, 0, 0, false);
@@ -5998,7 +6002,8 @@ void setup() {
   memset(freq_last, 0, sizeof(freq_last)); // G8RDI mod - set to default
   // memset(mode_last, LSB, sizeof(mode_last));
   mode_last[0] = mode_last[1] = mode_last[2] = mode_last[3] = LSB;
-  mode_last[4] = mode_last[5] = mode_last[6] = mode_last[7] = mode_last[8] = USB; // Set for up to 9 bands only xyzzy
+  mode_last[4] = mode_last[5] = mode_last[6] = mode_last[7] = mode_last[8] = mode_last[9] =
+      USB; // Set for up to 10 bands
 #endif
 
   // Load parameters from EEPROM, reset to factory defaults when stored values
@@ -6100,11 +6105,12 @@ static int32_t _step = 0;
 //=========================================================================
 void loop() {
 #ifdef VOX_ENABLE
-  if((vox) && ((mode == LSB) || (mode == USB))) { // If VOX enabled (and in LSB/USB mode), then take mic samples
-                                                  // and feed ssb processing function, to derive amplitude, and
-                                                  // potentially detect cross vox_threshold to detect a TX or RX
-                                                  // event: this is expressed in tx variable
-    if(!vox_tx) {                                 // VOX not active
+  if((vox) && ((mode == LSB) || (mode == USB) || (mode == AM) ||
+               (mode == FM))) { // If VOX enabled (and in LSB/USB/AM/FM mode), then take mic samples
+                                // and feed ssb processing function, to derive amplitude, and
+                                // potentially detect cross vox_threshold to detect a TX or RX
+                                // event: this is expressed in tx variable
+    if(!vox_tx) {               // VOX not active
 #  ifdef MULTI_ADC
       if(vox_sample++ == 16) {                                         // take N sample, then process
         ssb(((int16_t)(vox_adc / 16) - (512 - AF_BIAS)) >> MIC_ATTEN); // sampling mic
@@ -6705,15 +6711,8 @@ void loop() {
                   // //paramAction(UPDATE, mode, NULL, F("Mode"), mode_label, 0,
                   // _N(mode_label), true);
 
-#ifdef SHOW_USB_LSB_CW_ONLY
-          if(mode > CW) // Mode button only cycles USB, LSB, CW only
-            mode = LSB; // Skip all other modes (only LSB (0), USB, CW(2))
-#else
-          if(mode > AM) // G8RDI mod - *changed from > CW so that all modes can
-                        // be accessed
-            mode = LSB; // *now shows all / skip all other modes (only LSB (0),
-                        // USB, CW(2))
-#endif
+          if(mode > AM)
+            mode = LSB;
         } else {
           if(mode > AM) // G8RDI mod - allow changedModeCAT to change to any
                         // mode including AM
@@ -6974,8 +6973,8 @@ void loop() {
       // both VFO A & B:- if (rit) { rit = 0; stepsize = prev_stepsize[mode ==
       // CW]; }
 
-      if(mode > CW)
-        mode = LSB; // skip all other modes (only LSB (0), USB, CW(2))
+      if(mode > AM)
+        mode = LSB;
 #  ifdef MODE_CHANGE_RESETS
       if(mode != CW)
         stepsize = STEP_1k;
@@ -7041,7 +7040,8 @@ void loop() {
     // noInterrupts();
     uint8_t f = freq / 1000000UL;
     set_lpf(f);
-    bandval      = (f > 32)   ? 10
+    bandval      = (f > 32)   ? 11
+                   : (f > 27) ? 10
                    : (f > 26) ? 9
                    : (f > 22) ? 8
                    : (f > 20) ? 7
@@ -7078,7 +7078,7 @@ void loop() {
       freq_last[bandval - 1] = vfo[vfosel % 2];     // = freq;
       mode_last[bandval - 1] = vfomode[vfosel % 2]; // = mode;
 
-      if((bandval - 1) <= 8)
+      if((bandval - 1) <= 9)
         paramAction(SAVE, BAND_DATA0 + (bandval - 1)); // Save updated data only
       else
         error_code = 1; // Flag error

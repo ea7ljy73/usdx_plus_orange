@@ -1,13 +1,39 @@
 # uSDX Plus Orange - Release Notes
 
-**Version:** 5.18
+**Version:** 6.00
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)
 **Platform:** ATMEGA328P @ 20MHz
 **Author:** EA7LJY - Julian
 
 ---
 
-## v5.18 - RX/TX Overhaul & Code Optimization
+## v6.00 - AM/FM Unlocked & 11m Band Support
+
+**Memory:** TBD
+
+### Major Changes
+
+#### AM & FM Modes Fully Enabled
+- **Mode selection unblocked** — `SHOW_USB_LSB_CW_ONLY` removed; mode button now cycles LSB→USB→CW→**FM**→**AM**→LSB (full 5-mode cycle)
+- **Existing AM/FM RX/TX unlocked** — AM/FM demodulation (RX) and modulation (TX) were already implemented in the codebase but blocked from user selection; now fully accessible via menu (1.2 Mode) and right-button cycling
+- **VOX extended** — voice-operated TX now works in AM and FM modes (previously LSB/USB only)
+- **No filters, SI5351, or DSP changes needed** — existing `magn(i,q)` for AM and `_arctan3(q,i)`+differentiator for FM work correctly with current SDR architecture
+
+#### 11m Band Added
+- **New band**: 11m (27.0 MHz / CB band) inserted between 12m (24.9 MHz) and 10m (28.0 MHz)
+- **Auto-detection**: frequency thresholds split at 28 MHz — tuning 26-28 MHz selects 11m, 28-32 MHz selects 10m
+- **LPF**: 11m and 10m share the same LPF relay (IO1_3, f > 26 MHz) — no hardware changes needed
+- **Band labels**: menu now shows: 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, **11m**, **10m**
+- **EEPROM**: BAND_DATA9 added (band 10 → 10m); I_PARAMS updated 5+5+9→5+5+10; N_ALL_PARAMS 67→68
+- **VERSION bumped** to "6.00" — forces EEPROM reset on first boot (required for new band data layout)
+
+#### Compatibility Notes
+- ⚠️ **EEPROM reset required** — first boot after flashing v6.00 will reset all settings to defaults (hold encoder button during power-on if automatic reset doesn't trigger)
+- All existing modes (LSB, USB, CW) are **100% unchanged** — no filters, frequencies, or DSP behavior modified
+- Default mode for bands 1-4 remains LSB; bands 5-10 default to USB
+- 6m (50 MHz) remains at index 11 (bandval=11, excluded from menu cycling)
+
+
 
 **Memory:** 30,760 bytes flash (95%), 1,342 bytes RAM (65%) — −394 bytes flash, −124 bytes RAM vs v5.17
 
@@ -381,4 +407,4 @@ arduino-cli compile -b arduino:avr:uno
 **Disclaimer:** I am not responsible for any damage this firmware may cause to devices on which it can be applied. Use at your own risk.
 
 **Author:** EA7LJY - Julian
-**Date:** February 2026
+**Date:** June 2026

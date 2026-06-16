@@ -39,6 +39,12 @@
 
 ## Mejoras específicas del fork:
 
+### v6.00 — AM/FM Desbloqueados y Banda de 11m:
+- **Modos AM y FM completamente habilitados** — el botón de modo ahora cicla los 5 modos (LSB, USB, CW, FM, AM); el código de demodulación (RX) y modulación (TX) existente ya era correcto, simplemente desbloqueado
+- **Banda de 11m (27.0 MHz)** — añadida como banda separada entre 12m y 10m, compartiendo el mismo relé de LPF; la detección automática divide en 28 MHz
+- **VOX extendido** — la transmisión operada por voz ahora funciona también en AM y FM
+- **Layout EEPROM actualizado** — se añadió BAND_DATA9 para persistencia de la banda de 10m; v6.00 resetea la EEPROM en el primer arranque
+
 ### Mejoras en TX:
 - **Coeficiente de filtro de audio GW8RDI** (K=2) — restaura el cuerpo/calidez en las frecuencias bajas del audio SSB transmitido
 - **LUT de linealización de PA no lineal** — curva de ley de potencia para mejorar la linealidad SSB
@@ -87,7 +93,7 @@
 - **Filtros DSP: 4000, 2500, 1700, 500, 200, 100, 50 Hz de ancho de banda**
 - **Funciones DSP: Control Automático de Ganancia (AGC), Reducción de Ruido (NR), Transmisión por Voz (VOX), Atenuadores de RX (ATT), Filtro de ruido de TX, Control de drive TX, Control de volumen, Medidor dBm/S.**
 - Supresión de banda lateral opuesta/portadora **TX: mejor que -45dBc, IMD3 (dos tonos) -33dBc, RX: mejor que -50dBc**
-- **Soporte multibanda**, sintonizable continuamente de **160m a 10m** (y de 20kHz..99MHz con pérdida de rendimiento)
+- **Soporte multibanda**, sintonizable continuamente de **160m a 10m** (y de 20kHz..99MHz con pérdida de rendimiento) — incluyendo la banda CB de 11m
 - **Código abierto**, construido con Arduino IDE; permite experimentación, nuevas funciones y contribuciones vía Github
 - **VOX** software que puede usarse como **Break-In completo rápido** (operación QSK y semi-QSK)
 - **Diseño de hardware simple** con solo **4 CI, un microcontrolador y pocos transistores/pasivos**
@@ -105,6 +111,7 @@
 ## Historial de revisiones:
 | Rev. | Fecha | Características |
 |------|-------|-----------------|
+| [v6.00] | 2026-06-16 | Modos AM/FM desbloqueados, banda de 11m añadida, VOX extendido a AM/FM, layout EEPROM actualizado. |
 | [v5.17+] | 2024 | Rama `dev` — Corrección de errores TX, coeficiente de filtro K=2, LUT de PA no lineal, rampa de envolvente TX, limitador suave MAX_DP, SWR foldback, predistorsión AM-PM, desvanecimiento de portadora |
 | [v5.16] | 2024 | Línea base TX legacy, corrección de menú |
 | [v5.15] | 2024 | Eliminación de DEBUG ifdef, corrección de navegación de menú |

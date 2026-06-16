@@ -39,6 +39,12 @@
 
 ## Fork-specific improvements:
 
+### v6.00 — AM/FM Unlocked & 11m Band:
+- **AM & FM modes fully enabled** — mode button now cycles all 5 modes (LSB, USB, CW, FM, AM); existing demodulation (RX) and modulation (TX) code was already correct, simply unblocked
+- **11m band (27.0 MHz)** — added as a separate band between 12m and 10m, sharing the same LPF relay; band detection auto-splits at 28 MHz
+- **VOX extended** — voice-operated transmission now works in AM and FM too
+- **EEPROM layout updated** — BAND_DATA9 added for 10m band persistence; v6.00 resets EEPROM on first boot
+
 ### TX enhancements:
 - **GW8RDI audio filter coefficient** (K=2) — restores low-end body/warmth to transmitted SSB audio
 - **Non-linear PA linearization LUT** — power-law curve for improved SSB linearity
@@ -104,7 +110,7 @@ PE1NNZ
 - **DSP filters: 4000, 2500, 1700, 500, 200, 100, 50 Hz passband**
 - **DSP features: Automatic Gain Control (AGC), Noise-reduction (NR), Voice-triggered Xmit (VOX), RX Attentuators (ATT), TX noise gate, TX drive control, Volume control, dBm/S-meter.**
 - SSB opposite side-band/carrier supression **Transmit: better than -45dBc, IMD3 (two-tone) -33dBc, Receive: better than -50dBc**
-- **Multiband** support, continuously tunable through bands **160m-10m** (and from 20kHz..99MHz with loss in performance)
+- **Multiband** support, continuously tunable through bands **160m-10m** (and from 20kHz..99MHz with loss in performance) — including 11m CB band
 - **Open source** firmware, built with Arduino IDE; allows experimentation, new features can be added, contributions can be shared via Github, software-complexity: 2000 lines of code
 - Software-based **VOX** that can be used as **fast Full Break-In** (QSK and semi-QSK operation) or assist in RX/TX switching for operating digital modes (no CAT or PTT interface required), external PTT output/PA control with **TX-delay**
 - **Simple hardware design** with only **4 ICs, a micro-controller and few transistors/passives**
@@ -126,6 +132,7 @@ PE1NNZ
 ## Revision History:
 | Rev.  | Date       | Features                                                            |
 | ----- | ---------- | ------------------------------------------------------------------- |
+| [v6.00] | 2026-06-16 | AM/FM modes unlocked, 11m band added, VOX extended to AM/FM, EEPROM layout updated. |
 | [latest] | 2021-10-23 | Features for final version. |
 | [R1.02w] | 2021-08-23 | TX quality improvements, better robustness against RFI feedback, fix VOX issue, single encoder/button-only control option, 16MHz Arduino Uno/Nano support, CW Messages. Key click reduction, TX bandwidth control, OLED fixes, CAT remote control features including RX audio streaming. CW support, TS480 CAT support, RX quality improvments, semi-QSK, PA PTT out with TX-delay, VFO-A/B/RIT, LPF switching, backlight saving, 160m. |
 | [R1.02j] | 2020-10-10 | Integrated SDR receiver, CW decoder, DSP filters, AGC, NR, ATT, experimental modes CW, AM, FM, quick menu, persistent settings, improved SSB TX quality. LCD fix, selectable CW pitch. |
@@ -165,7 +172,7 @@ Currently, the following functions have been assigned to shortcut buttons (L=lef
 | 1.1 Volume          | Audio level (0..16) & power-off/on (turn left) | **E +turn** |
 | 1.2 Mode            | Modulation (LSB, USB, CW, AM, FM) | **R** |
 | 1.3 Filter BW       | Audio passband (Full, 300..3000, 300..2400, 300..1800, 500, 200, 100, 50 Hz), this also controls the SSB TX BW. | **R double** |
-| 1.4 Band            | Band-switch to pre-defined CW/FT8 freqs (80,60,40,30,20,17,15,12,10,6m) | **E double** |
+| 1.4 Band            | Band-switch to pre-defined CW/FT8 freqs (80,60,40,30,20,17,15,12,11,10,6m) | **E double** |
 | 1.5 Tuning Rate     | Tuning step size 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 | **E or E long** |
 | 1.6 VFO Mode        | Selects different VFO, or RX/TX split-VFO (A, B, Split) | **2x R long** |
 | 1.7 RIT             | RX in transit (ON, OFF) | **R long** |

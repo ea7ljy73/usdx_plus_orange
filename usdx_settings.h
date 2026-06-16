@@ -75,8 +75,8 @@
 // =============================================================================
 // MEMORY / BAND FEATURES
 // =============================================================================
-#define KEEP_BAND_DATA 1       // Remember frequency and mode per band
-#define SHOW_USB_LSB_CW_ONLY 1 // Menu cycles only LSB / USB / CW modes
+#define KEEP_BAND_DATA 1 // Remember frequency and mode per band
+// #define SHOW_USB_LSB_CW_ONLY 1 // Menu cycles only LSB / USB / CW modes
 
 // =============================================================================
 // CAT INTERFACE
