@@ -1971,58 +1971,7 @@ volatile uint8_t tx_lowcut = 0; // TX low-cut HPF: 0=off, 1=100Hz, 2=200Hz, 3=40
 volatile uint8_t pre_emph  = 0; // disabled by default - less delay
 static int16_t   pre_z1    = 0;
 
-inline int16_t voice_compressor(int16_t in) {
-  if(!comp_enable)
-    return in;
-
-  int16_t abs_in = in < 0 ? -in : in;
-
-  if(abs_in > comp_envelope)
-    comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms (smoother on plosives)
-  else
-    comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms (more natural)
-
-  if(comp_envelope > comp_threshold) {
-    int16_t excess = comp_envelope - comp_threshold;
-    if(excess < 64)
-      excess = ((int16_t)((uint16_t)excess * excess)) >> 6; // soft knee: quadratic transition
-    int16_t gain = comp_threshold + (excess >> 1);          // ratio 2:1
-    gain += comp_threshold >> 1;                            // make-up gain
-    if(gain > comp_envelope)
-      gain = comp_envelope;
-    return (int16_t)((int32_t)in * gain / comp_envelope);
-  }
-  return in;
-}
-
-inline int16_t mic_eq(int16_t in) {
-  if(eq_low == 0 && eq_high == 0)
-    return in;
-  eq_low_iir += (in - eq_low_iir) >> 4;   // LPF ~75Hz: bass component
-  eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: reference for HPF
-  int16_t hi = in - eq_high_iir;          // HPF ~760Hz: real treble/presence
-  return in + ((eq_low_iir * eq_low) >> 3) + ((hi * eq_high) >> 3);
-}
-
 inline int16_t ssb(int16_t in) {
-  if(comp_enable)
-    in = voice_compressor(in);
-  if(eq_low != 0 || eq_high != 0)
-    in = mic_eq(in);
-
-  if(tx_lowcut > 0) {
-    static int16_t tx_hpf_z1 = 0;
-    uint8_t        k         = 5 - tx_lowcut; // 50Hz→4, 100Hz→3, 200Hz→2
-    int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
-    tx_hpf_z1                = lp;
-    in                       = in - lp;
-  }
-  if(pre_emph > 0) {
-    int16_t pre_in = in;
-    in             = in + ((pre_in - pre_z1) * pre_emph);
-    pre_z1         = pre_in;
-  }
-
   static int16_t dc, z1;
 
   int16_t        i, q;
@@ -2031,136 +1980,57 @@ inline int16_t ssb(int16_t in) {
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
-    // #define DIG_MODE  // optimization for digital modes: for super flat TX
-    // spectrum, (only down < 100Hz to cut-off DC components)
-#  ifdef DIG_MODE
-  int16_t ac = in;
-  dc         = (ac + (7) * dc) / (7 + 1); // hpf: slow average
-  v[15]      = (ac - dc) / 2;             // hpf (dc decoupling)  (-6dB gain to compensate for DC-noise)
-#  else
-  int16_t ac = in * 2;                    //   6dB gain (justified since lpf/hpf is losing -3dB)
-  ac         = ac + z1;                   // lpf
-  z1         = (in - (2) * z1) / (2 + 1); // lpf: notch at Fs/2 (GW8RDI mod)
-
-  // smooth clipping limiter (matching legacy)
-  if(ac > 250) {
-    ac = 250 + ((ac - 250) >> 1);
-  } else if(ac < -250) {
-    ac = -250 - ((-250 - ac) >> 1);
-  }
-
-  dc    = (ac + (2) * dc) / (2 + 1); // hpf: slow average
-  v[15] = (ac - dc);                 // hpf (dc decoupling)
-#  endif        // DIG_MODE
-  i = v[7] * 2; // 6dB gain for i, q  (to prevent quanitization issues in hilbert
-                // transformer and phase calculation, corrected for magnitude calc)
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 64 +
-      (v[6] - v[8]); // Hilbert transform, 40dB side-band rejection in
-                     // 400..1900Hz (@4kSPS) when used in image-rejection
-                     // scenario; (Hilbert transform require 5 additional bits)
-
-  uint16_t _amp = magn(i / 2, q / 2); // -6dB gain (correction)
-#else                                 // !MORE_MIC_GAIN
-  // dc += (in - dc) / 2;       // fast moving average
-  dc         = (in + dc) >> 1; // average
-  int16_t ac = (in - dc);      // DC decoupling
-  // v[15] = ac;// - z1;        // high-pass (emphasis) filter
-  v[15] = (ac + z1); // / 2;           // low-pass filter with notch at Fs/2
-  z1    = ac;
-
-  i = v[7];
-  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 128 +
-      (v[6] - v[8]) / 2; // Hilbert transform, 40dB side-band rejection in 400..1900Hz
-                         // (@4kSPS) when used in image-rejection scenario; (Hilbert
-                         // transform require 5 additional bits) [legacy coeff 15]
-
+  int16_t ac = in * 2;
+  ac         = ac + z1;
+  z1         = (in - (2) * z1) / (2 + 1);
+  dc         = (ac + (2) * dc) / (2 + 1);
+  v[15]      = (ac - dc);
+  i          = v[7] * 2;
+  q          = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) +
+        (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >>
+       6) +
+      (v[6] - v[8]);
+  uint16_t _amp = magn(i / 2, q / 2);
+#else
+  dc         = (in + dc) >> 1;
+  int16_t ac = (in - dc);
+  v[15]      = (ac + z1);
+  z1         = ac;
+  i          = v[7];
+  q          = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) +
+        (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + (((v[6] - v[8]) << 4) - (v[6] - v[8]))) >>
+       7) +
+      ((v[6] - v[8]) >> 1);
   uint16_t _amp = magn(i, q);
-#endif                                // MORE_MIC_GAIN
-
-  const uint16_t CESSB_THRESH = 200;
-  if(_amp > CESSB_THRESH) {
-    uint16_t reduced = CESSB_THRESH + ((_amp - CESSB_THRESH) >> 2);
-    if(_amp) {
-      i = (int16_t)((int32_t)i * reduced / _amp);
-      q = (int16_t)((int32_t)q * reduced / _amp);
-    }
-    _amp = reduced;
-  }
-
+#endif
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
   _vox(_amp > vox_thresh);
 #else
   if(vox)
     _vox(_amp > vox_thresh);
 #endif
-  //_amp = (_amp > vox_thresh) ? _amp : 0;   // vox_thresh = 4 is a good setting
-  // if(!(_amp > vox_thresh)) return 0;
-
-  uint8_t eff_drive = drive;
-#ifdef SWR_METER
-  if(swr_fold)
-    eff_drive = (drive > 2) ? drive - 2 : 0; // reduce drive by 2 during foldback
-#endif
-  _amp = _amp << eff_drive;
-  _amp = ((_amp > 255) || (eff_drive == 8)) ? 255 : _amp; // clip or when drive=8 use max output
-  if(tx_ramp < 255) {
-    tx_ramp += 32;
-    if(tx_ramp > 255)
-      tx_ramp = 255;
-    _amp = ((uint16_t)_amp * tx_ramp) >> 8;
-  }
-  amp = (tx) ? lut[_amp] : 0;
+  _amp = _amp << (drive);
+  _amp = ((_amp > 255) || (drive == 8)) ? 255 : _amp;
+  amp  = (tx) ? lut[_amp] : 0;
 
   static int16_t prev_phase;
   int16_t        phase = arctan3(q, i);
 
-  int16_t dp = phase - prev_phase; // phase difference and restriction
-  // Phase unwrapping: take shortest path around unit circle
-  if(dp > (_UA / 2))
-    dp -= _UA;
-  else if(dp < -(_UA / 2))
-    dp += _UA;
+  int16_t dp = phase - prev_phase;
   prev_phase = phase;
 
-  // AM-PM predistortion: compensate class-E PA phase shift vs amplitude
-  if(_amp > 0) {
-    static const uint8_t am_pm_tab[] PROGMEM = {
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,
-        1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
-        2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-        3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,
-        4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,
-        7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  10, 10, 10, 10, 10, 10, 10,
-        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
-    };
-    dp -= (int16_t)pgm_read_byte_near(&am_pm_tab[_amp]);
-  }
+  if(dp < 0)
+    dp = dp + _UA;
 #ifdef MAX_DP
-  if(dp > MAX_DP) { // dp should be less than half unit-angle in order to keep
-                    // frequencies below F_SAMP_TX/2
-    int16_t excess = dp - MAX_DP;
-    dp             = MAX_DP + (excess >> 2); // 4:1 soft compression
-    prev_phase     = phase - (excess - (excess >> 2));
-  } else if(dp < -MAX_DP) {
-    int16_t excess = -dp - MAX_DP;
-    dp             = -MAX_DP - (excess >> 2);
-    prev_phase     = phase - (-excess + (excess >> 2));
+  if(dp > MAX_DP) {
+    prev_phase = phase - (dp - MAX_DP);
+    dp         = MAX_DP;
   }
 #endif
   if(mode == USB)
-    return dp * (_F_SAMP_TX / _UA); // calculate frequency-difference based on phase-difference
+    return dp * (_F_SAMP_TX / _UA);
   else
     return dp * (-_F_SAMP_TX / _UA);
-}
-
-volatile uint8_t deemph_fm = 0;
-static int16_t   deemph_z1 = 0;
-
-inline int16_t fm_deemph(int16_t in) {
-  if(!deemph_fm)
-    return in;
-  deemph_z1 = deemph_z1 + ((in - deemph_z1) >> 1); // NBFM 150µs de-emphasis (fc≈860Hz@7812Hz)
-  return deemph_z1;
 }
 
 //=========================================================================
@@ -2177,52 +2047,52 @@ volatile int8_t volume = 12;
 static int16_t _adc;
 void           dsp_tx() { // jitter dependent things first
 #ifdef MULTI_ADC          // SSB with multiple ADC conversions:
-  int16_t adc;            // current ADC sample 10-bits analog input, NOTE: first ADCL,
-                          // then ADCH
+  int16_t adc;            // current ADC sample 10-bits analog input, NOTE: first ADCL, then ADCH
   adc = ADC;
   ADCSRA |= (1 << ADSC);
-  si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over
-                                // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                // then PLL-loopfilter probably needs 50us to stabalize)
-  OCR1BL = amp;                 // amplitude after phase (legacy order: ~30-50us misalignment)
+  si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over 731kbit/s I2C (transfer takes 64/731 =
+                                // 88us, then PLL-loopfilter probably needs 50us to stabalize)
+#  ifdef QUAD
+#    ifdef TX_CLK0_CLK1
+  si5351.SendRegister(16, (quad) ? 0x1f : 0x0f); // Invert/non-invert CLK0 in case of a huge phase-change
+  si5351.SendRegister(17, (quad) ? 0x1f : 0x0f); // Invert/non-invert CLK1 in case of a huge phase-change
+#    else
+  si5351.SendRegister(18, (quad) ? 0x1f : 0x0f); // Invert/non-invert CLK2 in case of a huge phase-change
+#    endif
+#  endif        // QUAD
+  OCR1BL = amp; // submit amplitude to PWM register (takes about 1/32125 = 31us+/-31us to propagate) ->
+                // amplitude-phase-alignment error is about 30-50us
   adc += ADC;
-  ADCSRA |= (1 << ADSC);               // causes RFI on QCX-SSB units (not on units with direct
-                                       // biasing); ENABLE this line when using direct biasing!!
-  int16_t df = ssb(_adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
-                                       // out by periodic frequency shifts)
+  ADCSRA |= (1 << ADSC); // causes RFI on QCX-SSB units (not on units with direct biasing); ENABLE this line when
+                         // using direct biasing!!
+  int16_t df =
+      ssb(_adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier out by periodic frequency shifts)
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency
-                             // shift and carrier frequency
+  si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency shift and carrier frequency
   adc += ADC;
   ADCSRA |= (1 << ADSC);
-  //_adc = (adc/4 - 512);
 #  define AF_BIAS 32
-  _adc = (adc >> 2) - (512 - AF_BIAS); // now make sure that we keep a postive bias offset
-                                       // (to prevent the phase swapping 180 degrees and
-                                       // potentially causing negative feedback (RFI)
-#else                                  // SSB with single ADC conversion:
-  ADCSRA |= (1 << ADSC);              // start next ADC conversion (trigger ADC interrupt if
-                                      // ADIE flag is set)
-  si5351.SendPLLRegisterBulk();       // submit frequency registers to SI5351 over
-                                      // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                      // then PLL-loopfilter probably needs 50us to stabalize)
-  OCR1BL      = amp;                  // amplitude after phase (legacy order: ~30-50us misalignment)
-  int16_t adc = ADC - 512;            // current ADC sample 10-bits analog input, NOTE:
-                                      // first ADCL, then ADCH
-  int16_t df = ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier
-                                      // out by periodic frequency shifts)
-  si5351.freq_calc_fast(df);          // calculate SI5351 registers based on frequency
-                                      // shift and carrier frequency
+  _adc = (adc / 4 - (512 - AF_BIAS)); // now make sure that we keep a postive bias offset (to prevent the phase
+                                      // swapping 180 degrees and potentially causing negative feedback (RFI)
+#else                                 // SSB with single ADC conversion:
+  ADCSRA |= (1 << ADSC);        // start next ADC conversion (trigger ADC interrupt if ADIE flag is set)
+  si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over 731kbit/s I2C (transfer takes 64/731 =
+                                // 88us, then PLL-loopfilter probably needs 50us to stabalize)
+  OCR1BL = amp;                 // submit amplitude to PWM register (takes about 1/32125 = 31us+/-31us to propagate) ->
+                                // amplitude-phase-alignment error is about 30-50us
+  int16_t adc = ADC - 512;      // current ADC sample 10-bits analog input, NOTE: first ADCL, then ADCH
+  int16_t df =
+      ssb(adc >> MIC_ATTEN); // convert analog input into phase-shifts (carrier out by periodic frequency shifts)
+  si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency shift and carrier frequency
 #endif
 
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
   if(tx == 1) {
-    OCR1BL = ((uint16_t)OCR1BL * 3) >> 4; // fade to ~18% before killing CLK
+    OCR1BL = 0;
     si5351.SendRegister(SI_CLK_OE, TX0RX0);
   } // disable carrier
   if(tx == 255) {
-    OCR1BL = 1; // start from near-zero (ramp-up via tx_ramp handles the rest)
     si5351.SendRegister(SI_CLK_OE, TX1RX0);
   } // enable carrier
 #endif
@@ -2297,33 +2167,20 @@ void dsp_tx_am() {         // jitter dependent things first
   // static int16_t dc;
   // dc += (in - dc) / 2;
   // in = in - dc;     // DC decoupling
-#define AM_BASE 85 // carrier at 33% for symmetrical ±200% modulation
+#define AM_BASE 32
   in  = max(0, min(255, (in + AM_BASE)));
-  amp = in; // lut[in];
+  amp = in;
 }
 
-void dsp_tx_fm() {              // jitter dependent things first
-  ADCSRA |= (1 << ADSC);        // start next ADC conversion (trigger ADC interrupt if
-                                // ADIE flag is set)
-  OCR1BL = lut[255];            // submit amplitude to PWM register (actually this is done
-                                // in advance (about 140us) of phase-change, so that
-                                // phase-delays in key-shaping circuit filter can settle)
-  si5351.SendPLLRegisterBulk(); // submit frequency registers to SI5351 over
-                                // 731kbit/s I2C (transfer takes 64/731 = 88us,
-                                // then PLL-loopfilter probably needs 50us to
-                                // stabalize)
-  int16_t adc = ADC - 512;      // current ADC sample 10-bits analog input, NOTE:
-                                // first ADCL, then ADCH
-  int16_t in = (adc >> MIC_ATTEN);
-  in         = in << (drive);
-  int16_t df = in;
-  // FM deviation soft limiter: prevent adjacent-channel QRM
-  if(df > 5000)
-    df = 5000 + ((df - 5000) >> 2);
-  else if(df < -5000)
-    df = -5000 + ((df + 5000) >> 2);
-  si5351.freq_calc_fast(df); // calculate SI5351 registers based on frequency
-                             // shift and carrier frequency
+void dsp_tx_fm() {
+  ADCSRA |= (1 << ADSC);
+  OCR1BL = lut[255];
+  si5351.SendPLLRegisterBulk();
+  int16_t adc = ADC - 512;
+  int16_t in  = (adc >> MIC_ATTEN);
+  in          = in << (drive);
+  int16_t df  = in;
+  si5351.freq_calc_fast(df);
 }
 
 //=========================================================================
@@ -3107,10 +2964,6 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
     acm = -id - qh; // SSB & CW: inverting I and Q helps dampening a
                     // feedback-loop between PWM out and ADC inputs
     ac = acm;
-  }
-
-  if(mode == FM && deemph_fm) {
-    ac = fm_deemph(ac);
   }
 
   static uint8_t absavg256cnt;
@@ -4014,8 +3867,6 @@ void switch_rxtx(uint8_t tx_enable) {
     }
 #endif // TX_DELAY
   tx = tx_enable;
-  if(tx_enable)
-    tx_ramp = 0; // reset TX envelope ramp
 
 #ifdef CAT_XO_CMD
   if(rit || tit)
@@ -6046,9 +5897,9 @@ void setup() {
   // are from a different version
   paramAction(LOAD, VERS);
 
-  if((eeprom_version != get_version_id()) || _digitalRead(BUTTONS)) { // EEPROM clean: if rotary-key pressed or version
-                                                                      // signature in EEPROM does NOT corresponds with
-                                                                      // this firmware
+  if((eeprom_version != get_version_id()) || _digitalRead(BUTTONS)) { // EEPROM clean: if rotary-key pressed or
+                                                                      // version signature in EEPROM does NOT
+                                                                      // corresponds with this firmware
     eeprom_version = get_version_id();
 
     // G8RDI mod - reduce EEPROM writes
