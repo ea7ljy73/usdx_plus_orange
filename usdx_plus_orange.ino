@@ -1877,6 +1877,7 @@ volatile uint8_t  ft8_vox  = 0; // FT8 VOX mode profile (menu on/off)
 uint8_t           ft8_prev = 0; // previous state for change detection
 uint8_t           ft8_sv_mode, ft8_sv_vox, ft8_sv_vt, ft8_sv_drv, ft8_sv_filt;
 uint8_t           ft8_sv_nr, ft8_sv_nb, ft8_sv_comp, ft8_sv_pre, ft8_sv_lc, ft8_sv_agc, ft8_sv_att, ft8_sv_att2;
+bool              ft8_sv_dig;
 int8_t            ft8_sv_eql, ft8_sv_eqh; // FT8 saved settings
 volatile uint16_t numSamples = 0;
 
@@ -1958,6 +1959,8 @@ static uint8_t error_code  = 0;     // G8RDI mod - added LCD error code
 
 volatile uint8_t tx_ramp = 255; // TX envelope ramp: 0=start, 255=full
 
+volatile bool dig_mode = false;
+
 volatile uint8_t  comp_enable    = 0;   // disabled by default (matching legacy behavior)
 volatile uint16_t comp_threshold = 128; // threshold for smoother compression
 volatile int16_t  comp_envelope  = 0;
@@ -1980,13 +1983,20 @@ inline int16_t ssb(int16_t in) {
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
-  int16_t ac = in * 2;
-  ac         = ac + z1;
-  z1         = (in - (2) * z1) / (2 + 1);
-  dc         = (ac + (2) * dc) / (2 + 1);
-  v[15]      = (ac - dc);
-  i          = v[7] * 2;
-  q          = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) +
+  int16_t ac;
+  if(dig_mode) {
+    ac    = in;
+    dc    = (ac + (7) * dc) / (7 + 1);
+    v[15] = (ac - dc) / 2;
+  } else {
+    ac    = in * 2;
+    ac    = ac + z1;
+    z1    = (in - (2) * z1) / (2 + 1);
+    dc    = (ac + (2) * dc) / (2 + 1);
+    v[15] = (ac - dc);
+  }
+  i = v[7] * 2;
+  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) +
         (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >>
        6) +
       (v[6] - v[8]);
@@ -2114,15 +2124,12 @@ volatile uint8_t  cw_tone  = 1;
 const uint32_t    tones[]  = {F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000,
                               F_MCU * 700ULL / 20000000}; // G8RDI todo ULL to divisor?
 
-volatile int8_t p_sin = 0;       // initialized with A*sin(0) = 0
-volatile int8_t n_cos = 448 / 4; // initialized with A*cos(t) = A
-inline void     process_minsky() // Minsky circle sample [source:
-                                 // https://www.cl.cam.ac.uk/~am21/hakmemc.html, ITEM 149]:
-                                 // p_sin+=n_cos*2*PI*f/fs; n_cos-=p_sin*2*PI*f/fs;
-{
-  int8_t alpha127 = tones[cw_tone] /*cw_offset*/ * 798 / _F_SAMP_TX; // alpha = f_tone * 2 * pi / fs
-  p_sin += alpha127 * n_cos / 127;
-  n_cos -= alpha127 * p_sin / 127;
+volatile int16_t p_sin = 0;     // initialized with A*sin(0) = 0
+volatile int16_t n_cos = 20000; // initialized with A*cos(t) = A
+inline void      process_minsky() {
+  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
+  p_sin += (int32_t)alpha * n_cos >> 8;
+  n_cos -= (int32_t)alpha * p_sin >> 8;
 }
 
 // CW Key-click shaping, ramping up/down amplitude with sample-interval of 60us.
@@ -2148,9 +2155,9 @@ void dsp_tx_cw() { // jitter dependent things first
   process_minsky();
 
 #ifdef CW_VOLUME
-  OCR1AL = (tone_vol ? (p_sin >> (16 - tone_vol)) : 0) + 128; // xyzzy G8RDI mod - added for CW tone volume
+  OCR1AL = (tone_vol ? (p_sin >> (8 + (16 - tone_vol))) : 0) + 128;
 #else
-  OCR1AL = (p_sin >> (16 - volume)) + 128;
+  OCR1AL = (p_sin >> (8 + (16 - volume))) + 128;
 #endif
 }
 
@@ -6009,6 +6016,8 @@ void loop() {
       ft8_sv_agc  = agc;
       ft8_sv_att  = att;
       ft8_sv_att2 = att2;
+      ft8_sv_dig  = dig_mode;
+      dig_mode    = true;
       mode        = USB;
       vox         = 1;
       vox_thresh  = 4;
@@ -6040,6 +6049,7 @@ void loop() {
       agc         = ft8_sv_agc;
       att         = ft8_sv_att;
       att2        = ft8_sv_att2;
+      dig_mode    = ft8_sv_dig;
     }
     ft8_prev = ft8_vox;
   }
