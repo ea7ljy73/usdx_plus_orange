@@ -2534,7 +2534,7 @@ volatile uint8_t agc = 2;
 #else
 volatile uint8_t agc = 1;
 #endif
-volatile uint8_t nr        = 0; // v5.12: default off for SSB voice
+volatile uint8_t nr        = 2; // default on (noise reduction)
 volatile uint8_t nb_enable = 0; // noise blanker off by default
 volatile uint8_t att       = 0;
 volatile uint8_t att2      = 2; // Minimum att2 increased, to prevent numeric overflow on strong signals
@@ -5550,7 +5550,7 @@ void fatal(const __FlashStringHelper* msg, int value = 0, char unit = '\0') {
 // refresh LUT based on pwm_min, pwm_max
 void build_lut() {
   for(uint16_t i = 0; i != 256; i++) // refresh LUT based on pwm_min, pwm_max
-    lut[i] = pwm_min + (uint8_t)((uint32_t)(pwm_max - pwm_min) * (uint32_t)i * i / 65025);
+    lut[i] = (i * (pwm_max - pwm_min)) / 255 + pwm_min;
 }
 
 #ifdef SWR_METER
