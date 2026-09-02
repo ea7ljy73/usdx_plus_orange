@@ -180,7 +180,8 @@ inline void       do_tune() {
 
 void display_vfo() {
   lcd.setCursor(0, 0);
-  lcd.print(mode == 1 ? "USB" : (mode == 0 ? "LSB" : (mode == 2 ? "CW " : "X  ")));
+  const char* ml = (mode == LSB) ? "LSB" : (mode == USB) ? "USB" : (mode == CW) ? "CW " : (mode == FM) ? "FM " : "AM ";
+  lcd.print(ml);
   lcd.print(" ");
   char b[11];
   ltoa(freq, b, 10);
@@ -189,8 +190,18 @@ void display_vfo() {
   lcd.setCursor(0, 1);
   lcd.print(tx ? "TX" : "RX");
   lcd.print(" ");
-  lcd.print(att);
-  lcd.print("              ");
+  // CW decoder line takes priority during RX CW
+  if(mode == CW && cw_line[15] != ' ') {
+    lcd.print(cw_line);
+  } else {
+    // S-meter: 6-segment bar from _absavg256 (SDR signal strength)
+    int16_t db = (int16_t)(_absavg256 >> 10);
+    db         = (db < 0) ? 0 : (db > 6) ? 6 : db;
+    lcd.print("S");
+    for(int8_t s = 0; s < 6; s++)
+      lcd.print((s < db) ? '=' : '-');
+  }
+  lcd.print("               ");
 }
 
 void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
