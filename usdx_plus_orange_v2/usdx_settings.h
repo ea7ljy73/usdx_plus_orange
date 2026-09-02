@@ -42,6 +42,9 @@ enum mode_t { LSB, USB, CW, FM, AM };
 #define CAT 1
 #define CAT_FAST 1
 
+// CW TX carrier offset (Hz) from dial frequency; 0 = transmit on dial.
+#define CW_OFFSET 0
+
 #define KEEP_BAND_DATA 1
 
 #define PTX 11

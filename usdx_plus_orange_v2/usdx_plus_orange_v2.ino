@@ -284,7 +284,7 @@ void setup() {
   initPins();
   Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
   delay(100);
-  lcd.begin(16, 2);
+  lcd.begin(16, 4); // Init LCD (uSDX WHITE_BUTTONS = 16x4)
   lcd.print("uSDX v2");
   delay(300);
 
@@ -317,6 +317,18 @@ void setup() {
   rx_state = 0;
   timer2_start(F_SAMP_RX);
   display_vfo();
+
+#if KEYER
+  // wait until DIH/DAH/PTT released to prevent TX on startup (v1 parity)
+  {
+    unsigned long key_wait_until = millis() + 2000;
+    while(digitalRead(DIT) == LOW || ((mode == CW && keyer_mode != 2) && digitalRead(DAH) == LOW)) {
+      wdt_reset();
+      if(millis() > key_wait_until)
+        break; // don't hang forever if a paddle is held
+    }
+  }
+#endif
 }
 
 void loop() {
@@ -339,8 +351,8 @@ void loop() {
   if(!(millis() % 500) && menu.state == MENU_MAIN)
     display_vfo(); // periodic refresh
 
-  // --- VOX based RX/TX ---
-  if(vox && (mode == LSB || mode == USB)) {
+  // --- VOX based RX/TX (SSB + AM/FM, like v1) ---
+  if(vox && (mode == LSB || mode == USB || mode == AM || mode == FM)) {
     if(!vox_tx) {
       static uint8_t  vox_sample;
       static uint16_t vox_adc;
