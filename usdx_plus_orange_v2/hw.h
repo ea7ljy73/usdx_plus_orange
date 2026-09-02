@@ -157,6 +157,23 @@ void switch_rxtx(uint8_t tx_enable) {
   OCR2A = ((F_CPU / 64) / ((tx_enable) ? F_SAMP_TX : F_SAMP_RX)) - 1;
 
   if(tx_enable) {
+    // enable KEY_OUT PWM early while PLL settles
+    TCCR1A |= (1 << COM1B1); // KEY_OUT PWM (PA amplitude signal)
+    if(practice) {
+      digitalWrite(RX, LOW);                  // TX (disable RX)
+      si5351.SendRegister(SI_CLK_OE, TX0RX0); // RF disabled (practice)
+    } else {
+      digitalWrite(RX, LOW);   // TX (disable RX)
+      digitalWrite(PTX, HIGH); // TX (enable TX)
+      if(mode == CW) {
+        si5351.freq_calc_fast(-CW_OFFSET); // TX at carrier for CW
+        si5351.SendPLLRegisterBulk();
+      } else {
+        si5351.freq_calc_fast(0); // restore base freq (undo RIT offset)
+        si5351.SendPLLRegisterBulk();
+      }
+      si5351.SendRegister(SI_CLK_OE, TX1RX0); // enable RF output on CLK0
+    }
     switch(mode) {
     case USB:
     case LSB:
@@ -173,25 +190,34 @@ void switch_rxtx(uint8_t tx_enable) {
       func_ptr = dsp_tx_fm;
       break;
     }
-    digitalWrite(RX, LOW);   // disable RX
-    digitalWrite(PTX, HIGH); // enable TX
-    TCCR1A |= (1 << COM1A1); // enable SIDETONE PWM
-    TCCR1A |= (1 << COM1B1); // enable KEY_OUT PWM (PA amplitude signal)
-    TIMSK2 |= (1 << OCIE2A); // enable timer ISR
+    OCR1AL = 0x80; // SIDETONE at 2.5V
+    if(mode != CW)
+      TCCR1A &= ~(1 << COM1A1); // disable SIDETONE PWM (SSB TX interference)
+    else
+      TCCR1A |= (1 << COM1A1); // CW needs SIDETONE
+    TIMSK2 |= (1 << OCIE2A);   // enable timer ISR
     return;
   }
 
   // RX
-  TCCR1A &= ~(1 << COM1A1); // disable SIDETONE PWM
-  TCCR1A &= ~(1 << COM1B1); // disable KEY_OUT PWM
+#ifdef KEY_CLICK
+  if(OCR1BL != 0) { // ramp down amplitude to prevent key clicks
+    for(uint16_t i = 0; i != 31; i++) {
+      OCR1BL = lut[pgm_read_byte_near(&ramp[i])];
+      delayMicroseconds(60);
+    }
+  }
+#endif
+  TCCR1A |= (1 << COM1A1);  // enable SIDETONE
+  TCCR1A &= ~(1 << COM1B1); // disable KEY_OUT PWM (prevents RX interference)
   digitalWrite(KEY_OUT, LOW);
   OCR1BL = 0;
   si5351.SendRegister(SI_CLK_OE, TX0RX1);
   digitalWrite(RX, !(att == 2)); // RX (enable unless ATT full)
   digitalWrite(PTX, LOW);        // disable TX
-  si5351.freq_calc_fast(0);
-  si5351.SendPLLRegisterBulk(); // restore RX frequency
-  func_ptr = sdr_rx_00;         // RX ISR start phase
+  si5351.freq_calc_fast(0);      // restore RX base frequency
+  si5351.SendPLLRegisterBulk();  // restore PLL RX frequency
+  func_ptr = sdr_rx_00;          // RX ISR start phase
   rx_state = 0;
   TIMSK2 |= (1 << OCIE2A);
 }
