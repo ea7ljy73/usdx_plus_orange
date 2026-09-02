@@ -32,7 +32,7 @@ volatile uint8_t vox_tx   = 0; // VOX currently transmitting
 
 // --- CW ---
 volatile uint8_t keyer_speed = 25; // wpm
-volatile uint8_t keyer_mode  = 0;  // 0=IambicA, 1=IambicB, 2=Straight
+volatile uint8_t keyer_mode  = 2;  // 2=SINGLE (v1 default), 0=IambicA, 1=IambicB
 
 // --- CAT ---
 volatile uint8_t prev_mode      = 0;
@@ -241,29 +241,36 @@ inline void       do_tune() {
 }
 
 void display_vfo() {
+  // Line 0: frequency with thousands separators + mode + V/R (16x2 layout)
   lcd.setCursor(0, 0);
+  int32_t f     = freq;
+  int32_t scale = 10000000;
+  for(; scale != 1; f %= scale, scale /= 10) {
+    lcd.print((int)abs(f / scale));
+    if(scale == 1000 || scale == 1000000)
+      lcd.print(','); // thousands separator
+  }
+  lcd.print(' ');
   const char* ml = (mode == LSB) ? "LSB" : (mode == USB) ? "USB" : (mode == CW) ? "CW " : (mode == FM) ? "FM " : "AM ";
   lcd.print(ml);
-  lcd.print(" ");
-  char b[11];
-  ltoa(freq, b, 10);
-  lcd.print(b);
-  lcd.print("               ");
+  lcd.setCursor(14, 0);
+  lcd.print(tx ? 'T' : ((vox) ? 'V' : 'R'));
+  // Line 1: CW decoder (RX CW) or S-meter bar + side info
   lcd.setCursor(0, 1);
-  lcd.print(tx ? "TX" : "RX");
-  lcd.print(" ");
-  // CW decoder line takes priority during RX CW
   if(mode == CW && cw_line[15] != ' ') {
     lcd.print(cw_line);
   } else {
-    // S-meter: 6-segment bar from _absavg256 (SDR signal strength)
     int16_t db = (int16_t)(_absavg256 >> 10);
     db         = (db < 0) ? 0 : (db > 6) ? 6 : db;
     lcd.print("S");
     for(int8_t s = 0; s < 6; s++)
       lcd.print((s < db) ? '=' : '-');
+    lcd.print("AGC");
+    lcd.print((int)agc + 1);
+    lcd.print(" V");
+    lcd.print((int)volume);
   }
-  lcd.print("               ");
+  lcd.print("        ");
 }
 
 void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
@@ -271,6 +278,10 @@ void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
 void setup() {
   vfo_apply_freq = vfo_hw_apply;
   digitalWrite(KEY_OUT, LOW);
+  // Backlight sanity test FIRST: if the MCU runs at all, PD3 goes HIGH before
+  // anything else. Tells us software vs hardware immediately.
+  DDRD |= 0x08;  // PD3 (backlight) output
+  PORTD |= 0x08; // backlight ON
   si5351.powerDown();
 
   MCUSR = 0;
@@ -284,7 +295,8 @@ void setup() {
   initPins();
   Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
   delay(100);
-  lcd.begin(16, 4); // Init LCD (uSDX WHITE_BUTTONS = 16x4)
+  lcd.begin(16, 4); // Init LCD (mismo que legacy: los params no afectan en el
+                    // driver, que fija 0x28=2-line)
   lcd.print("uSDX v2");
   delay(300);
 
@@ -341,8 +353,16 @@ void loop() {
 
   // --- CW keyer & decoder ---
   if(mode == CW) {
-    if(keyer_mode != 2) // not straight key
-      keyer_process();
+    if(keyer_mode == 2) { // SINGLE: key straight from paddle/DIT (v1 gating)
+      if(!digitalRead(DIT)) {
+        if(!tx)
+          switch_rxtx(1); // paddle closed -> TX
+      } else if(tx) {
+        switch_rxtx(0); // paddle released -> RX
+      }
+    } else {
+      keyer_process(); // iambic A/B
+    }
     if(cwdec && !tx) {
       cw_decode(); // decoder during RX (keyed state fed by switch_rxtx)
     }
