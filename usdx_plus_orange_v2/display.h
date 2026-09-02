@@ -142,6 +142,38 @@ public:
 extern LCD lcd; // instance defined in main .ino
 
 // ---------------------------------------------------------------------------
+// Button(s) read by ADC (usdx-legazy parity): BUTTONS=A3/ADC3 feeds a resistor
+// divider for Left/Right/Encoder push. Using digitalRead here is WRONG (the pin
+// is analog) - the menu used digitalRead(BUTTONS) which made it appear pressed.
+//   thresholds (5V ref):  <4.2V => BL (left), <4.8V => BR (right), else BE
+// Returns: 0=left, 1=right, 2=encoder-push/no-press-detectable, 3=unpressed(at 5V)
+// ---------------------------------------------------------------------------
+uint16_t analogSafeRead(int8_t adcpin) { // returns 10-bit ADC value
+  noInterrupts();
+  uint8_t oldmux = ADMUX;
+  ADMUX          = (adcpin & 0x0f) | (1 << REFS0);
+  for(; !(ADCSRA & (1 << ADIF));)
+    ; // wait pending conv
+  delayMicroseconds(16);
+  ADCSRA |= (1 << ADSC);
+  for(; !(ADCSRA & (1 << ADIF));)
+    ;
+  ADMUX      = oldmux;
+  uint16_t v = ADC;
+  interrupts();
+  return v;
+}
+
+uint8_t read_button() {
+  uint16_t v = analogSafeRead(BUTTONS);
+  if(v < (uint16_t)(4.2 * 1024.0 / 5.0))
+    return 0; // BL pressed
+  if(v < (uint16_t)(4.8 * 1024.0 / 5.0))
+    return 1; // BR pressed
+  return 2;   // BE / unmapped (idle)
+}
+
+// ---------------------------------------------------------------------------
 // Rotary encoder (PCINT2 on ROT_A/ROT_B)
 // ---------------------------------------------------------------------------
 volatile uint8_t last_state;
