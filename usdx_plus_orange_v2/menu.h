@@ -271,14 +271,15 @@ inline void Menu::process() {
           mode++;
           if(mode > AM)
             mode = LSB;
-          render();
+          // (radio view refreshed periodically by display_vfo; do NOT render
+          //  the menu here, matching legacy 'change=true' radio refresh)
         } else if(state == MENU_EDIT) {
           commit();
           state = MENU_SELECT;
           render();
         } else if(state == MENU_SELECT) {
           state = MENU_MAIN;
-          render();
+          // returning to radio: no menu render (periodic display_vfo handles it)
         }
         break;
       case BE_ | SC_:
