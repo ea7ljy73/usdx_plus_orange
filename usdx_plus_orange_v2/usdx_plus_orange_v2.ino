@@ -1,6 +1,7 @@
 // usdx_plus_orange_v2.ino - uSDX Plus Orange v2 (modular)
 // Paso 6: menu declarativo integrado + UI + VOX.
 
+#include "cw.h"
 #include "display.h"
 #include "hw.h"
 #include "i2c.h"
@@ -23,6 +24,10 @@ volatile uint8_t agc    = 2;
 volatile uint8_t txdelay  = 1; // TX relay/delay (ms)
 volatile uint8_t practice = 0; // TX disabled
 volatile uint8_t vox_tx   = 0; // VOX currently transmitting
+
+// --- CW ---
+volatile uint8_t keyer_speed = 25; // wpm
+volatile uint8_t keyer_mode  = 0;  // 0=IambicA, 1=IambicB, 2=Straight
 
 // --- Params (menú) ---
 volatile int8_t  bandval   = 1; // band index
@@ -204,6 +209,7 @@ void setup() {
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
   menu.begin();
+  loadWPM(keyer_speed); // CW timing
 
   func_ptr = sdr_rx_00;
   rx_state = 0;
@@ -218,6 +224,16 @@ void loop() {
     do_tune(); // encoder = tuning
   }
   menu.process(); // nav/edits when in menu; re-enters on button
+
+  // --- CW keyer & decoder ---
+  if(mode == CW) {
+    if(keyer_mode != 2) // not straight key
+      keyer_process();
+    if(cwdec && !tx) {
+      cw_set_keyed(tx); // decoder sees key off (RX)
+      cw_decode();
+    }
+  }
 
   if(!(millis() % 500) && menu.state == MENU_MAIN)
     display_vfo(); // periodic refresh

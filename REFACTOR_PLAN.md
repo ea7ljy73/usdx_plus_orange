@@ -127,7 +127,7 @@ con las mismas prestaciones (o mejores).
 | 3 | Filtros | Normalizar ganancia SSB/CW (fix `zc0/64` CW) | Mejora ✅ |
 | 4 | Firmware operativo | `hw.h` (pins, ADC, timers, ISR, switch_rxtx) + setup/loop + VOX | Idéntico (config activa) ✅ |
 | 5 | UI esencial | `display.h` (LCD HD44780 + encoder PCINT) + sintonía VFO + botón step | Idéntico (config activa) ✅ |
-| 6 | CW decoder + keyer | Extraer (acoplado a UI; se hace junto al Paso UI) | Idéntico (pendiente) |
+| 6 | CW decoder + keyer | `cw.h`: keyer Iambic A/B + decoder (buffer `cw_line[]`, sin LCD coupling) | ✅ |
 | 7 | CAT | Extraer TS-480 | Idéntico (pendiente) |
 | 8 | UI menú completo + VFO/EEPROM | **Menú declarativo (tabla + callbacks + PROGMEM)** | ✅ 31 params, RAM 50% |
 | 9 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Menú PROGMEM hecho; resto pendiente |
@@ -187,6 +187,9 @@ git diff     -> no hay cambios de comportamiento no documentados
   inline del legacy. Mismo uso (BL/BR/encoder), mejor diseño. RAM: 78%→50%.
 - **2026-09-02** — Labels de tabla y tabla completa en PROGMEM (flash); acceso
   via `memcpy_P` + `pgm_read_*`. RAM 1599B→1039B.
+- **2026-09-02** — CW extraído a `cw.h`: keyer Iambic A/B (state machine fiel)
+  + decoder (escribe `cw_line[]`, desacoplado del LCD, mejora vs legacy que lo
+  escribía directamente a `lcd`). Integrado en loop (keyer si CW, decoder en RX).
 
 ---
 
