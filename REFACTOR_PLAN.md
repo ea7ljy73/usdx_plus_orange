@@ -130,8 +130,9 @@ con las mismas prestaciones (o mejores).
 | 6 | CW decoder + keyer | `cw.h`: keyer Iambic A/B + decoder (buffer `cw_line[]`, sin LCD coupling) | ✅ |
 | 7 | CAT | `cat.h`: TS-480 FA/IF/MD/RX/TX/ID/PS/AI/RT1/XT1/AG0/FL0/RS/RC/RTS | ✅ (sin sprintf, menos flash) |
 | 8 | UI menú completo + VFO/EEPROM | **Menú declarativo (tabla + callbacks + PROGMEM)** | ✅ 31 params, RAM 50% |
-| 9 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Menú PROGMEM hecho; resto pendiente |
-| 10 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado | Mejora |
+| 9 | VFO/EEPROM persistencia | `vfo.h`: band memory (freq/mode by band, EEPROM) | ✅ |
+| 10 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Menú/VFO PROGMEM hechos; resto pendiente |
+| 11 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado | Mejora |
 
 ### Regla de verificación por paso
 ```

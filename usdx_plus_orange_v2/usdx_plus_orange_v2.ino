@@ -11,11 +11,15 @@
 #include "si5351.h"
 #include "tx.h"
 #include "usdx_settings.h"
+#include "vfo.h"
 #include <avr/eeprom.h>
 
 SI5351 si5351;
 LCD    lcd;
 Menu   menu;
+
+int32_t vfo_cache_freq          = 0;
+void (*vfo_apply_freq)(int32_t) = NULL;
 
 // --- Operador / control ------------------------------------------------
 volatile uint8_t mode   = USB;
@@ -35,7 +39,7 @@ volatile uint8_t prev_mode      = 0;
 volatile uint8_t changedModeCAT = 0;
 
 // --- Params (menú) ---
-volatile int8_t  bandval   = 1; // band index
+volatile uint8_t bandval   = 3; // band index (0-based; 40m default)
 volatile uint8_t smode     = 1; // S-meter mode
 volatile uint8_t backlight = 1;
 volatile uint8_t rx_ph_q   = 90; // IQ phase
@@ -91,9 +95,8 @@ void on_mode() {
   si5351.iqmsa = 0; // enforce PLL reset
 }
 void on_band() {
-  static const int32_t bandfreq[] = {0, 3600000, 5250000, 7100000, 10120000, 14100000, 18100000};
-  freq                            = bandfreq[bandval] ? bandfreq[bandval] : freq;
-  si5351.freq(freq, 0, 0);
+  vfo_save_current(); // store prev band freq/mode
+  vfo_recall_band(bandval);
 }
 void on_vfosel() {
   // placeholder: single VFO in v2 minimal
@@ -156,7 +159,8 @@ const MenuParam MENU[] PROGMEM = {
 const int8_t MENU_COUNT = 31; // number of entries above
 
 // --- VFO / sintonia ---
-inline void do_tune() {
+volatile uint32_t last_band_save = 0;
+inline void       do_tune() {
   int32_t d = encoder_val;
   if(d) {
     encoder_val = 0;
@@ -165,7 +169,12 @@ inline void do_tune() {
       freq = 100000;
     if(freq > 60000000)
       freq = 60000000;
-    si5351.freq(freq, 0, 0);
+    vfo_apply();
+    // persist on tune (throttled: ~every 2s max)
+    if(millis() - last_band_save > 2000) {
+      vfo_save_current();
+      last_band_save = millis();
+    }
   }
 }
 
@@ -184,7 +193,10 @@ void display_vfo() {
   lcd.print("              ");
 }
 
+void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
+
 void setup() {
+  vfo_apply_freq = vfo_hw_apply;
   digitalWrite(KEY_OUT, LOW);
   si5351.powerDown();
 
@@ -204,7 +216,10 @@ void setup() {
   delay(300);
 
   timer1_start(78125);
-  si5351.freq(freq, 0, 0);
+  vfo_eeprom_load();        // restore band memories
+  vfo_recall_band(bandval); // apply current band freq/mode (or default)
+  vfo_apply();              // hw freq from loaded/recalled value
+  last_band_save = millis();
 
   admux[0] = 0;
   admux[1] = 1;
