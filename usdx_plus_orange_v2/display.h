@@ -127,6 +127,8 @@ private:
 #undef LCD_EN_LO
 #undef LCD_PREP_NIBBLE
 
+extern LCD lcd; // instance defined in main .ino
+
 // ---------------------------------------------------------------------------
 // Rotary encoder (PCINT2 on ROT_A/ROT_B)
 // ---------------------------------------------------------------------------
