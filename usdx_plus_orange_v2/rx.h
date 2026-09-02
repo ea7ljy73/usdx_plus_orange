@@ -53,78 +53,52 @@ volatile int16_t  ocomb; // audio out comb (shared)
 volatile int16_t  qh;    // Hilbert Q (global)
 
 // ---------------------------------------------------------------------------
-// AGC (M0PUB + hang-time + adaptive noise floor)
+// AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the
+// hang-time + noise-floor improvement is deferred / reintroduced later).
 // ---------------------------------------------------------------------------
-static int16_t   centiGain  = 128;
-volatile uint8_t agc_decay  = 8;
-static uint16_t  decayCount = 800;
+static int16_t   centiGain = 128;
+volatile uint8_t agc_decay = 8;
+#define DECAY_FACTOR 400 // AGC decay <DECAY_FACTOR> slower than attack
+static uint16_t decayCount = DECAY_FACTOR;
 
 inline int16_t process_agc(int16_t in) {
-  static bool     small    = true;
-  static uint16_t nfloor   = 64; // adaptive noise floor (scaled = centiGain/128)
-  static uint16_t hang_cnt = 0;  // samples since signal last present
-  int16_t         out;
+  static bool small = true;
+  int16_t     out;
 
   if(centiGain >= 128)
-    out = (int16_t)(((int32_t)(centiGain >> 5) * in) >> 2);
+    out = (centiGain >> 5) * in; // net gain >= 1
   else
-    out = (int16_t)(((int32_t)(centiGain >> 2) * (in >> 3)) >> 2);
+    out = (centiGain >> 2) * (in >> 3); // net gain < 1
+  out >>= 2;
 
-  uint16_t abs_out = abs(out);
-
-  // adaptive noise floor: tracks quiet periods (resolution /128)
-  if(abs_out < nfloor)
-    nfloor -= (nfloor - abs_out) >> 4; // slow leak down
-  else
-    nfloor += (abs_out - nfloor) >> 11; // very slow rise
-  if(nfloor < 16)
-    nfloor = 16;
-
-  if(HI(abs_out) > HI(1536)) {
+  if(HI(abs(out)) > HI(1536)) {
     centiGain -= (centiGain >> 4); // fast attack
-    hang_cnt = 0;
   } else {
-    if(HI(abs_out) > HI(256))
-      hang_cnt = 0; // signal present: reset hang
-    else if(hang_cnt < 2048)
-      hang_cnt++;
-    if(HI(abs_out) > HI(1024))
+    if(HI(abs(out)) > HI(1024))
       small = false;
-    if(--decayCount == 0) {
-      decayCount = ((mode == CW_MODE) ? 2 : (uint16_t)agc_decay) * 100;
-      if(small && (hang_cnt >= 600) && ((HI(abs_out) << 8) > ((uint32_t)nfloor * 3))) {
+    if(--decayCount == 0) { // slow ramp up when signal disappears
+      if(small) {
         if(centiGain < (INT16_MAX - (INT16_MAX >> 4)))
           centiGain += (centiGain >> 4);
         else
           centiGain = INT16_MAX;
       }
-      small = true;
-      if(hang_cnt >= 2048)
-        nfloor = (nfloor * 3) >> 2; // re-learn floor after long silence
+      decayCount = DECAY_FACTOR;
+      small      = true;
     }
   }
   return out;
 }
 
-// Fast AGC alternative (agc=1). int16 overflow fixed with int32 (v1 bug).
+// Fast AGC alternative (agc=1) - exact copy of usdx-legazy:2521
 static int16_t gain = 1024;
 inline int16_t process_agc_fast(int16_t in) {
-  int16_t out     = (gain >= 1024) ? (int16_t)(((int32_t)(gain >> 10) * in)) : in;
-  int16_t abs_out = abs(out);
-  int16_t hi      = abs_out >> 10;
-  if(hi > 1) { // strong signal: reduce gain
-    gain -= (abs_out >> 3);
-    if(gain < 1024)
-      gain = 1024;
-  } else { // weak signal: increase gain
-    int16_t accum = 1 - hi;
-    if(accum > 0 && (INT16_MAX - gain) > accum)
-      gain += accum;
-  }
+  int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
+  int16_t accum = (1 - abs(out >> 10));
+  if((INT16_MAX - gain) > accum)
+    gain = gain + accum;
   if(gain < 1)
     gain = 1;
-  if(gain > 32767)
-    gain = 32767;
   return out;
 }
 
@@ -245,15 +219,16 @@ void process(int16_t i_ac2, int16_t q_ac2) {
   i_ac2 >>= att2; // digital gain control
   i = i_ac2;
   q = q_ac2;
-  static int16_t v[7]; // Delay I to match Hilbert on Q
-  v[0] = v[1];
-  v[1] = v[2];
-  v[2] = v[3];
-  v[3] = v[4];
-  v[4] = v[5];
-  v[5] = v[6];
-  v[6] = i_ac2;
-  ac3  = slow_dsp(-q - qh); // inverting I and Q dampens PWM-out/ADC feedback loop
+  static int16_t v[7];     // Delay I to match Hilbert on Q (legacy parity)
+  int16_t        i = v[0]; // local shadow: DELAYED I (legacy usdx-legazy:2865)
+  v[0]             = v[1];
+  v[1]             = v[2];
+  v[2]             = v[3];
+  v[3]             = v[4];
+  v[4]             = v[5];
+  v[5]             = v[6];
+  v[6]             = i_ac2;
+  ac3              = slow_dsp(-i - qh); // inverting I and Q dampens PWM-out/ADC feedback loop
 #ifdef OUTLET
   tc--;
 #endif
