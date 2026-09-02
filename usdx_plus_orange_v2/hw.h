@@ -10,6 +10,7 @@
 #include <avr/wdt.h>
 #include <stdint.h>
 
+#include "cw.h" // cw_set_keyed for decoder feeding
 #include "rx.h"
 #include "si5351.h"
 #include "tx.h"
@@ -148,6 +149,7 @@ void switch_rxtx(uint8_t tx_enable) {
     noInterrupts();
   }
   tx = tx_enable;
+  cw_set_keyed(tx_enable); // feed CW decoder with actual key state (RX side)
 
   if(tx_enable) {
     switch(mode) {
@@ -168,8 +170,9 @@ void switch_rxtx(uint8_t tx_enable) {
     }
     digitalWrite(RX, LOW);   // disable RX
     digitalWrite(PTX, HIGH); // enable TX
-    TIMSK2 |= (1 << OCIE2A); // enable timer ISR
     TCCR1A |= (1 << COM1A1); // enable SIDETONE PWM
+    TCCR1A |= (1 << COM1B1); // enable KEY_OUT PWM (PA amplitude signal)
+    TIMSK2 |= (1 << OCIE2A); // enable timer ISR
     return;
   }
 

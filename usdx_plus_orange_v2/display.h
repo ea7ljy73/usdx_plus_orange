@@ -136,8 +136,9 @@ volatile uint8_t last_state;
 volatile int16_t encoder_val;
 volatile uint8_t encoder_pressed;
 
-ISR(PCINT2_vect) { // Interrupt on rotary encoder turn
-  switch(last_state = (last_state << 4) | (digitalRead(ROT_B) << 1) | digitalRead(ROT_A)) {
+ISR(PCINT2_vect) { // Interrupt on rotary encoder turn (direct PIND read)
+  uint8_t p = PIND;
+  switch(last_state = (last_state << 4) | ((p & (1 << ROT_B)) ? 2 : 0) | ((p & (1 << ROT_A)) ? 1 : 0)) {
   case 0x23:
     encoder_val++;
     break;

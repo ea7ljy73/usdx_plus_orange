@@ -81,6 +81,18 @@ void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size) {
   eeprom_write_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 
+// restore all menu parameters from EEPROM (call once at setup)
+void menu_load_all() {
+  for(int8_t i = 0; i < MENU_COUNT; i++) {
+    MenuParam p;
+    memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
+    if(p.eslot && p.value) {
+      uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+      menu_eeprom_load(p.eslot, p.value, sz);
+    }
+  }
+}
+
 // --- Callbacks (post-handling effects) ---
 void on_mode() {
   if(mode != CW)
@@ -164,7 +176,9 @@ inline void       do_tune() {
   int32_t d = encoder_val;
   if(d) {
     encoder_val = 0;
-    freq += d * step_mult[stepsize];
+    // note: stepsizes[10] (PROGMEM) matches the menu 0..9 range
+    int32_t stepval = (stepsize < 10) ? (int32_t)pgm_read_dword(&stepsizes[stepsize]) : 1000;
+    freq += d * stepval;
     if(freq < 100000)
       freq = 100000;
     if(freq > 60000000)
@@ -242,6 +256,7 @@ void setup() {
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
   menu.begin();
+  menu_load_all();      // restore saved menu params (volume, mode, agc, drive, ...)
   loadWPM(keyer_speed); // CW timing
 
   func_ptr = sdr_rx_00;
@@ -263,8 +278,7 @@ void loop() {
     if(keyer_mode != 2) // not straight key
       keyer_process();
     if(cwdec && !tx) {
-      cw_set_keyed(tx); // decoder sees key off (RX)
-      cw_decode();
+      cw_decode(); // decoder during RX (keyed state fed by switch_rxtx)
     }
   }
 

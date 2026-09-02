@@ -31,8 +31,9 @@ extern int32_t vfo_cache_freq;          // last applied freq
 static int32_t freq_last[BANDCOUNT];
 static uint8_t mode_last[BANDCOUNT];
 
-// EEPROM layout (shared region, after menu slots)
-#define EEPROM_VFO_OFF 0x230
+// EEPROM layout after menu region (menu slots: 0x150 + eslot*8, eslot up to 31
+// -> 0x248). VFO starts at 0x250 to avoid overlap.
+#define EEPROM_VFO_OFF 0x250
 #define EEPROM_VFO_SIZE (BANDCOUNT * (sizeof(int32_t) + 1))
 
 // load freq/mode memory from EEPROM (call at setup)

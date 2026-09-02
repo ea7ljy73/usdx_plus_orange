@@ -197,6 +197,16 @@ git diff     -> no hay cambios de comportamiento no documentados
   **fix de overflow `(int32_t)` en `process_agc_fast`** (bug heredado del v1).
 - **2026-09-02** — VFO/band memory persistente (`vfo.h`): freq/mode por banda en
   EEPROM, restore al arranque, apply hook a SI5351. CAT completo como módulo.
+- **2026-09-02 (REVISIÓN pre-hardware)** — Revisión completa del v2. Fixes
+  críticos aplicados:
+  - `do_tune` fuera de rango: usar `stepsizes[10]` PROGMEM (menú permite 0..9)
+  - `switch_rxtx` TX: habilitar `TCCR1A COM1B1` (KEY_OUT PWM al PA) — el TX no
+    emitía sin esto
+  - Parámetros de menú: `menu_load_all()` al arranque (no se restauraban)
+  - Colisión EEPROM: VFO movido a `0x250` (libre de slots de menú hasta 0x248)
+  - Encoder ISR: `digitalRead`→`PIND` directo (seguro en ISR)
+  - Decoder CW: `cw_set_keyed` desde `switch_rxtx` (antes nunca transicionaba)
+- Build tras fixes: 19564B flash (60%), 1425B RAM (69%), 623B libres, 0 warnings.
 
 ---
 
