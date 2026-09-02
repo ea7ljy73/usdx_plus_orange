@@ -44,6 +44,13 @@ struct MenuParam {
 // helper: write a flash label to the LCD via its id (defined in .ino)
 void menu_print_label(uint8_t id);
 
+extern volatile uint8_t mode; // LSB/USB/CW/FM/AM (defined in main .ino)
+#define LSB 0
+#define USB 1
+#define CW 2
+#define FM 3
+#define AM 4
+
 #define N_MENU_ITEMS 32 // declared capacity; MENU_COUNT computed from table
 
 // ---------------------------------------------------------------------------
@@ -229,19 +236,59 @@ inline void Menu::process() {
       render();
     return;
   }
-  // --- button (left = BL via ADC, rising edge) ---
-  static uint8_t btn_last = 1;                            // 1 = released
-  uint8_t        btn      = (read_button() == 0) ? 0 : 1; // BL pressed -> 0
-  if(btn == 0 && btn_last == 1) {                         // rising edge (pressed)
-    select_mode();
-    if(state == MENU_EDIT)
-      lcd.cursor();
-    else
-      lcd.noCursor();
-    if(state != MENU_MAIN)
-      render();
+  // --- button: EXACTLY like usdx-legazy:5295-5330 (no ADC every loop iteration) ---
+  // Only when the digital line indicates a press do we read the ADC once, then
+  // classify BL/BR/BE and translate to our menu states. This keeps the RX ISR's
+  // use of the ADC untouched most of the time (prevents audio corruption).
+  // BL|SC: enter menu / enter value edit / save+exit (like legacy)
+  // BR|SC: (not in menu) next mode; (in menu) back from value edit to select
+  enum { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, PL_ = 0x04 };
+  uint8_t event = 0;
+  if(!digitalRead(BUTTONS)) { // pressed (active low) - like legacy 'inv^read'
+    if(!(event & (PL_ | 0x05))) {
+      uint16_t v       = analogSafeRead(BUTTONS_ADC);
+      event            = SC_;
+      unsigned long t0 = millis();
+      while(!digitalRead(BUTTONS)) { // wait release or long-press
+        if((millis() - t0) > 300) {
+          event = PL_;
+          break;
+        }
+      }
+      event |= (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
+      switch(event) {
+      case BL_ | SC_: // short left click
+        select_mode();
+        if(state == MENU_EDIT)
+          lcd.cursor();
+        else
+          lcd.noCursor();
+        if(state != MENU_MAIN)
+          render();
+        break;
+      case BR_ | SC_: // short right click: (main) next mode; (menu) back a level
+        if(state == MENU_MAIN) {
+          mode++;
+          if(mode > AM)
+            mode = LSB;
+          render();
+        } else if(state == MENU_EDIT) {
+          commit();
+          state = MENU_SELECT;
+          render();
+        } else if(state == MENU_SELECT) {
+          state = MENU_MAIN;
+          render();
+        }
+        break;
+      case BE_ | SC_:
+        // encoder push: treat as mode change too (legacy BE reserved)
+        break;
+      default: // long press (PL) - ignore / keep simple
+        break;
+      }
+    }
   }
-  btn_last = btn;
 }
 
 inline void Menu::render() {
