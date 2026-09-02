@@ -319,6 +319,8 @@ void setup() {
   // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
   // rotary-key is pressed at power-on, and always disable VOX on boot.
   if(digitalRead(BUTTONS) == LOW) {
+    lcd.setCursor(0, 1);
+    lcd.print("Reset settings..");
     for(uint8_t i = 0; i != 32; i++) { // re-persist defaults over EEPROM
       MenuParam p;
       memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
@@ -328,6 +330,7 @@ void setup() {
       }
     }
     eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
+    delay(500);
   }
   vox = 0;              // disable VOX at boot (legacy parity)
   nr  = 0;              // disable NR (legacy parity)
