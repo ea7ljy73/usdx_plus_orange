@@ -191,6 +191,12 @@ git diff     -> no hay cambios de comportamiento no documentados
 - **2026-09-02** — CW extraído a `cw.h`: keyer Iambic A/B (state machine fiel)
   + decoder (escribe `cw_line[]`, desacoplado del LCD, mejora vs legacy que lo
   escribía directamente a `lcd`). Integrado en loop (keyer si CW, decoder en RX).
+- **2026-09-02** — Paridad RX verificada (diff normalizado v1 vs v2): `slow_dsp`,
+  `process_agc`, `process_nr`, `process_agc_fast`. Las únicas diferencias son las
+  mejoras intencionales del v2: sintaxis de llaves, rama inactiva eliminada, y el
+  **fix de overflow `(int32_t)` en `process_agc_fast`** (bug heredado del v1).
+- **2026-09-02** — VFO/band memory persistente (`vfo.h`): freq/mode por banda en
+  EEPROM, restore al arranque, apply hook a SI5351. CAT completo como módulo.
 
 ---
 
