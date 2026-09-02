@@ -230,6 +230,19 @@ git diff     -> no hay cambios de comportamiento no documentados
   - Limpieza: sin warnings, build estable 19862B (61%), 1425B (69%).
   - Pendientes menores documentados: `smode`/`rit_on`/`practice` no afectan
     comportamiento aún (limitaciones de feature, no bugs).
+- **2026-09-02 (REVISIÓN 5, pre-hardware, meticulosa)** — Micro-bugs corregidos
+  detectados en revisión línea a línea:
+  - EEPROM virgen (primer arranque) cargaba `0xFF` en `mode`/`volume`/... ->
+    firmware arrancaba en modo inválido. Añadido `EEPROM_MAGIC_OFF` + `F_VER_ID`:
+    si la firma no coincide, persiste defaults y marca región; si coincide, carga
+    con clamp de rango y omisión de slots nunca escritos.
+  - `si5351.fxtal` como parámetro persistido podía cargar `0xFFFFFFFF`
+    (división por 0 en `freq_calc_fast`) -> ahora eslot 0 (no persistido).
+  - `BUTTONS` sin `INPUT_PULLUP` (v1 lo usa) -> botón de menú inestable.
+  - `timer2_start` sin `ASSR`/`TCNT2=0` (v1 los incluye) -> paridad exacta.
+  - `on_pwm` sin guarda `pwm_max>=pwm_min` -> PA a duty degradado si se invierte.
+  - Build final: 20238B (62%), 1425B (69%), 623B libres, 0 warnings.
+  - Verificado marginalmente: stack de ISR cómodo (`ssb` en BSS, no stack).
 
 ---
 

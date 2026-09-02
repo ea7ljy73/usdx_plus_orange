@@ -74,22 +74,68 @@ const char* const lowcut_label[4] PROGMEM    = {"Off", "100", "200", "400"};
 
 // --- EEPROM helpers (stable slots) ---
 volatile uint16_t eeprom_offs = 0x150;
-void              menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
+#define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
+#define F_VER_ID 2             // bump when EEPROM layout/semantics change
+void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   eeprom_read_block(ptr, (const void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size) {
   eeprom_write_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 
-// restore all menu parameters from EEPROM (call once at setup)
+// restore all menu parameters from EEPROM (call once at setup).
+// Only loads if the persisted version signature matches this firmware; on a
+// mismatched/empty EEPROM it leaves defaults AND writes the signature so that
+// the next boot actually restores values (v1-style first-boot guard).
 void menu_load_all() {
-  for(int8_t i = 0; i < MENU_COUNT; i++) {
-    MenuParam p;
-    memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
-    if(p.eslot && p.value) {
-      uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
-      menu_eeprom_load(p.eslot, p.value, sz);
+  uint8_t sig   = eeprom_read_byte((const uint8_t*)EEPROM_MAGIC_OFF);
+  bool    valid = (sig == F_VER_ID);
+  if(valid) {
+    for(int8_t i = 0; i < MENU_COUNT; i++) {
+      MenuParam p;
+      memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
+      if(p.eslot && p.value) {
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        // Read raw; only apply when slot was actually written (not all 0xFF)
+        uint8_t raw[4];
+        menu_eeprom_load(p.eslot, raw, sz);
+        bool never = true;
+        for(uint8_t k = 0; k < sz; k++)
+          if(raw[k] != 0xFF)
+            never = false;
+        if(!never) {
+          // copy in and clamp to declared range (guards rewritten/garbage slots)
+          memcpy(p.value, raw, sz);
+          if(p.type == P_T8) {
+            int8_t v = *(int8_t*)p.value;
+            if(v < p.min)
+              v = p.min;
+            if(v > p.max)
+              v = p.max;
+            *(int8_t*)p.value = v;
+          } else if(p.type == P_ENUM) {
+            uint8_t v = *(uint8_t*)p.value;
+            if(v < p.min)
+              v = p.min;
+            if(v > p.max)
+              v = p.max;
+            *(uint8_t*)p.value = v;
+          }
+        }
+      }
     }
+  } else {
+    // virgin/mismatched EEPROM: persist current defaults (so the next boot
+    // loads sane values), then claim the region.
+    for(int8_t i = 0; i < MENU_COUNT; i++) {
+      MenuParam p;
+      memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
+      if(p.eslot && p.value) {
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        menu_eeprom_save(p.eslot, p.value, sz);
+      }
+    }
+    eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
   }
 }
 
@@ -114,7 +160,9 @@ void on_vfosel() {
   // placeholder: single VFO in v2 minimal
 }
 void on_pwm() {
-  // rebuild LUT with new bias limits
+  // rebuild LUT with new bias limits (guard: always keep max >= min)
+  if(pwm_max < pwm_min)
+    pwm_max = pwm_min;
   for(uint16_t i = 0; i != 256; i++)
     lut[i] = (i * (int16_t)(pwm_max - pwm_min)) / 255 + pwm_min;
 }
@@ -163,7 +211,7 @@ const MenuParam MENU[] PROGMEM = {
     {25, (void*)&tx_lowcut, P_ENUM, 0, 3, lowcut_label, 26, NULL},
     {26, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
     {27, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
-    {28, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, NULL},
+    {28, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 0, NULL}, // not persisted (eslot 0)
     {29, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
     {30, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };

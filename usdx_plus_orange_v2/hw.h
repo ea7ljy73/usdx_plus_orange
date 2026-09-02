@@ -73,8 +73,10 @@ void timer1_start(uint32_t fs) {
 ISR(TIMER2_COMPA_vect) { func_ptr(); }
 
 void timer2_start(uint32_t fs) {
+  ASSR &= ~(1 << AS2); // Timer2 clocked from CLK I/O (like Timer0/1)
   TCCR2A = 0;
   TCCR2B = 0;
+  TCNT2  = 0;
   TCCR2A |= (1 << WGM21); // CTC
   TCCR2B |= (1 << CS22);  // 64 prescaler
   OCR2A = ((F_CPU / 64) / fs) - 1;
@@ -112,9 +114,9 @@ void initPins() {
   pinMode(SIDETONE, OUTPUT);
   pinMode(RX, OUTPUT);
   pinMode(KEY_OUT, OUTPUT);
-  pinMode(BUTTONS, INPUT);
+  pinMode(BUTTONS, INPUT_PULLUP); // rotary button (v1 uses internal pullup)
   pinMode(DIT, INPUT_PULLUP);
-  pinMode(DAH, INPUT);
+  pinMode(DAH, INPUT); // pull-up DAH 10k via AVCC (v1)
 
   digitalWrite(AUDIO1, LOW);
   digitalWrite(AUDIO2, LOW);
