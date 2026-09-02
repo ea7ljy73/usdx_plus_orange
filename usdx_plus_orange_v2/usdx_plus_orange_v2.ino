@@ -241,6 +241,7 @@ inline void       do_tune() {
 }
 
 void display_vfo() {
+  lcd.noCursor(); // ensure no stray blink cursor when returning to radio view
   // Line 0: frequency with thousands separators + mode + V/R
   lcd.setCursor(0, 0);
   int32_t f     = freq;
