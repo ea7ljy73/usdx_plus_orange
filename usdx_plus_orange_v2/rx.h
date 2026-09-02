@@ -248,10 +248,12 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
 }
 
 // ---------------------------------------------------------------------------
-// Audio output via PWM (upsampling CIC comb stage)
+// Audio output via PWM (upsampling CIC comb + integrator, as functional legacy)
 // ---------------------------------------------------------------------------
-static int16_t ac3, ocomb, ozd1, ozd2;
-static uint8_t tc;
+static int16_t   ac3, ocomb, ozd1, ozd2;
+static int16_t   ozi1, ozi2;
+static uint8_t   tc;
+volatile uint8_t _init = 1;
 
 inline void process_rx_dac(int16_t in) {
   ac3   = in;
@@ -286,7 +288,15 @@ inline int16_t sdr_rx_common_i() {
   static int16_t prev_adc;
   int16_t        ac = (prev_adc + adc) >> 1;
   prev_adc          = adc;
-  OCR1AL            = min(max((ocomb >> 5) + 128, 0), 255); // PWM audio out
+  if(_init) { // hack: reset audio out stage (comb + integrator)
+    ocomb = 0;
+    ozi1  = 0;
+    ozi2  = 0;
+    _init = 0;
+  }
+  ozi2   = ozi1 + ozi2; // Integrator section (AF_OUT, as functional legacy)
+  ozi1   = ocomb + ozi1;
+  OCR1AL = min(max((ozi2 >> 5) + 128, 0), 255); // PWM audio out
   return ac;
 }
 
