@@ -148,7 +148,7 @@ extern LCD lcd; // instance defined in main .ino
 //   thresholds (5V ref):  <4.2V => BL (left), <4.8V => BR (right), else BE
 // Returns: 0=left, 1=right, 2=encoder-push/no-press-detectable, 3=unpressed(at 5V)
 // ---------------------------------------------------------------------------
-uint16_t analogSafeRead(int8_t adcpin) { // returns 10-bit ADC value
+uint16_t analogSafeRead(uint8_t adcpin) { // returns 10-bit ADC value (channel 0..7)
   noInterrupts();
   uint8_t oldmux = ADMUX;
   ADMUX          = (adcpin & 0x0f) | (1 << REFS0);
@@ -164,8 +164,10 @@ uint16_t analogSafeRead(int8_t adcpin) { // returns 10-bit ADC value
   return v;
 }
 
+// BUTTONS pin 17 = PC3/A3 => ADC channel 3 (NOT (17&15)=1!)
+#define BUTTONS_ADC ((BUTTONS == 17) ? 3 : (BUTTONS & 0x0f))
 uint8_t read_button() {
-  uint16_t v = analogSafeRead(BUTTONS);
+  uint16_t v = analogSafeRead(BUTTONS_ADC);
   if(v < (uint16_t)(4.2 * 1024.0 / 5.0))
     return 0; // BL pressed
   if(v < (uint16_t)(4.8 * 1024.0 / 5.0))
