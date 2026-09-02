@@ -48,6 +48,33 @@ enum mode_t { LSB, USB, CW, FM, AM };
 #define TX_DELAY 1
 
 // =============================================================================
+// PINES (WHITE_BUTTONS)
+// =============================================================================
+#define LCD_D4 0   // PD0 (pin 2)
+#define LCD_D5 1   // PD1 (pin 3)
+#define LCD_D6 2   // PD2 (pin 4)
+#define LCD_D7 3   // PD3 (pin 5)
+#define LCD_EN 4   // PD4 (pin 6)
+#define LCD_RS 18  // PC4 (pin 27) [also SI5351 SDA - shared]
+#define ROT_A 6    // PD6 (pin 12)
+#define ROT_B 7    // PD7 (pin 13)
+#define KEY_OUT 10 // PB2 (pin 16)
+#define SIDETONE 9 // PB1 (pin 15)
+#define RX 8       // PB0 (pin 14)
+#define DAH 12     // PB4 (pin 18)
+#define DIT 13     // PB5 (pin 19)
+#define BUTTONS 17 // PC3/A3 (pin 26)
+#define AUDIO1 14  // PC0/A0 (pin 23)
+#define AUDIO2 15  // PC1/A1 (pin 24)
+#define DVM 16     // PC2/A2 (pin 25)
+#define SCL 15     // AUX SCL alias for DVM read
+#define SIG_OUT 7  // PD7 alias reserved
+
+#ifndef PTX
+#  define PTX 11 // PB3 (pin 17) HIGH on TX
+#endif
+
+// =============================================================================
 // CONSTANTES DE TX (SI_CLK_OE), para WHITE_BUTTONS (CLK2 driven PA)
 // =============================================================================
 #define TX1RX0 0b11111011

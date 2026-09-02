@@ -125,7 +125,7 @@ con las mismas prestaciones (o mejores).
 | 1 | I2C + SI5351 | Crear `i2c.h/cpp` y `si5351.h/cpp` limpios (adaptar de v1, resolver macros globales) | v2 compila ✅ (commit 6e7d98f) |
 | 2 | DSP RX/TX ISRs | Copiar `dsp_tx`, `sdr_rx_00..07`, `freq_calc_fast` intactos a `tx`/`rx` | v2 igual a v1 ✅ (commit 7307e9a, **parity check ssb real**) |
 | 3 | Filtros | Normalizar ganancia SSB/CW (fix `zc0/64` CW) | Mejora ✅ |
-| 4 | CW decoder + keyer | Extraer (acoplado a UI; se hace junto al Paso UI) | Idéntico (pendiente) |
+| 4 | Firmware operativo | `hw.h` (pins, ADC, timers, ISR, switch_rxtx) + setup/loop + VOX | Idéntico (config activa) ✅ |
 | 5 | CAT | Extraer TS-480 | Idéntico (pendiente) |
 | 6 | UI + VFO + EEPROM | Extraer menú, encoder, S-meter, persistencia, main loop/ISR HW | Idéntico (pendiente) |
 | 7 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Reduce flash |
