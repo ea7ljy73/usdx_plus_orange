@@ -56,7 +56,7 @@ volatile uint8_t drive = 2;
 
 volatile uint8_t tx   = 0; // TX latch: 0=off, reaches 255 when triggered
 volatile uint8_t filt = 0; // filter select (shared with RX; owned here for MAX_DP)
-volatile uint8_t vox  = 1; // vox master enable (VOX_ENABLE default ON)
+volatile uint8_t vox  = 0; // vox master enable (default OFF, like legacy usdx-legazy:228)
 
 volatile int16_t p_sin = 0;     // Minsky sin state
 volatile int16_t n_cos = 20000; // Minsky cos state
