@@ -17,7 +17,10 @@
 // ---------------------------------------------------------------------------
 #define F_SAMP_PWM (78125 / 1)
 #define F_SAMP_RX 62500
-#define R 4 // CIC decimation 62500/2 -> 7812.5 SPS
+#define F_ADC_CONV                                                                                                     \
+  (192307 / 2) // RX I/Q ADC rate (v1: slower than 192307 ->
+               // avoids audio clicks)
+#define R 4    // CIC decimation 62500/2 -> 7812.5 SPS
 
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
@@ -313,40 +316,40 @@ void sdr_rx_00() {
 void sdr_rx_02() {
   int16_t ac = sdr_rx_common_i();
   func_ptr   = sdr_rx_03;
-  i_s0zb1 = i_s0zb0;
-  i_s0zb0 = ac;
+  i_s0zb1    = i_s0zb0;
+  i_s0zb0    = ac;
 }
 void sdr_rx_04() {
   int16_t ac = sdr_rx_common_i();
   func_ptr   = sdr_rx_05;
-  i_s1zb1 = i_s1zb0;
-  i_s1zb0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
-  i_s0za1 = ac;
+  i_s1zb1    = i_s1zb0;
+  i_s1zb0    = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
+  i_s0za1    = ac;
 }
 void sdr_rx_06() {
   int16_t ac = sdr_rx_common_i();
   func_ptr   = sdr_rx_07;
-  i_s0zb1 = i_s0zb0;
-  i_s0zb0 = ac;
+  i_s0zb1    = i_s0zb0;
+  i_s0zb0    = ac;
 }
 void sdr_rx_01() {
   int16_t ac = sdr_rx_common_q();
   func_ptr   = sdr_rx_02;
-  q_s0zb1 = q_s0zb0;
-  q_s0zb0 = ac;
+  q_s0zb1    = q_s0zb0;
+  q_s0zb0    = ac;
 }
 void sdr_rx_03() {
   int16_t ac = sdr_rx_common_q();
   func_ptr   = sdr_rx_04;
-  q_s1zb1 = q_s1zb0;
-  q_s1zb0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
-  q_s0za1 = ac;
+  q_s1zb1    = q_s1zb0;
+  q_s1zb0    = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
+  q_s0za1    = ac;
 }
 void sdr_rx_05() {
   int16_t ac = sdr_rx_common_q();
   func_ptr   = sdr_rx_06;
-  q_s0zb1 = q_s0zb0;
-  q_s0zb0 = ac;
+  q_s0zb1    = q_s0zb0;
+  q_s0zb0    = ac;
 }
 void sdr_rx_07() {
   int16_t ac      = sdr_rx_common_q();

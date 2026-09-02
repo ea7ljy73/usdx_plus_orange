@@ -214,6 +214,13 @@ git diff     -> no hay cambios de comportamiento no documentados
   corregida la referencia ADC de RX: `admux[]` ahora captura `ADMUX` completo
   (con 1.1V interno), no solo el canal — la calibración ADC del SDR era
   incorrecta. Build final: 19816B (61%), 1425B (69%), 0 warnings.
+- **2026-09-02 (REVISIÓN 3, pre-hardware)** — Encontrado y corregido un bug
+  CRÍTICO de sample-rate: `switch_rxtx` NO reconfiguraba `OCR2A` a F_SAMP_TX/
+  F_SAMP_RX según dirección → la ISR de TX corría a 62.5kHz en vez de 4.8kHz
+  (13× más rápido: modulación polar rota, I2C reventando CPU). Ahora recalcula
+  `OCR2A` como el v1 (línea 4144). También la tasa ADC RX ahora usa `F_ADC_CONV`
+  (192307/2) como el v1 para evitar clicks de audio. Build: 19852B (61%),
+  1425B (69%), 0 warnings.
 
 ---
 

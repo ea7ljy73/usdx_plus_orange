@@ -251,12 +251,13 @@ void setup() {
   admux[2] = 2;
   // NOTE: capture full ADMUX (channel + 1.1V internal ref) like v1, so the RX
   // ISR uses the correct voltage reference for the SDR I/Q ADC.
-  adc_start(0, true, F_SAMP_RX); // I
+  adc_start(0, true, F_ADC_CONV); // I  (~96kHz ADC clock, v1 rate)
   admux[0] = ADMUX;
-  adc_start(1, true, F_SAMP_RX); // Q
+  adc_start(1, true, F_ADC_CONV); // Q
   admux[1] = ADMUX;
-  adc_start(2, true, 192307); // mic
+  adc_start(2, true, 192307); // mic (max rate for VOX latency)
   admux[2] = ADMUX;
+  adc_stop(); // leave ADC idle until ISR/VOX re-arms it
 
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
