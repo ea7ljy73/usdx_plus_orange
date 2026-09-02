@@ -71,24 +71,31 @@ más mejoras de "gama alta". El proyecto modular resuelve esto por construcción
 
 ## 2. Arquitectura objetivo (proyecto modular)
 
+**Nota técnica (descubierta en Paso 1):** Arduino compila el sketch como un
+directorio con un `.ino` (mismo nombre del directorio). Los módulos `.h`/`.cpp`
+deben vivir **junto al `.ino`**, no en subcarpeta `src/` (esa carpeta es
+ignorada/tratada aparte por arduino-cli). Además, el v1 monolítico y el v2 no
+pueden coexistir en el mismo directorio (símbolos duplicados al compilar juntos).
+
+Por ello la estructura es un **proyecto nuevo independiente**:
+
 ```
-usdx_plus_orange/
-├── usdx_plus_orange.ino        # setup() + loop() + ISRs críticos (delgado)
+usdx_plus_orange_v2/             # NUEVO directorio (el v1 queda intacto)
+├── usdx_plus_orange_v2.ino     # setup() + loop() + ISRs críticos (delgado)
 ├── usdx_settings.h              # SOLO configuración (hardware model + features)
-├── usdx_filter.h                # Filtros IIR/FIR (SSB/CW) — sin mismatch de ganancia
-└── src/
-    ├── i2c.h / i2c.cpp          # I2C bit-bang (UNA sola copia)
-    ├── si5351.h / si5351.cpp    # Driver SI5351: init, freq(), freq_calc_fast()
-    ├── display.h / display.cpp  # LCD/OLED tras interfaz común
-    ├── gpio_expander.h/cpp      # I/O expander + LPF switching
-    ├── tx.h / tx.cpp            # ssb(), dsp_tx(), polar, clipper/CESSB/comp/EQ
-    ├── rx.h / rx.cpp            # CIC decimador, Hilbert, demod, NR, NB
-    ├── agc.h / agc.cpp          # AGC único (hang + noise floor), fix overflow
-    ├── cw.h / cw.cpp            # CW: keyer, decoder, messages, tones
-    ├── cat.h / cat.cpp          # CAT TS-480
-    ├── vfo.h / vfo.cpp          # VFO A/B, RIT, split, band memory
-    ├── eeprom.h / eeprom.cpp    # Persistencia de settings
-    └── ui.h / ui.cpp            # Menú, encoder, botones, S-meter
+├── usdx_filter.h                # Filtros IIR/FIR (SSB/CW) — sin mismatch
+├── i2c.h / i2c.cpp              # I2C bit-bang (UNA sola copia)
+├── si5351.h / si5351.cpp        # Driver SI5351: init, freq(), freq_calc_fast()
+├── display.h / display.cpp      # LCD/OLED tras interfaz común
+├── gpio_expander.h/.cpp         # I/O expander + LPF switching
+├── tx.h / tx.cpp                # ssb(), dsp_tx(), polar, clipper/CESSB/comp/EQ
+├── rx.h / rx.cpp                # CIC decimador, Hilbert, demod, NR, NB
+├── agc.h / agc.cpp              # AGC único (hang + noise floor), fix overflow
+├── cw.h / cw.cpp                # CW: keyer, decoder, messages, tones
+├── cat.h / cat.cpp              # CAT TS-480
+├── vfo.h / vfo.cpp              # VFO A/B, RIT, split, band memory
+├── eeprom.h / eeprom.cpp        # Persistencia de settings
+└── ui.h / ui.cpp                # Menú, encoder, botones, S-meter
 ```
 
 ### Principios de diseño
@@ -114,9 +121,9 @@ con las mismas prestaciones (o mejores).
 
 | Paso | Módulo | Acción | Comportamiento |
 |---|---|---|---|
-| 0 | Esqueleto | Crear `src/`, mover `usdx_settings.h`/`usdx_filter.h`, .ino delgado | Idéntico |
-| 1 | I2C + SI5351 | Unificar 3 I2C en 1; extraer driver SI5351 | Idéntico (a menos que optimicemos `freq_calc_fast`, que será paso opcional separado) |
-| 2 | DSP RX/TX ISRs | Extraer `dsp_tx`, `sdr_rx_00..07`, `freq_calc_fast` intactos a `tx.cpp`/`rx.cpp` | Idéntico |
+| 0 | Esqueleto v2 | Crear `usdx_plus_orange_v2/` con `.ino` tipo y módulos `.h` vacíos | v1 intacto |
+| 1 | I2C + SI5351 | Crear `i2c.h/cpp` y `si5351.h/cpp` limpios (adaptar de v1, resolver macros globales) | v2 compila |
+| 2 | DSP RX/TX ISRs | Copiar `dsp_tx`, `sdr_rx_00..07`, `freq_calc_fast` intactos a `tx`/`rx` | v2 igual a v1 |
 | 3 | AGC | Unificar en un solo AGC con hang+noise floor; **fix overflow** `process_agc_fast` o eliminarlo | Mejora (bugfix) |
 | 4 | Filtros | Normalizar ganancia SSB/CW; limpiar usdx_filter.h | Mejora (consistencia) |
 | 5 | CW | Extraer keyer/decoder/messages | Idéntico |
