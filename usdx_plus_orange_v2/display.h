@@ -16,6 +16,11 @@
 // defined in main .ino (menu "Light") - used by LCD::post
 extern volatile uint8_t backlight;
 
+// Serial port coexists with LCD data lines on PD0/PD1: disable UART while
+// writing the LCD, re-enable after (usdx-legazy:50 _SERIAL). WITHOUT this the
+// LCD data nibbles on PD0/PD1 collide with RX/TX -> garbage on screen.
+#define _SERIAL 1
+
 // ---------------------------------------------------------------------------
 // Direct-IO LCD (PD0..PD3 data, PD4 EN, PC4 RS shared with SI5351 SDA)
 // ---------------------------------------------------------------------------
@@ -64,13 +69,17 @@ public:
     cmd(0x06); // entry left, no shift
   }
   void pre() {
-    noInterrupts(); // do not allow LCD transfer to be interrupted
+    // Disable UART so PD0/PD1 (also LCD D4/D5) don't collide while writing LCD
+    // (usdx-legazy _SERIAL). noInterrupts to keep backlight/output stable.
+    UCSR0B &= ~((1 << RXEN0) | (1 << TXEN0)); // mask serial on shared pins
+    noInterrupts();                           // do not allow LCD transfer to be interrupted
   }
   void post() {
     if(backlight)
       PORTD |= BACKLIGHT_PIN;
     else
-      PORTD &= ~BACKLIGHT_PIN; // backlight control
+      PORTD &= ~BACKLIGHT_PIN;             // backlight control
+    UCSR0B |= (1 << RXEN0) | (1 << TXEN0); // re-enable serial
     interrupts();
   }
   void nib(uint8_t b) { // Send four bit nibble (RS low = command)
