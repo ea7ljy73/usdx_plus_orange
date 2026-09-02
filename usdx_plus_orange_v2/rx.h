@@ -1,7 +1,7 @@
 // rx.h - uSDX Plus Orange v2
-// Receive DSP: CIC decimation, Hilbert, demod (SSB/AM/FM), AGC, NR, NB.
-// Extracted from v1 Section 10, behavior identical. AGC already includes the
-// hang-time + noise-floor improvement.
+// Receive DSP: exact parity with usdx-legazy.ino (the firmware verified working
+// on this hardware). Architecture: 1-arg slow_dsp(int16_t ac) with Hilbert in
+// process(), global i/q/qh/ocomb. AGC keeps the hang-time + noise-floor fix.
 
 #pragma once
 
@@ -28,7 +28,7 @@
 #define EA(y, x, one_over_alpha) (y) = (y) + ((x) - (y)) / (one_over_alpha);
 
 // ---------------------------------------------------------------------------
-// Globals (shared with UI / CAT)
+// Globals (shared with UI / CAT / legacy parity)
 // ---------------------------------------------------------------------------
 volatile uint8_t nr        = 2; // noise reduction level
 volatile uint8_t nb_enable = 0; // noise blanker on/off
@@ -38,11 +38,14 @@ volatile uint8_t rf_atten  = 0;
 
 extern volatile uint8_t agc; // agc select (1/2; from main)
 
-uint32_t          absavg256  = 0;
+// legacy-parity globals for the demod path:
+volatile uint8_t  rx_state   = 0;
+volatile uint8_t  _init      = 1; // first-sample accumulators reset
+static uint32_t   absavg256  = 0;
 volatile uint32_t _absavg256 = 0;
-volatile int16_t  i, q;  // demodulated I/Q (smeter)
-int16_t           v[14]; // Q delay line (Hilbert)
-int16_t           vi[7]; // I delay line
+volatile int16_t  i, q;  // demodulated I/Q (global, used by slow_dsp)
+volatile int16_t  ocomb; // audio out comb (shared)
+volatile int16_t  qh;    // Hilbert Q (global)
 
 // ---------------------------------------------------------------------------
 // AGC (M0PUB + hang-time + adaptive noise floor)
@@ -98,7 +101,7 @@ inline int16_t process_agc(int16_t in) {
   return out;
 }
 
-// Fast AGC alternative (agc=1). Note: potential int16 overflow fixed with int32.
+// Fast AGC alternative (agc=1). int16 overflow fixed with int32 (v1 bug).
 static int16_t gain = 1024;
 inline int16_t process_agc_fast(int16_t in) {
   int16_t out     = (gain >= 1024) ? (int16_t)(((int32_t)(gain >> 10) * in)) : in;
@@ -130,98 +133,39 @@ inline int16_t process_nr(int16_t in) {
 }
 
 // ---------------------------------------------------------------------------
-// slow_dsp() - post-decimation demod + AGC + NR + filter
+// slow_dsp(int16_t ac) - demod + AGC + NR + filter (usdx-legazy parity)
+// Requires global i, q set by process() for AM/FM (Hilbert done in process()).
 // ---------------------------------------------------------------------------
-int16_t qh; // global q-phase (shared with CIC output stage)
-
-inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
-  int16_t ac, acm;
-
-  q_ac2 >>= att2; // digital gain control
-
-  // Hilbert transform on Q (SSB/CW only)
-  if(mode != AM_MODE && mode != FM_MODE) {
-    qh = ((v[0] - q_ac2) + (v[2] - v[12]) * 4) / 64 + ((v[4] - v[10]) + (v[6] - v[8])) / 8 +
-         ((v[4] - v[10]) * 5 - (v[6] - v[8])) / 128 + (v[6] - v[8]) / 2;
-    // shuffle Q sample v[13]->v[0]
-    v[0]  = v[1];
-    v[1]  = v[2];
-    v[2]  = v[3];
-    v[3]  = v[4];
-    v[4]  = v[5];
-    v[5]  = v[6];
-    v[6]  = v[7];
-    v[7]  = v[8];
-    v[8]  = v[9];
-    v[9]  = v[10];
-    v[10] = v[11];
-    v[11] = v[12];
-    v[12] = v[13];
-    v[13] = q_ac2;
-  }
-
-  i_ac2 >>= att2;
-  i = i_ac2;
-  q = q_ac2;
-
-  int16_t id = vi[0];
-  vi[0]      = vi[1];
-  vi[1]      = vi[2];
-  vi[2]      = vi[3];
-  vi[3]      = vi[4];
-  vi[4]      = vi[5];
-  vi[5]      = vi[6];
-  vi[6]      = i_ac2;
-
-  if(mode == AM_MODE) {
-    acm                   = -i - q; // S-meter
-    ac                    = magn(i, q);
-    static int32_t dc_avg = 0;
-    dc_avg += (ac - dc_avg) >> 6; // ~19Hz high-pass to remove AM carrier
-    ac = ac - dc_avg;
-  } else if(mode == FM_MODE) {
-    acm                   = -i - q; // S-meter
-    static int16_t prev_i = 0, prev_q = 0;
-    int32_t        product = (int32_t)i * prev_q - (int32_t)q * prev_i;
-    int32_t        mag_sq  = (int32_t)i * i + (int32_t)q * q;
-    if(mag_sq > 1000) {
-      ac = (product << 4) / (mag_sq >> 3);
-    } else {
-      ac = 0;
-    }
-    prev_i = i;
-    prev_q = q;
-  } else { // USB, LSB, CW
-    acm = -id - qh;
-    ac  = acm;
-  }
-
+inline int16_t slow_dsp(int16_t ac) {
   static uint8_t absavg256cnt;
   if(!(absavg256cnt--)) {
     _absavg256 = absavg256;
     absavg256  = 0;
   } else
-    absavg256 += abs(acm);
+    absavg256 += abs(ac);
 
-    // Noise blanker
-#define NB_RATE_SHIFT 5
-#define NB_THRESH_MULT 5
-#define NB_MIN_LEVEL 10
-#define NB_HOLD_SAMPLES 4
-  if(nb_enable) {
-    static int16_t  nb_prev  = 0;
-    static uint16_t nb_level = 0;
-    static uint8_t  nb_hold  = 0;
-    int16_t         abs_ac   = ac < 0 ? -ac : ac;
-    nb_level += ((int16_t)(abs_ac - (int16_t)nb_level) >> NB_RATE_SHIFT);
-    if(nb_hold > 0) {
-      nb_hold--;
-      ac = nb_prev;
-    } else if(abs_ac > (int16_t)nb_level * NB_THRESH_MULT && nb_level > NB_MIN_LEVEL) {
-      nb_hold = NB_HOLD_SAMPLES;
-      ac      = nb_prev;
+  if(mode == AM) {
+    ac                    = magn(i, q);
+    static int32_t dc_avg = 0;
+    dc_avg                = (dc_avg * 63 + ac) / 64;
+    ac                    = ac - dc_avg;
+  } else if(mode == FM) {
+    static int16_t prev_i       = 0;
+    static int16_t prev_q       = 0;
+    int32_t        product      = (int32_t)i * prev_q - (int32_t)q * prev_i;
+    int32_t        magnitude_sq = (int32_t)i * i + (int32_t)q * q;
+    if(magnitude_sq > 1000) {
+      ac = (product << 4) / (magnitude_sq >> 3);
+    } else {
+      ac = 0;
     }
-    nb_prev = ac;
+    prev_i                = i;
+    prev_q                = q;
+    static int16_t fm_lpf = 0;
+    fm_lpf                = (fm_lpf * 3 + ac) / 4; // alpha = 1/4 (~3-4kHz)
+    ac                    = fm_lpf;
+  } else {
+    ; // USB, LSB, CW
   }
 
   if(agc == 1) {
@@ -248,71 +192,93 @@ inline int16_t slow_dsp(int16_t i_ac2, int16_t q_ac2) {
 }
 
 // ---------------------------------------------------------------------------
-// Audio output via PWM (upsampling CIC comb + integrator, as functional legacy)
+// process() - CIC output stage + Hilbert + slow_dsp (usdx-legazy parity)
 // ---------------------------------------------------------------------------
-static int16_t   ac3, ocomb, ozd1, ozd2;
-static int16_t   ozi1, ozi2;
-static uint8_t   tc;
-volatile uint8_t _init = 1;
+static uint8_t tc = 0;
 
-inline void process_rx_dac(int16_t in) {
-  ac3   = in;
-  ozd1  = ac3 - ozd1; // comb section
-  ocomb = ozd1 - ozd2;
-  ozd2  = ac3;
+void process(int16_t i_ac2, int16_t q_ac2) {
+  static int16_t ac3;
+#ifdef AF_OUT
+  static int16_t ozd1, ozd2; // Output stage
+  if(_init) {
+    ac3   = 0;
+    ozd1  = 0;
+    ozd2  = 0;
+    _init = 0;
+  } // first-sample reset
+  int16_t od1 = ac3 - ozd1; // Comb section
+  ocomb       = od1 - ozd2;
+#endif
+#define OUTLET 1
+#ifdef OUTLET
+  if(tc++ == 0) // prevent recursion
+#endif
+    interrupts(); // allow subsequent interrupts for further rx sampling while processing
+#ifdef AF_OUT
+  ozd2 = od1;
+  ozd1 = ac3;
+#endif
+  {
+    q_ac2 >>= att2;       // digital gain control
+    static int16_t v[14]; // Process Q (down-sampled) samples
+    qh = ((v[0] - q_ac2) + (v[2] - v[12]) * 4) / 64 + ((v[4] - v[10]) + (v[6] - v[8])) / 8 +
+         ((v[4] - v[10]) * 5 - (v[6] - v[8])) / 128 + (v[6] - v[8]) / 2; // Hilbert
+    v[0]  = v[1];
+    v[1]  = v[2];
+    v[2]  = v[3];
+    v[3]  = v[4];
+    v[4]  = v[5];
+    v[5]  = v[6];
+    v[6]  = v[7];
+    v[7]  = v[8];
+    v[8]  = v[9];
+    v[9]  = v[10];
+    v[10] = v[11];
+    v[11] = v[12];
+    v[12] = v[13];
+    v[13] = q_ac2;
+  }
+  i_ac2 >>= att2; // digital gain control
+  i = i_ac2;
+  q = q_ac2;
+  static int16_t v[7]; // Delay I to match Hilbert on Q
+  v[0] = v[1];
+  v[1] = v[2];
+  v[2] = v[3];
+  v[3] = v[4];
+  v[4] = v[5];
+  v[5] = v[6];
+  v[6] = i_ac2;
+  ac3  = slow_dsp(-q - qh); // inverting I and Q dampens PWM-out/ADC feedback loop
+#ifdef OUTLET
+  tc--;
+#endif
 }
 
 // ---------------------------------------------------------------------------
-// CIC decimator state machine (sdr_rx_00..07) - direct I/Q ADC sampling
+// CIC decimator (sdr_rx_00..07) - direct I/Q ADC sampling (usdx-legazy parity)
 // ---------------------------------------------------------------------------
-volatile uint8_t admux[3];
-volatile uint8_t rx_state = 0;
+volatile uint8_t admux[3]; // ADC channel selectors (I/Q/mic); set in setup
 
 static int16_t i_s0za1, i_s0zb0, i_s0zb1, i_s1za1, i_s1zb0, i_s1zb1;
-static int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1;
-static int16_t q_ac2;
+static int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
 
 #define M_SR 1 // CIC N=3
 
-// sdr_rx_common_i/q read ADCs and feed the CIC.
-// NOTE: full ISR chain (ADC config, output stage PWM) is wired in loop/setup.
-inline int16_t sdr_rx_common_q() {
-  ADMUX = admux[0];
-  ADCSRA |= (1 << ADSC);
-  return ADC - 511;
-}
-inline int16_t sdr_rx_common_i() {
-  ADMUX = admux[1];
-  ADCSRA |= (1 << ADSC);
-  int16_t        adc = ADC - 511;
-  static int16_t prev_adc;
-  int16_t        ac = (prev_adc + adc) >> 1;
-  prev_adc          = adc;
-  if(_init) { // hack: reset audio out stage (comb + integrator)
-    ocomb = 0;
-    ozi1  = 0;
-    ozi2  = 0;
-    _init = 0;
-  }
-  ozi2   = ozi1 + ozi2; // Integrator section (AF_OUT, as functional legacy)
-  ozi1   = ocomb + ozi1;
-  OCR1AL = min(max((ozi2 >> 5) + 128, 0), 255); // PWM audio out
-  return ac;
-}
-
-// The 8-phase CIC state machine (as v1 NEW_RX). func_ptr drives next phase.
-void sdr_rx_00();
-void sdr_rx_02();
-void sdr_rx_04();
-void sdr_rx_06();
-void sdr_rx_01();
-void sdr_rx_03();
-void sdr_rx_05();
-void sdr_rx_07();
-
-// func_ptr is owned by hw.h; types must match exactly
+// func_ptr owns the next phase; definition in hw.h
 typedef void (*func_t)(void);
 extern volatile func_t func_ptr;
+
+// forward declarations (defined below)
+inline int16_t sdr_rx_common_q();
+inline int16_t sdr_rx_common_i();
+void           sdr_rx_01();
+void           sdr_rx_02();
+void           sdr_rx_03();
+void           sdr_rx_04();
+void           sdr_rx_05();
+void           sdr_rx_06();
+void           sdr_rx_07();
 
 void sdr_rx_00() {
   int16_t ac      = sdr_rx_common_i();
@@ -321,7 +287,7 @@ void sdr_rx_00() {
   i_s0za1         = ac;
   int16_t ac2     = (i_s1za0 + (i_s1za1 + i_s1zb0) * 3 + i_s1zb1);
   i_s1za1         = i_s1za0;
-  process_rx_dac(slow_dsp(ac2, q_ac2));
+  process(ac2, q_ac2); // note: uses q_ac2 computed in sdr_rx_07 (global)
 }
 void sdr_rx_02() {
   int16_t ac = sdr_rx_common_i();
@@ -368,4 +334,34 @@ void sdr_rx_07() {
   q_s0za1         = ac;
   q_ac2           = (q_s1za0 + (q_s1za1 + q_s1zb0) * 3 + q_s1zb1);
   q_s1za1         = q_s1za0;
+}
+
+// ---------------------------------------------------------------------------
+// Audio output PWM (AF_OUT): comb in process(), integrator here (parity)
+// ---------------------------------------------------------------------------
+static int16_t ozi1, ozi2;
+
+inline int16_t sdr_rx_common_q() {
+  ADMUX = admux[0];
+  ADCSRA |= (1 << ADSC);
+  return ADC - 511;
+}
+inline int16_t sdr_rx_common_i() {
+  ADMUX = admux[1];
+  ADCSRA |= (1 << ADSC);
+  int16_t        adc = ADC - 511;
+  static int16_t prev_adc;
+  int16_t        ac = (prev_adc + adc) / 2;
+  prev_adc          = adc;
+#ifdef AF_OUT
+  if(_init) {
+    ocomb = 0;
+    ozi1  = 0;
+    ozi2  = 0;
+  } // first-sample hack
+  ozi2   = ozi1 + ozi2; // Integrator section
+  ozi1   = ocomb + ozi1;
+  OCR1AL = min(max((ozi2 >> 5) + 128, 0), 255); // PWM audio out
+#endif
+  return ac;
 }
