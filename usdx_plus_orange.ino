@@ -1989,9 +1989,17 @@ inline int16_t ssb(int16_t in) {
     dc    = (ac + (7) * dc) / (7 + 1);
     v[15] = (ac - dc) / 2;
   } else {
-    ac    = in * 2;
-    ac    = ac + z1;
-    z1    = (in - (2) * z1) / (2 + 1);
+    ac = in * 2;
+    ac = ac + z1;
+    z1 = (in - (8) * z1) / (8 + 1); // LPF coeff 1/9 (legacy parity)
+
+    // smooth clipping limiter (legacy parity)
+    if(ac > 250) {
+      ac = 250 + (ac - 250) / 2;
+    } else if(ac < -250) {
+      ac = -250 - (-250 - ac) / 2;
+    }
+
     dc    = (ac + (2) * dc) / (2 + 1);
     v[15] = (ac - dc);
   }
