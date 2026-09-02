@@ -151,6 +151,9 @@ void switch_rxtx(uint8_t tx_enable) {
   tx = tx_enable;
   cw_set_keyed(tx_enable); // feed CW decoder with actual key state (RX side)
 
+  // Set sample rate for this direction: TX @F_SAMP_TX (4.8k), RX @F_SAMP_RX
+  OCR2A = ((F_CPU / 64) / ((tx_enable) ? F_SAMP_TX : F_SAMP_RX)) - 1;
+
   if(tx_enable) {
     switch(mode) {
     case USB:
