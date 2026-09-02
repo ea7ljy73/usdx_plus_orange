@@ -323,7 +323,9 @@ void setup() {
   menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
   // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
   // rotary-key is pressed at power-on, and always disable VOX on boot.
-  if(read_button() == 0) { // left button pressed at power-on -> reset settings
+  // NOTE: use digitalRead(BUTTONS) here (like legacy 5084) - the ADC is not yet
+  // enabled at this point in setup, so analog ADC read would block forever on ADIF.
+  if(digitalRead(BUTTONS) == LOW) { // left button pressed at power-on -> reset settings
     lcd.setCursor(0, 1);
     lcd.print("Reset settings..");
     for(uint8_t i = 0; i != 32; i++) { // re-persist defaults over EEPROM
