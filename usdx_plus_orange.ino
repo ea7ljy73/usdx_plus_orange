@@ -1974,8 +1974,57 @@ volatile uint8_t tx_lowcut = 0; // TX low-cut HPF: 0=off, 1=100Hz, 2=200Hz, 3=40
 volatile uint8_t pre_emph  = 0; // disabled by default - less delay
 static int16_t   pre_z1    = 0;
 
+#define CESSB_THRESH 200 // CESSB envelope clipper threshold (SDR-style voice TX)
+
 inline int16_t ssb(int16_t in) {
   static int16_t dc, z1;
+
+  if(!dig_mode) {
+    // --- Voice compressor (ratio ~2:1, smoothed envelope) -------------------
+    if(comp_enable) {
+      int16_t abs_in = in < 0 ? -in : in;
+      int16_t env;
+      if(abs_in > comp_envelope)
+        comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms
+      else
+        comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms
+      env = comp_envelope;
+      if(env > comp_threshold && env > 0) {
+        int16_t excess = env - comp_threshold;
+        if(excess < 64)
+          excess = ((int16_t)((uint16_t)excess * excess)) >> 6; // soft knee
+        int32_t gain = (int32_t)(comp_threshold + (excess >> 1)) + (int32_t)(comp_threshold >> 1);
+        if(gain > env)
+          gain = env;
+        in = (int16_t)(((int32_t)in * gain) / env);
+      }
+    }
+
+    // --- Mic EQ (bass + presence) -------------------------------------------
+    if(eq_low != 0 || eq_high != 0) {
+      eq_low_iir += (in - eq_low_iir) >> 4;   // LPF ~75Hz: bass component
+      eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: reference for HPF
+      int16_t hi    = in - eq_high_iir;       // HPF ~760Hz: treble/presence
+      int32_t boost = ((int32_t)eq_low_iir * eq_low) + ((int32_t)hi * eq_high);
+      in            = in + (int16_t)(boost >> 3);
+    }
+
+    // --- TX low-cut HPF -------------------------------------------------------
+    if(tx_lowcut > 0) {
+      static int16_t tx_hpf_z1 = 0;
+      uint8_t        k         = 5 - tx_lowcut; // 50Hz->4, 100Hz->3, 200Hz->2
+      int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
+      tx_hpf_z1                = lp;
+      in                       = in - lp;
+    }
+
+    // --- Pre-emphasis ----------------------------------------------------------
+    if(pre_emph > 0) {
+      int16_t pre_in = in;
+      in             = in + ((pre_in - pre_z1) * pre_emph);
+      pre_z1         = pre_in;
+    }
+  }
 
   int16_t        i, q;
   uint8_t        j;
@@ -2021,6 +2070,16 @@ inline int16_t ssb(int16_t in) {
       ((v[6] - v[8]) >> 1);
   uint16_t _amp = magn(i, q);
 #endif
+  // CESSB envelope clipper (voice only): limits the I/Q magnitude to remove
+  // SSB overshoots, trading a little peak power for ~2-3dB effective average
+  if(!dig_mode && _amp > CESSB_THRESH) {
+    uint16_t reduced = CESSB_THRESH + ((_amp - CESSB_THRESH) >> 2);
+    if(_amp) {
+      i = (int16_t)((int32_t)i * reduced / _amp);
+      q = (int16_t)((int32_t)q * reduced / _amp);
+    }
+    _amp = reduced;
+  }
 #ifdef CARRIER_COMPLETELY_OFF_ON_LOW
   _vox(_amp > vox_thresh);
 #else
@@ -2600,8 +2659,16 @@ static uint16_t  decayCount = 800;
 #define LO(x) ((x) & 0xFF)
 
 inline int16_t process_agc(int16_t in) {
+  // AGC with hang-time and adaptive noise floor.
+  //  - The gain math (out) is unchanged; only the gain-tracking logic is refined.
+  //  - nfloor: slow adaptive estimate of the background noise level. Gain is only
+  //    allowed to recover when the signal rises clearly above the noise floor,
+  //    i.e. when it is real signal and not just hiss (avoids pumping on noise).
+  //  - hang: once a strong signal drops, the gain is held for hang_samps before
+  //    starting to recover, so syllable gaps do not pump gain.
   static bool     small    = true;
-  static uint16_t hang_cnt = 0;
+  static uint16_t nfloor   = 64; // adaptive noise floor (scaled by 128 like centiGain)
+  static uint16_t hang_cnt = 0;  // samples since signal last present
   int16_t         out;
 
   if(centiGain >= 128)
@@ -2610,25 +2677,40 @@ inline int16_t process_agc(int16_t in) {
     out = (int16_t)(((int32_t)(centiGain >> 2) * (in >> 3)) >> 2);
 
   uint16_t abs_out = abs(out);
+
+  // Update adaptive noise floor: tracks quiet periods (resolution /128).
+  if(abs_out < nfloor)
+    nfloor -= (nfloor - abs_out) >> 4; // slow leak down toward quiet level
+  else
+    nfloor += (abs_out - nfloor) >> 11; // very slow rise over the quiet average
+  if(nfloor < 16)
+    nfloor = 16; // clamp to avoid disabling the gate entirely
+
   if(HI(abs_out) > HI(1536)) {
     centiGain -= (centiGain >> 4); // Fast attack
-    hang_cnt = 0;
+    hang_cnt = 0;                  // signal present: reset hang
   } else {
-    if(HI(abs_out) > HI(256))
+    if(HI(abs_out) > HI(256)) {
       hang_cnt = 0; // signal present, reset hang
-    else if(hang_cnt < 600)
-      hang_cnt++; // hang countdown ~77ms @7812Hz
+    } else if(hang_cnt < 2048) {
+      hang_cnt++; // hang countdown (up to ~262ms @7812Hz)
+    }
     if(HI(abs_out) > HI(1024))
       small = false;
     if(--decayCount == 0) {
-      if(small && hang_cnt >= 600) {
+      decayCount = ((mode == CW) ? 2 : (uint16_t)agc_decay) * 100;
+      // Recover gain only after the hang window and when the long-term signal
+      // was small, and crucially only when the current level is comfortably
+      // above the adaptive noise floor (real signal present, not just hiss).
+      if(small && (hang_cnt >= 600) && ((HI(abs_out) << 8) > ((uint32_t)nfloor * 3))) {
         if(centiGain < (INT16_MAX - (INT16_MAX >> 4)))
           centiGain += (centiGain >> 4);
         else
           centiGain = INT16_MAX;
       }
-      decayCount = ((mode == CW) ? 2 : (uint16_t)agc_decay) * 100;
-      small      = true;
+      small = true;
+      if(hang_cnt >= 2048)
+        nfloor = (nfloor * 3) >> 2; // re-learn floor quickly after long silence
     }
   }
   return out;
