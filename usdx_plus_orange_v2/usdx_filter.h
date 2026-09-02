@@ -7,6 +7,10 @@
 
 #include <stdint.h>
 
+// External references owned by tx.h / main
+extern volatile uint8_t filt;
+extern volatile uint8_t cw_tone;
+
 #define N_FILT 7
 
 /* basicdsp filter simulation:
@@ -218,6 +222,8 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       za1 = za0;
 
       // return zc0 / 64; // compensate the 64x front-end gain
-      return zc0 / 8; // compensate the front-end gain
+      // v2: use /64 (compensates the 64x front-gain) so CW output level matches
+      // the SSB filters (fix for the SSB<->CW volume jump seen in v1)
+      return zc0 / 64;
     }
   }

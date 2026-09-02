@@ -121,16 +121,15 @@ con las mismas prestaciones (o mejores).
 
 | Paso | Módulo | Acción | Comportamiento |
 |---|---|---|---|
-| 0 | Esqueleto v2 | Crear `usdx_plus_orange_v2/` con `.ino` tipo y módulos `.h` vacíos | v1 intacto |
-| 1 | I2C + SI5351 | Crear `i2c.h/cpp` y `si5351.h/cpp` limpios (adaptar de v1, resolver macros globales) | v2 compila |
-| 2 | DSP RX/TX ISRs | Copiar `dsp_tx`, `sdr_rx_00..07`, `freq_calc_fast` intactos a `tx`/`rx` | v2 igual a v1 |
-| 3 | AGC | Unificar en un solo AGC con hang+noise floor; **fix overflow** `process_agc_fast` o eliminarlo | Mejora (bugfix) |
-| 4 | Filtros | Normalizar ganancia SSB/CW; limpiar usdx_filter.h | Mejora (consistencia) |
-| 5 | CW | Extraer keyer/decoder/messages | Idéntico |
-| 6 | CAT | Extraer TS-480 | Idéntico |
-| 7 | UI + VFO + EEPROM | Extraer menú, encoder, S-meter, persistencia | Idéntico |
-| 8 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Reduce flash, mismo comportamiento |
-| 9 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado; opcional `freq_calc_fast` opt | Mejora |
+| 0 | Esqueleto v2 | Crear `usdx_plus_orange_v2/` con `.ino` tipo y módulos `.h` vacíos | v1 intacto ✅ |
+| 1 | I2C + SI5351 | Crear `i2c.h/cpp` y `si5351.h/cpp` limpios (adaptar de v1, resolver macros globales) | v2 compila ✅ (commit 6e7d98f) |
+| 2 | DSP RX/TX ISRs | Copiar `dsp_tx`, `sdr_rx_00..07`, `freq_calc_fast` intactos a `tx`/`rx` | v2 igual a v1 ✅ (commit 7307e9a, **parity check ssb real**) |
+| 3 | Filtros | Normalizar ganancia SSB/CW (fix `zc0/64` CW) | Mejora ✅ |
+| 4 | CW decoder + keyer | Extraer (acoplado a UI; se hace junto al Paso UI) | Idéntico (pendiente) |
+| 5 | CAT | Extraer TS-480 | Idéntico (pendiente) |
+| 6 | UI + VFO + EEPROM | Extraer menú, encoder, S-meter, persistencia, main loop/ISR HW | Idéntico (pendiente) |
+| 7 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Reduce flash |
+| 8 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado | Mejora |
 
 ### Regla de verificación por paso
 ```
@@ -174,6 +173,12 @@ git diff     -> no hay cambios de comportamiento no documentados
   por construcción.
 - **2026-09-02** — Decisión del usuario: NO tocar `freq_calc_fast` por ahora
   (conservador); queda como paso opcional 9.
+- **2026-09-02** — Verificado paridad de `ssb()` v1 vs v2: lógica DSP idéntica
+  (solo se eliminaron ramas `#ifdef` cuya config no aplica). Paso 2 validado.
+- **2026-09-02** — Filtros normalizados en v2 (ganancia CW `/64` vs `/8` del v1)
+  para eliminar el salto de volumen SSB↔CW.
+- **2026-09-02** — El CW decoder y keyer se mueven al Paso UI (acoplamiento con
+  `lcd`/`menumode`/botones). Se extraerá con el menú.
 
 ---
 
