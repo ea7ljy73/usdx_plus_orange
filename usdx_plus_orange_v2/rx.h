@@ -22,6 +22,11 @@
                // avoids audio clicks)
 #define R 4    // CIC decimation 62500/2 -> 7812.5 SPS
 
+// Audio output stage ON (usdx-legazy:2826). WITHOUT this the OCR1AL audio
+// write is compiled out entirely -> no RX audio.
+#define AF_OUT 1
+#define OUTLET 1
+
 #define HI(x) ((x) >> 8)
 #define LO(x) ((x) & 0xFF)
 
@@ -209,7 +214,6 @@ void process(int16_t i_ac2, int16_t q_ac2) {
   int16_t od1 = ac3 - ozd1; // Comb section
   ocomb       = od1 - ozd2;
 #endif
-#define OUTLET 1
 #ifdef OUTLET
   if(tc++ == 0) // prevent recursion
 #endif
