@@ -104,35 +104,50 @@ public:
 #define I2C_PORT PORTC
 #define I2C_SDA (1 << 4) // PC4
 #define I2C_SCL (1 << 5) // PC5
+#define I2C_DELAY 4      // 731kb/s @20MHz (usdx-legazy)
+#define DELAY(n)                                                                                                       \
+  for(uint8_t i = 0; i != n; i++)                                                                                      \
+  asm("nop")
 #define I2C_SDA_GET() I2C_PIN& I2C_SDA
 #define I2C_SCL_GET() I2C_PIN& I2C_SCL
 #define I2C_SDA_HI() I2C_DDR &= ~I2C_SDA;
 #define I2C_SDA_LO() I2C_DDR |= I2C_SDA;
 #define I2C_SCL_HI()                                                                                                   \
   I2C_DDR &= ~I2C_SCL;                                                                                                 \
-  _I2C_DELAY();
+  DELAY(I2C_DELAY);
 #define I2C_SCL_LO()                                                                                                   \
   I2C_DDR |= I2C_SCL;                                                                                                  \
-  _I2C_DELAY();
+  DELAY(I2C_DELAY);
+
+  // Pin sharing SDA(PC4)/LCD_RS mitigation (usdx-legazy 1353-1360)
+  inline void resume() {
+#ifdef LCD_RS_PORTIO
+    I2C_PORT &= ~I2C_SDA; // pin sharing SDA/LCD_RS mitigation
+#endif
+  }
+  inline void suspend() { I2C_SDA_LO(); } // pull-down LCD_RS; required by LCD
 
   I2C() {
     I2C_PORT &= ~(I2C_SDA | I2C_SCL);
     I2C_SCL_HI();
     I2C_SDA_HI();
+    suspend();
   }
   ~I2C() {
     I2C_PORT &= ~(I2C_SDA | I2C_SCL);
     I2C_DDR &= ~(I2C_SDA | I2C_SCL);
   }
   inline void start() {
+    resume(); // prepare for I2C
     I2C_SCL_LO();
     I2C_SDA_HI();
   }
   inline void stop() {
-    I2C_SDA_LO();
+    I2C_SDA_LO(); // ensure SDA LO so STOP can be initiated
     I2C_SCL_HI();
     I2C_SDA_HI();
-    I2C_DDR &= ~(I2C_SDA | I2C_SCL);
+    I2C_DDR &= ~(I2C_SDA | I2C_SCL); // prepare for a start: pull-up both
+    suspend();
   }
 #define SendBit(data, mask)                                                                                            \
   if(data & mask) {                                                                                                    \
