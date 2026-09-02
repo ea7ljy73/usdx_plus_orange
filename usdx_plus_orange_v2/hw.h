@@ -114,7 +114,7 @@ void initPins() {
   pinMode(SIDETONE, OUTPUT);
   pinMode(RX, OUTPUT);
   pinMode(KEY_OUT, OUTPUT);
-  pinMode(BUTTONS, INPUT_PULLUP); // rotary button (v1 uses internal pullup)
+  pinMode(BUTTONS, INPUT); // L/R/rotary button (v1: no internal pullup - HW has it)
   pinMode(DIT, INPUT_PULLUP);
   pinMode(DAH, INPUT); // pull-up DAH 10k via AVCC (v1)
 
@@ -128,6 +128,25 @@ void initPins() {
 
   pinMode(ROT_A, INPUT_PULLUP);
   pinMode(ROT_B, INPUT_PULLUP);
+}
+
+// ---------------------------------------------------------------------------
+// start_rx() - arm RX DSP (usdx-legazy 3617 parity)
+// ---------------------------------------------------------------------------
+void start_rx() {
+  _init    = 1;
+  rx_state = 0;
+  func_ptr = sdr_rx_00; // enable RX DSP/SDR
+  adc_start(2, true, F_ADC_CONV * 4);
+  admux[2] = ADMUX; // mic (4x slower for TX, like legacy)
+  adc_start(0, !(att == 1), F_ADC_CONV);
+  admux[0] = ADMUX;
+  adc_start(1, !(att == 1), F_ADC_CONV);
+  admux[1] = ADMUX;
+  timer1_start(F_SAMP_PWM);
+  timer2_start(F_SAMP_RX);
+  TCCR1A &= ~(1 << COM1B1);
+  digitalWrite(KEY_OUT, LOW); // disable KEY_OUT PWM
 }
 
 // ---------------------------------------------------------------------------
