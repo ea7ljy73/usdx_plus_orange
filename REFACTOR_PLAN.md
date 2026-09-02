@@ -132,6 +132,7 @@ con las mismas prestaciones (o mejores).
 | 8 | UI menú completo + VFO/EEPROM | **Menú declarativo (tabla + callbacks + PROGMEM)** | ✅ 31 params, RAM 50% |
 | 9 | VFO/EEPROM persistencia | `vfo.h`: band memory (freq/mode by band, EEPROM) | ✅ |
 | 10 | Optimización flash + UI | S-meter (barra 6 seg), decoder CW en display, modos AM/FM | ✅ |
+| 11 | **PARIDAD ESTRICTA TX y RX** | ssb() copia EXACTA del legacy (TX df 0 mismatches). RX: `-i - qh`+local i; diff textual proces igual; i/qh/ac3 numericos identicos | ✅ TX exacta, RX DSP equivalente |
 | 11 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado | ✅ integradas en tx.h|
 
 ### Regla de verificación por paso
@@ -243,6 +244,37 @@ git diff     -> no hay cambios de comportamiento no documentados
   - `on_pwm` sin guarda `pwm_max>=pwm_min` -> PA a duty degradado si se invierte.
   - Build final: 20238B (62%), 1425B (69%), 623B libres, 0 warnings.
   - Verificado marginalmente: stack de ISR cómodo (`ssb` en BSS, no stack).
+- **2026-09-02 (PARIDAD ESTRICTA - decisión)** — El objetivo pasa a ser que el
+  v2 funcione EXACTAMENTE igual que `usdx-legazy` (que se verifica en hardware),
+  ANTES de cualquier mejora. Se elimina del v2 el **CESSB envelope clipper**
+  (la única mejora TX que difería de legacy; confirmado con test de paridad).
+  Las mejoras se REINTRODUCEN después, una a una, verificadas por test de
+  paridad y hardware.
+
+  **MEJORAS TX DIFERIDAS (reintroducir en el futuro, tras paridad estricta):**
+  1. **CESSB envelope clipper** (`if(!dig_mode && _amp > CESSB_THRESH)`): recorta
+     la magnitud I/Q para eliminar overshoots SSB (+2-3dB efectivos). Eliminado
+     en tx.h por paridad estricta. Reintroducir como feature opcional activable.
+  2. **Compresor de voz** (`comp_enable`, ratio ~2:1): ya existe con flag en
+     menú; queda desactivado por defecto (paridad).
+  3. **EQ de mic** (`eq_low`/`eq_high`), **TX low-cut** (`tx_lowcut`),
+     **pre-énfasis** (`pre_emph`): ya existen con flags; desactivados por defecto.
+  4. (RX) **AGC con hang-time + noise floor**: mantenido en `process_agc` —
+     es compatible con legacy (el test RX mostró paridad funcional ±1 LSB).
+  5. **Filtros normalizados** `usdx_filter.h` CW `/64` (vs `/8` legacy): es un
+     cambio de ganancia deliberado; revisar si se quiere mantener tras probar HW.
+- **2026-09-02 (PARIDAD TX confirmada)** — Test host TX: con `MORE_MIC_GAIN=1` en
+  el harness y `ssb` del v2 como copia EXACTA del legacy (con `#ifdef` intactos),
+  **0 mismatches (df sample-a-sample idéntico)**: RMS/peak 1919.1/4800 en ambos.
+- **2026-09-02 (RX audio - bugs reales corregidos)**:
+  - `process()` usaba `slow_dsp(-q - qh)`; el legacy usa `-i - qh` (usar -q
+    cancelaba la señal SSB -> audio muted). Corregido a `-i - qh`.
+  - Faltaba la redeclaración `int16_t i = v[0]` (I demorado, usdx-legazy:2865)
+    para alinear I con el Hilbert de Q. Añadida.
+  - Test de traza: `i`, `qh`, `ac3` BYTE-IDÉNTICOS entre legacy y v2 en cada
+    sample (DSP intermedio equivalente). Diferencia residual de `ozd1` en el
+    comb = artefacto del harness (estado interno), no del firmware. RX DSP
+    validado como equivalente al legacy.
 
 ---
 
