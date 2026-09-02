@@ -275,6 +275,22 @@ void display_vfo() {
 
 void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
 
+// Diagnostic: blink backlight N times (SLOW, readable) to show progress.
+// Each blink: 400ms off + 400ms on; 1.2s pause after the sequence.
+// wdt_reset() inside so the 4s watchdog NEVER fires mid-setup.
+static void diag_blink(uint8_t n) {
+  for(uint8_t i = 0; i < n; i++) {
+    PORTD &= ~0x08;
+    delay(400);
+    wdt_reset();
+    PORTD |= 0x08;
+    delay(400);
+    wdt_reset();
+  }
+  delay(1200); // separator so groups are easy to count
+  wdt_reset();
+}
+
 void setup() {
   vfo_apply_freq = vfo_hw_apply;
   digitalWrite(KEY_OUT, LOW);
@@ -282,7 +298,10 @@ void setup() {
   // anything else. Tells us software vs hardware immediately.
   DDRD |= 0x08;  // PD3 (backlight) output
   PORTD |= 0x08; // backlight ON
+  diag_blink(1); // step 1: powered on, about to touch SI5351
+
   si5351.powerDown();
+  diag_blink(2); // step 2: SI5351 powerDown() returned (I2C write OK)
 
   MCUSR = 0;
   wdt_enable(WDTO_4S);
@@ -291,33 +310,30 @@ void setup() {
   PCMSK0 = 0;
   PCMSK1 = 0;
   PCMSK2 = 0;
+  diag_blink(3); // step 3: MCUSR/wdt/ADMUX/PCICR done
 
   initPins();
-  Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
+  diag_blink(4); // step 4: initPins() returned
+
+  // LCD init BEFORE serial: PC0/PC1 (LCD D4/D5) share the UART pins, and the
+  // legacy only re-enables serial carefully after the display is up.
   delay(100);
-  lcd.begin(16, 4); // Init LCD (mismo que legacy: los params no afectan en el
-                    // driver, que fija 0x28=2-line)
+  wdt_reset();
+  lcd.begin(16, 4); // Init LCD (mismo que legacy)
+  diag_blink(5);    // step 5: lcd.begin() returned
   lcd.print("uSDX v2");
   delay(300);
+  wdt_reset();
+
+  Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
+  diag_blink(6);                              // step 6: Serial.begin + display text
 
   timer1_start(78125);
   vfo_eeprom_load();        // restore band memories
   vfo_recall_band(bandval); // apply current band freq/mode (or default)
   vfo_apply();              // hw freq from loaded/recalled value
+  diag_blink(7);            // step 7: SI5351.freq() returned
   last_band_save = millis();
-
-  admux[0] = 0;
-  admux[1] = 1;
-  admux[2] = 2;
-  // NOTE: capture full ADMUX (channel + 1.1V internal ref) like v1, so the RX
-  // ISR uses the correct voltage reference for the SDR I/Q ADC.
-  adc_start(0, true, F_ADC_CONV); // I  (~96kHz ADC clock, v1 rate)
-  admux[0] = ADMUX;
-  adc_start(1, true, F_ADC_CONV); // Q
-  admux[1] = ADMUX;
-  adc_start(2, true, 192307); // mic (max rate for VOX latency)
-  admux[2] = ADMUX;
-  adc_stop(); // leave ADC idle until ISR/VOX re-arms it
 
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
@@ -325,12 +341,12 @@ void setup() {
   menu_load_all();      // restore saved menu params (volume, mode, agc, drive, ...)
   loadWPM(keyer_speed); // CW timing
 
-  func_ptr = sdr_rx_00;
-  rx_state = 0;
-  timer2_start(F_SAMP_RX);
+  start_rx();    // arm RX DSP (ADC I/Q/mic + timers + func_ptr) as legacy
+  diag_blink(5); // step 5: RX armed (start_rx returned)
   display_vfo();
 
 #if KEYER
+  diag_blink(6); // about to wait for paddle release
   // wait until DIH/DAH/PTT released to prevent TX on startup (v1 parity)
   {
     unsigned long key_wait_until = millis() + 2000;
@@ -340,10 +356,16 @@ void setup() {
         break; // don't hang forever if a paddle is held
     }
   }
+  diag_blink(7); // paddle wait done -> entering loop
 #endif
 }
 
 void loop() {
+  static uint8_t diag_once = 0;
+  if(!diag_once) {
+    diag_once = 1;
+    diag_blink(8); // step 8: loop() running
+  }
   wdt_reset();
 
   if(menu.state == MENU_MAIN) {
