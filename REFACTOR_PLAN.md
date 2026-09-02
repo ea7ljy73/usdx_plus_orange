@@ -221,6 +221,15 @@ git diff     -> no hay cambios de comportamiento no documentados
   `OCR2A` como el v1 (línea 4144). También la tasa ADC RX ahora usa `F_ADC_CONV`
   (192307/2) como el v1 para evitar clicks de audio. Build: 19852B (61%),
   1425B (69%), 0 warnings.
+- **2026-09-02 (REVISIÓN 4, pre-hardware)** — Última pasada profunda:
+  - `vfo_recall_band`: modo por defecto ahora USB en bandas >=20m (índice>3),
+    LSB en 80m (evita arrancar en LSB en 40m donde es SSB-USB).
+  - Verificado: `freq`/`mode`/`rit` tipos coherentes entre módulos; pipeline
+    ADC I/Q correcto (lea previa, inicie siguiente); SI_CLK_OE TX/RX coinciden
+    con v1 WHITE_BUTTONS; EEPROM colisión resuelta.
+  - Limpieza: sin warnings, build estable 19862B (61%), 1425B (69%).
+  - Pendientes menores documentados: `smode`/`rit_on`/`practice` no afectan
+    comportamiento aún (limitaciones de feature, no bugs).
 
 ---
 
