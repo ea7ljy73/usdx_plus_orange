@@ -229,10 +229,10 @@ inline void Menu::process() {
       render();
     return;
   }
-  // --- button (short press state machine) ---
-  static uint8_t btn_last = 0;
-  uint8_t        btn      = !digitalRead(BUTTONS);
-  if(btn && !btn_last) { // rising edge
+  // --- button (left = BL via ADC, rising edge) ---
+  static uint8_t btn_last = 1;                            // 1 = released
+  uint8_t        btn      = (read_button() == 0) ? 0 : 1; // BL pressed -> 0
+  if(btn == 0 && btn_last == 1) {                         // rising edge (pressed)
     select_mode();
     if(state == MENU_EDIT)
       lcd.cursor();
