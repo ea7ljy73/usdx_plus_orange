@@ -27,10 +27,12 @@
 // Parameter types
 enum param_type_t { P_T8, P_T16, P_T32, P_ENUM, P_TEXT };
 
-#define MENU_FAST_VAR uint8_t
+// Program labels: stored in a single PROGMEM table (indexed by id) to save RAM.
+// Defined in the .ino as an array of PSTR pointers named MENU_LABELS.
+extern const char* const MENU_LABELS[];
 
 struct MenuParam {
-  const char*        label;       // label (RAM string; flash-opt later)
+  uint8_t            label;       // index into MENU_LABELS (PROGMEM)
   void*              value;       // pointer to the target variable
   uint8_t            type;        // param_type_t
   int32_t            min, max;    // numeric range; enums use index
@@ -38,6 +40,9 @@ struct MenuParam {
   uint8_t            eslot;       // eeprom slot, 0 = not persisted
   void (*on_change)();            // post-handling callback
 };
+
+// helper: write a flash label to the LCD via its id (defined in .ino)
+void menu_print_label(uint8_t id);
 
 #define N_MENU_ITEMS 32 // declared capacity; MENU_COUNT computed from table
 
@@ -73,7 +78,8 @@ public:
   // Render current state on LCD (label + value)
   void render();
 
-  const MenuParam* cur() { return &MENU[index]; }
+  // Fetch current table entry (PROGMEM) into a local struct
+  void get_cur(MenuParam& p) { memcpy_P(&p, (PGM_P)&MENU[index], sizeof(MenuParam)); }
 
 private:
   void move(int8_t delta);
@@ -97,37 +103,39 @@ inline void Menu::move(int8_t delta) {
 }
 
 inline void Menu::commit() {
-  const MenuParam* p = cur();
-  if(p->eslot && p->value) {
-    uint8_t sz = (p->type == P_T16) ? 2 : (p->type == P_T32) ? 4 : 1;
-    menu_eeprom_save(p->eslot, p->value, sz);
+  MenuParam p;
+  get_cur(p);
+  if(p.eslot && p.value) {
+    uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+    menu_eeprom_save(p.eslot, p.value, sz);
   }
-  if(p->on_change)
-    p->on_change();
+  if(p.on_change)
+    p.on_change();
 }
 
 inline void Menu::print_value() {
-  const MenuParam* p = cur();
-  if(!p->value)
+  MenuParam p;
+  get_cur(p);
+  if(!p.value)
     return;
   lcd.print(' ');
-  if(p->type == P_ENUM) {
-    uint8_t v = *(uint8_t*)p->value;
-    if(p->enum_labels && v < p->max - p->min + 1)
-      lcd.print((const char*)pgm_read_ptr(&p->enum_labels[v - p->min])); // may be off by min
-  } else if(p->type == P_TEXT) {
-    lcd.print((char*)p->value);
+  if(p.type == P_ENUM) {
+    uint8_t v = *(uint8_t*)p.value;
+    if(p.enum_labels && v <= p.max)
+      lcd.print((const char*)pgm_read_ptr(&p.enum_labels[v - p.min]));
+  } else if(p.type == P_TEXT) {
+    lcd.print((char*)p.value);
   } else {
     int32_t v = 0;
-    switch(p->type) {
+    switch(p.type) {
     case P_T8:
-      v = *(int8_t*)p->value;
+      v = *(int8_t*)p.value;
       break;
     case P_T16:
-      v = *(int16_t*)p->value;
+      v = *(int16_t*)p.value;
       break;
     default:
-      v = *(int32_t*)p->value;
+      v = *(int32_t*)p.value;
       break;
     }
     char b[12];
@@ -156,58 +164,56 @@ inline void Menu::select_mode() {
 }
 
 inline void Menu::edit_value(int32_t delta) {
-  const MenuParam* p = cur();
-  if(!p->value)
+  MenuParam p;
+  get_cur(p);
+  if(!p.value)
     return;
-  int32_t v          = 0;
-  bool    need_apply = false;
-  if(p->type == P_ENUM || p->type == P_TEXT) {
-    v          = *(uint8_t*)p->value;
-    uint8_t lo = p->min, hi = p->max;
-    if(v + delta < lo)
-      v = hi;
-    else if(v + delta > hi)
-      v = lo;
-    else if(delta)
-      v += delta;
+  if(p.type == P_ENUM || p.type == P_TEXT) {
+    uint8_t v = *(uint8_t*)p.value;
     if(delta) {
-      *(uint8_t*)p->value = (uint8_t)v;
-      need_apply          = true;
+      int32_t nv = (int32_t)v + delta;
+      if(nv < p.min)
+        nv = p.max;
+      if(nv > p.max)
+        nv = p.min;
+      *(uint8_t*)p.value = (uint8_t)nv;
+      if(p.on_change)
+        p.on_change();
     }
   } else {
-    switch(p->type) {
+    int32_t v = 0;
+    switch(p.type) {
     case P_T8:
-      v = *(int8_t*)p->value;
+      v = *(int8_t*)p.value;
       break;
     case P_T16:
-      v = *(int16_t*)p->value;
+      v = *(int16_t*)p.value;
       break;
     default:
-      v = *(int32_t*)p->value;
+      v = *(int32_t*)p.value;
       break;
     }
     if(delta) {
       v += delta;
-      if(v < p->min)
-        v = p->min;
-      if(v > p->max)
-        v = p->max;
-      switch(p->type) {
+      if(v < p.min)
+        v = p.min;
+      if(v > p.max)
+        v = p.max;
+      switch(p.type) {
       case P_T8:
-        *(int8_t*)p->value = (int8_t)v;
+        *(int8_t*)p.value = (int8_t)v;
         break;
       case P_T16:
-        *(int16_t*)p->value = (int16_t)v;
+        *(int16_t*)p.value = (int16_t)v;
         break;
       default:
-        *(int32_t*)p->value = v;
+        *(int32_t*)p.value = v;
         break;
       }
-      need_apply = true;
+      if(p.on_change)
+        p.on_change();
     }
   }
-  if(need_apply && p->on_change)
-    p->on_change();
 }
 
 inline void Menu::process() {
@@ -239,12 +245,10 @@ inline void Menu::process() {
 }
 
 inline void Menu::render() {
-  const MenuParam* p = cur();
+  MenuParam p;
+  get_cur(p);
   lcd.setCursor(0, 0);
-  if(p->label)
-    lcd.print(p->label);
-  else
-    lcd.print("?");
+  menu_print_label(p.label);
   lcd.print("               ");
   lcd.setCursor(0, 1);
   if(state == MENU_EDIT)

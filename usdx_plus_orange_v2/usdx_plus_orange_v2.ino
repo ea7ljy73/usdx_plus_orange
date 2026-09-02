@@ -95,38 +95,51 @@ void on_pwm() {
 void on_tx_quality() {} // no-op (kept for table symmetry)
 
 // --- Table of menu entries (declarative; same order as legacy visible) ---
-const MenuParam MENU[] = {
-    {"Vol", (void*)&volume, P_T8, -1, 16, NULL, 1, NULL},
-    {"Mode", (void*)&mode, P_ENUM, 0, 4, mode_label, 2, on_mode},
-    {"FilterBW", (void*)&filt, P_ENUM, 0, 7, filt_label, 3, NULL},
-    {"Band", (void*)&bandval, P_T8, 1, 6, band_label, 4, NULL},
-    {"Tune Rate", (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
-    {"VFO Mode", (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
-    {"RIT", (void*)&rit, P_ENUM, 0, 1, offon_label, 7, NULL},
-    {"AGC", (void*)&agc, P_ENUM, 0, 2, agc_label, 8, NULL},
-    {"NR", (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
-    {"ATT", (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
-    {"ATT2", (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},
-    {"S-Meter", (void*)&smode, P_ENUM, 0, 6, smode_label, 12, NULL},
-    {"AGC Dcy", (void*)&agc_decay, P_T8, 1, 16, NULL, 13, NULL},
-    {"Noise Blk", (void*)&nb_enable, P_ENUM, 0, 1, offon_label, 14, NULL},
-    {"CW Decoder", (void*)&cwdec, P_ENUM, 0, 1, offon_label, 15, NULL},
-    {"Semi QSK", (void*)&semi_qsk, P_ENUM, 0, 1, offon_label, 16, NULL},
-    {"Practice", (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
-    {"VOX", (void*)&vox, P_ENUM, 0, 1, offon_label, 18, NULL},
-    {"Noise Gate", (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
-    {"TX Drive", (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
-    {"TX Comp", (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 21, NULL},
-    {"TX Emph", (void*)&pre_emph, P_T8, 0, 3, NULL, 22, NULL},
-    {"TX Delay", (void*)&txdelay, P_T8, 0, 255, NULL, 23, NULL},
-    {"EQ Bass", (void*)&eq_low, P_T8, -7, 7, NULL, 24, NULL},
-    {"EQ Treble", (void*)&eq_high, P_T8, -7, 7, NULL, 25, NULL},
-    {"TX LoCut", (void*)&tx_lowcut, P_ENUM, 0, 3, lowcut_label, 26, NULL},
-    {"PA bias min", (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
-    {"PA max", (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
-    {"Ref frq", (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, NULL},
-    {"IQ phase", (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
-    {"Light", (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
+// Flash labels, indexed via MENU_LABELS[]. (PROGMEM: strings stay in flash)
+const char* const MENU_LABELS[] PROGMEM = { // keep order == label ids below
+    "Vol",       "Mode",     "FilterBW",    "Band",     "Tune Rate", "VFO Mode",  "RIT",        "AGC",
+    "NR",        "ATT",      "ATT2",        "S-Meter",  "AGC Dcy",   "Noise Blk", "CW Decoder", "Semi QSK",
+    "Practice",  "VOX",      "Noise Gate",  "TX Drive", "TX Comp",   "TX Emph",   "TX Delay",   "EQ Bass",
+    "EQ Treble", "TX LoCut", "PA bias min", "PA max",   "Ref frq",   "IQ phase",  "Light"};
+
+void menu_print_label(uint8_t id) {
+  const char* s = (const char*)pgm_read_ptr(&MENU_LABELS[id]);
+  while(char c = pgm_read_byte(s++))
+    lcd.print(c);
+}
+
+const MenuParam MENU[] PROGMEM = {
+    {0, (void*)&volume, P_T8, -1, 16, NULL, 1, NULL},
+    {1, (void*)&mode, P_ENUM, 0, 4, mode_label, 2, on_mode},
+    {2, (void*)&filt, P_ENUM, 0, 7, filt_label, 3, NULL},
+    {3, (void*)&bandval, P_T8, 1, 6, band_label, 4, NULL},
+    {4, (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
+    {5, (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
+    {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, NULL},
+    {7, (void*)&agc, P_ENUM, 0, 2, agc_label, 8, NULL},
+    {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
+    {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
+    {10, (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},
+    {11, (void*)&smode, P_ENUM, 0, 6, smode_label, 12, NULL},
+    {12, (void*)&agc_decay, P_T8, 1, 16, NULL, 13, NULL},
+    {13, (void*)&nb_enable, P_ENUM, 0, 1, offon_label, 14, NULL},
+    {14, (void*)&cwdec, P_ENUM, 0, 1, offon_label, 15, NULL},
+    {15, (void*)&semi_qsk, P_ENUM, 0, 1, offon_label, 16, NULL},
+    {16, (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
+    {17, (void*)&vox, P_ENUM, 0, 1, offon_label, 18, NULL},
+    {18, (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
+    {19, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
+    {20, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 21, NULL},
+    {21, (void*)&pre_emph, P_T8, 0, 3, NULL, 22, NULL},
+    {22, (void*)&txdelay, P_T8, 0, 255, NULL, 23, NULL},
+    {23, (void*)&eq_low, P_T8, -7, 7, NULL, 24, NULL},
+    {24, (void*)&eq_high, P_T8, -7, 7, NULL, 25, NULL},
+    {25, (void*)&tx_lowcut, P_ENUM, 0, 3, lowcut_label, 26, NULL},
+    {26, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
+    {27, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
+    {28, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, NULL},
+    {29, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
+    {30, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
 
 const int8_t MENU_COUNT = 31; // number of entries above

@@ -129,8 +129,8 @@ con las mismas prestaciones (o mejores).
 | 5 | UI esencial | `display.h` (LCD HD44780 + encoder PCINT) + sintonía VFO + botón step | Idéntico (config activa) ✅ |
 | 6 | CW decoder + keyer | Extraer (acoplado a UI; se hace junto al Paso UI) | Idéntico (pendiente) |
 | 7 | CAT | Extraer TS-480 | Idéntico (pendiente) |
-| 8 | UI menú completo + VFO/EEPROM | Menú de parámetros, persistencia, modos | Idéntico (pendiente) |
-| 9 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Reduce flash |
+| 8 | UI menú completo + VFO/EEPROM | **Menú declarativo (tabla + callbacks + PROGMEM)** | ✅ 31 params, RAM 50% |
+| 9 | Optimización flash | Eliminar dead-code condicional, PROGMEM strings | Menú PROGMEM hecho; resto pendiente |
 | 10 | Mejoras "gama alta" | Compresor/EQ/CESSB por diseño con margen asegurado | Mejora |
 
 ### Regla de verificación por paso
@@ -181,6 +181,12 @@ git diff     -> no hay cambios de comportamiento no documentados
   para eliminar el salto de volumen SSB↔CW.
 - **2026-09-02** — El CW decoder y keyer se mueven al Paso UI (acoplamiento con
   `lcd`/`menumode`/botones). Se extraerá con el menú.
+- **2026-09-02** — Menú v2 rediseñado como tabla declarativa `MENU[]` (PROGMEM)
+  con `on_change` callbacks por parámetro y persistencia por slot EEPROM,
+  sustituyendo el switch de 49 cases + `NEXT_MENU` probing + post-handling
+  inline del legacy. Mismo uso (BL/BR/encoder), mejor diseño. RAM: 78%→50%.
+- **2026-09-02** — Labels de tabla y tabla completa en PROGMEM (flash); acceso
+  via `memcpy_P` + `pgm_read_*`. RAM 1599B→1039B.
 
 ---
 
