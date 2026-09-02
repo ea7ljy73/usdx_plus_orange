@@ -241,14 +241,18 @@ inline void       do_tune() {
 }
 
 void display_vfo() {
-  // Line 0: frequency with thousands separators + mode + V/R (16x2 layout)
+  // Line 0: frequency with thousands separators + mode + V/R
   lcd.setCursor(0, 0);
   int32_t f     = freq;
-  int32_t scale = 10000000;
+  int32_t scale = 10e6; // 10,000,000 (legacy 3937)
+  if(f / scale == 0) {  // initial space instead of zero (legacy)
+    lcd.print(' ');
+    scale /= 10;
+  }
   for(; scale != 1; f %= scale, scale /= 10) {
     lcd.print((int)abs(f / scale));
     if(scale == 1000 || scale == 1000000)
-      lcd.print(','); // thousands separator
+      lcd.print(','); // thousands separator (legacy)
   }
   lcd.print(' ');
   const char* ml = (mode == LSB) ? "LSB" : (mode == USB) ? "USB" : (mode == CW) ? "CW " : (mode == FM) ? "FM " : "AM ";
