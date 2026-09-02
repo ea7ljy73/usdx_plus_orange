@@ -18,8 +18,8 @@
 
 // ---------------------------------------------------------------------------
 // Function pointer ISR dispatch (TX/RX DSP bodies run here)
+// Definition owned by rx.h (typedef func_t + extern). hw.h defines the symbol.
 // ---------------------------------------------------------------------------
-typedef void (*func_t)(void);
 volatile func_t func_ptr;
 
 // ---------------------------------------------------------------------------

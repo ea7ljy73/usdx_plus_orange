@@ -207,6 +207,13 @@ git diff     -> no hay cambios de comportamiento no documentados
   - Encoder ISR: `digitalRead`→`PIND` directo (seguro en ISR)
   - Decoder CW: `cw_set_keyed` desde `switch_rxtx` (antes nunca transicionaba)
 - Build tras fixes: 19564B flash (60%), 1425B RAM (69%), 623B libres, 0 warnings.
+- **2026-09-02 (REVISIÓN 2, pre-hardware)** — Encontrado y corregido un bug
+  CRÍTICO en el CIC RX: `sdr_rx_00..07` llamaban a la siguiente fase
+  directamente → recursión infinita en cada tick de ISR (stack overflow, RX
+  muerto). Ahora cada fase setea `func_ptr` y retorna (como v1). También
+  corregida la referencia ADC de RX: `admux[]` ahora captura `ADMUX` completo
+  (con 1.1V interno), no solo el canal — la calibración ADC del SDR era
+  incorrecta. Build final: 19816B (61%), 1425B (69%), 0 warnings.
 
 ---
 

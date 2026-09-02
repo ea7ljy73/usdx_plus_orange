@@ -249,9 +249,14 @@ void setup() {
   admux[0] = 0;
   admux[1] = 1;
   admux[2] = 2;
-  adc_start(admux[0], true, F_SAMP_RX);
-  adc_stop();
-  adc_start(admux[2], true, 192307);
+  // NOTE: capture full ADMUX (channel + 1.1V internal ref) like v1, so the RX
+  // ISR uses the correct voltage reference for the SDR I/Q ADC.
+  adc_start(0, true, F_SAMP_RX); // I
+  admux[0] = ADMUX;
+  adc_start(1, true, F_SAMP_RX); // Q
+  admux[1] = ADMUX;
+  adc_start(2, true, 192307); // mic
+  admux[2] = ADMUX;
 
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();

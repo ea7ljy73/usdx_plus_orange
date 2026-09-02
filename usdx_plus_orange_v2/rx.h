@@ -297,9 +297,13 @@ void sdr_rx_03();
 void sdr_rx_05();
 void sdr_rx_07();
 
+// func_ptr is owned by hw.h; types must match exactly
+typedef void (*func_t)(void);
+extern volatile func_t func_ptr;
+
 void sdr_rx_00() {
-  int16_t ac = sdr_rx_common_i();
-  sdr_rx_01(); // (v1 used func_ptr; simplified: call next directly in ISR)
+  int16_t ac      = sdr_rx_common_i();
+  func_ptr        = sdr_rx_01;
   int16_t i_s1za0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
   i_s0za1         = ac;
   int16_t ac2     = (i_s1za0 + (i_s1za1 + i_s1zb0) * 3 + i_s1zb1);
@@ -308,45 +312,45 @@ void sdr_rx_00() {
 }
 void sdr_rx_02() {
   int16_t ac = sdr_rx_common_i();
-  sdr_rx_03();
+  func_ptr   = sdr_rx_03;
   i_s0zb1 = i_s0zb0;
   i_s0zb0 = ac;
 }
 void sdr_rx_04() {
   int16_t ac = sdr_rx_common_i();
-  sdr_rx_05();
+  func_ptr   = sdr_rx_05;
   i_s1zb1 = i_s1zb0;
   i_s1zb0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
   i_s0za1 = ac;
 }
 void sdr_rx_06() {
   int16_t ac = sdr_rx_common_i();
-  sdr_rx_07();
+  func_ptr   = sdr_rx_07;
   i_s0zb1 = i_s0zb0;
   i_s0zb0 = ac;
 }
 void sdr_rx_01() {
   int16_t ac = sdr_rx_common_q();
-  sdr_rx_02();
+  func_ptr   = sdr_rx_02;
   q_s0zb1 = q_s0zb0;
   q_s0zb0 = ac;
 }
 void sdr_rx_03() {
   int16_t ac = sdr_rx_common_q();
-  sdr_rx_04();
+  func_ptr   = sdr_rx_04;
   q_s1zb1 = q_s1zb0;
   q_s1zb0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
   q_s0za1 = ac;
 }
 void sdr_rx_05() {
   int16_t ac = sdr_rx_common_q();
-  sdr_rx_06();
+  func_ptr   = sdr_rx_06;
   q_s0zb1 = q_s0zb0;
   q_s0zb0 = ac;
 }
 void sdr_rx_07() {
-  int16_t ac = sdr_rx_common_q();
-  sdr_rx_00();
+  int16_t ac      = sdr_rx_common_q();
+  func_ptr        = sdr_rx_00;
   int16_t q_s1za0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
   q_s0za1         = ac;
   q_ac2           = (q_s1za0 + (q_s1za1 + q_s1zb0) * 3 + q_s1zb1);
