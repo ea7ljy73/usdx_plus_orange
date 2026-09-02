@@ -315,7 +315,22 @@ void setup() {
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
   menu.begin();
-  menu_load_all();      // restore saved menu params (volume, mode, agc, drive, ...)
+  menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
+  // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
+  // rotary-key is pressed at power-on, and always disable VOX on boot.
+  if(digitalRead(BUTTONS) == LOW) {
+    for(uint8_t i = 0; i != 32; i++) { // re-persist defaults over EEPROM
+      MenuParam p;
+      memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
+      if(p.eslot && p.value) {
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        menu_eeprom_save(p.eslot, p.value, sz);
+      }
+    }
+    eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
+  }
+  vox = 0;              // disable VOX at boot (legacy parity)
+  nr  = 0;              // disable NR (legacy parity)
   loadWPM(keyer_speed); // CW timing
 
   start_rx(); // arm RX DSP (ADC I/Q/mic + timers + func_ptr) as legacy
