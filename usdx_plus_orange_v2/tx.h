@@ -57,6 +57,7 @@ volatile uint8_t drive = 2;
 volatile uint8_t tx   = 0; // TX latch: 0=off, reaches 255 when triggered
 volatile uint8_t filt = 0; // filter select (shared with RX; owned here for MAX_DP)
 volatile uint8_t vox  = 0; // vox master enable (default OFF, like legacy usdx-legazy:228)
+volatile uint8_t quad = 0; // QUAD frequency divider state (legacy parity)
 
 volatile int16_t p_sin = 0;     // Minsky sin state
 volatile int16_t n_cos = 20000; // Minsky cos state
@@ -110,101 +111,44 @@ inline int16_t arctan3(int16_t q, int16_t i) {
 
 // ---------------------------------------------------------------------------
 // ssb() - polar SSB modulator
+// EXACT COPY of usdx-legazy:2031 (strict parity; improvements are deferred
+// and will be reintroduced later as optional, verified by parity tests).
 // ---------------------------------------------------------------------------
 inline int16_t ssb(int16_t in) {
   static int16_t dc, z1;
-
-  if(!dig_mode) {
-    // voice compressor (ratio ~2:1, smoothed envelope)
-    if(comp_enable) {
-      int16_t abs_in = in < 0 ? -in : in;
-      int16_t env;
-      if(abs_in > comp_envelope)
-        comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms
-      else
-        comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms
-      env = comp_envelope;
-      if(env > comp_threshold && env > 0) {
-        int16_t excess = env - comp_threshold;
-        if(excess < 64)
-          excess = ((int16_t)((uint16_t)excess * excess)) >> 6; // soft knee
-        int32_t gain = (int32_t)(comp_threshold + (excess >> 1)) + (int32_t)(comp_threshold >> 1);
-        if(gain > env)
-          gain = env;
-        in = (int16_t)(((int32_t)in * gain) / env);
-      }
-    }
-
-    // mic EQ (bass + presence)
-    if(eq_low != 0 || eq_high != 0) {
-      eq_low_iir += (in - eq_low_iir) >> 4;   // LPF ~75Hz: bass
-      eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: treble ref
-      int16_t hi    = in - eq_high_iir;       // HPF ~760Hz: presence
-      int32_t boost = ((int32_t)eq_low_iir * eq_low) + ((int32_t)hi * eq_high);
-      in            = in + (int16_t)(boost >> 3);
-    }
-
-    // TX low-cut HPF
-    if(tx_lowcut > 0) {
-      static int16_t tx_hpf_z1 = 0;
-      uint8_t        k         = 5 - tx_lowcut;
-      int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
-      tx_hpf_z1                = lp;
-      in                       = in - lp;
-    }
-
-    // pre-emphasis
-    if(pre_emph > 0) {
-      int16_t pre_in = in;
-      in             = in + ((pre_in - pre_z1) * pre_emph);
-      pre_z1         = pre_in;
-    }
-  }
-
   int16_t        i, q;
   uint8_t        j;
   static int16_t v[16];
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
+#ifdef MORE_MIC_GAIN
+  int16_t ac = in * 2;                    // 6dB gain
+  ac         = ac + z1;                   // lpf
+  z1         = (in - (8) * z1) / (8 + 1); // lpf
 
-  int16_t ac;
-  if(dig_mode) {
-    ac    = in;
-    dc    = (ac + (7) * dc) / (7 + 1);
-    v[15] = (ac - dc) / 2;
-  } else {
-    ac = in * 2;
-    ac = ac + z1;
-    z1 = (in - (8) * z1) / (8 + 1); // LPF coeff 1/9 (legacy parity)
-
-    // smooth clipping limiter (legacy parity)
-    if(ac > 250) {
-      ac = 250 + (ac - 250) / 2;
-    } else if(ac < -250) {
-      ac = -250 - (-250 - ac) / 2;
-    }
-
-    dc    = (ac + (2) * dc) / (2 + 1);
-    v[15] = (ac - dc);
+  // smooth clipping limiter
+  if(ac > 250) {
+    ac = 250 + (ac - 250) / 2;
+  } else if(ac < -250) {
+    ac = -250 - (-250 - ac) / 2;
   }
+
+  dc    = (ac + (2) * dc) / (2 + 1);
+  v[15] = (ac - dc);
+#else
+  dc         = (in + dc) / 2; // average
+  int16_t ac = (in - dc);     // DC decoupling
+  v[15]      = (ac + z1);
+  z1         = ac;
+#endif
   i = v[7] * 2;
-  q = ((((v[0] - v[14]) << 1) + ((v[2] - v[12]) << 3) +
-        (((v[4] - v[10]) << 4) + ((v[4] - v[10]) << 2) + (v[4] - v[10])) + ((v[6] - v[8]) << 4)) >>
-       6) +
-      (v[6] - v[8]);
+  q = ((v[0] - v[14]) * 2 + (v[2] - v[12]) * 8 + (v[4] - v[10]) * 21 + (v[6] - v[8]) * 16) / 64 +
+      (v[6] - v[8]); // Hilbert
+
   uint16_t _amp = magn(i / 2, q / 2);
 
-  // CESSB envelope clipper (voice only)
-  if(!dig_mode && _amp > CESSB_THRESH) {
-    uint16_t reduced = CESSB_THRESH + ((_amp - CESSB_THRESH) >> 2);
-    if(_amp) {
-      i = (int16_t)((int32_t)i * reduced / _amp);
-      q = (int16_t)((int32_t)q * reduced / _amp);
-    }
-    _amp = reduced;
-  }
+  _vox(_amp > vox_thresh);
 
-  _vox_p(_amp);
   _amp = _amp << (drive);
   _amp = ((_amp > 255) || (drive == 8)) ? 255 : _amp;
   amp  = (tx) ? lut[_amp] : 0;
@@ -217,10 +161,18 @@ inline int16_t ssb(int16_t in) {
 
   if(dp < 0)
     dp = dp + _UA;
+#ifdef QUAD
+  if(dp >= (_UA / 2)) {
+    dp   = dp - _UA / 2;
+    quad = !quad;
+  }
+#endif
+#ifdef MAX_DP
   if(dp > MAX_DP) {
     prev_phase = phase - (dp - MAX_DP);
     dp         = MAX_DP;
   }
+#endif
   if(mode == USB)
     return dp * (_F_SAMP_TX / _UA);
   else
