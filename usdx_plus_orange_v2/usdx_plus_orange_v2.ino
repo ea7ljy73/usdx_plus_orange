@@ -1,6 +1,7 @@
 // usdx_plus_orange_v2.ino - uSDX Plus Orange v2 (modular)
 // Paso 6: menu declarativo integrado + UI + VOX.
 
+#include "cat.h"
 #include "cw.h"
 #include "display.h"
 #include "hw.h"
@@ -29,6 +30,10 @@ volatile uint8_t vox_tx   = 0; // VOX currently transmitting
 volatile uint8_t keyer_speed = 25; // wpm
 volatile uint8_t keyer_mode  = 0;  // 0=IambicA, 1=IambicB, 2=Straight
 
+// --- CAT ---
+volatile uint8_t prev_mode      = 0;
+volatile uint8_t changedModeCAT = 0;
+
 // --- Params (menú) ---
 volatile int8_t  bandval   = 1; // band index
 volatile uint8_t smode     = 1; // S-meter mode
@@ -37,8 +42,9 @@ volatile uint8_t rx_ph_q   = 90; // IQ phase
 volatile uint8_t semi_qsk  = 0;  // semi-qsk
 volatile uint8_t cwdec     = 1;  // CW decoder
 volatile uint8_t vfosel    = 0;  // VFO A/B
-volatile uint8_t rit       = 0;  // RIT on/off
-volatile int32_t rit_off   = 0;  // RIT offset (Hz)
+volatile int32_t rit       = 0;  // RIT offset (Hz, set by CAT)
+volatile int32_t rit_off   = 0;  // (reserved)
+volatile uint8_t rit_on    = 0;  // RIT on/off (menu)
 
 // PA bias
 volatile uint8_t pwm_min = 115;
@@ -120,7 +126,7 @@ const MenuParam MENU[] PROGMEM = {
     {3, (void*)&bandval, P_T8, 1, 6, band_label, 4, NULL},
     {4, (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
     {5, (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
-    {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, NULL},
+    {6, (void*)&rit_on, P_ENUM, 0, 1, offon_label, 7, NULL},
     {7, (void*)&agc, P_ENUM, 0, 2, agc_label, 8, NULL},
     {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
     {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
@@ -191,6 +197,7 @@ void setup() {
   PCMSK2 = 0;
 
   initPins();
+  Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
   delay(100);
   lcd.begin(16, 2);
   lcd.print("uSDX v2");
@@ -263,3 +270,6 @@ void loop() {
   }
   delay(1);
 }
+
+// Arduino serial event (CAT)
+void serialEvent() { cat_serial_event(); }
