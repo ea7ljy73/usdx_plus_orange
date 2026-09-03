@@ -65,10 +65,13 @@ void vfo_recall_band(int8_t b) {
   int32_t f   = freq_last[idx];
   if(f < 100000 || f > 60000000)
     f = (int32_t)pgm_read_dword(&band[b]); // default band freq
-  if(b > 3)                                // 20m+ bands are USB by convention (v1: mode_last default)
-    mode = (mode_last[idx]) ? mode_last[idx] : USB;
+  uint8_t ml = mode_last[idx];
+  if(ml > 4)
+    ml = 0; // garbage from uninitialized EEPROM -> default
+  if(b > 3) // 20m+ bands are USB by convention (v1: mode_last default)
+    mode = ml ? ml : USB;
   else
-    mode = (mode_last[idx]) ? mode_last[idx] : (b >= 1 ? LSB : LSB);
+    mode = ml ? ml : LSB;
   freq    = f;
   bandval = b;
   if(vfo_apply_freq)

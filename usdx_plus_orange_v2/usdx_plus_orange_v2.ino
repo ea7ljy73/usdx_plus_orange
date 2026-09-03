@@ -516,14 +516,7 @@ void display_vfo() {
   }
 }
 
-void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW offset
-  if(mode == CW)
-    si5351.freq(f + cw_offset, rx_ph_q, 0);
-  else if(mode == LSB)
-    si5351.freq(f, rx_ph_q, 0);
-  else // USB (and FM/AM)
-    si5351.freq(f, 0, rx_ph_q);
-}
+void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); } // validated on hardware (v2)
 
 void setup() {
   vfo_apply_freq = vfo_hw_apply;
