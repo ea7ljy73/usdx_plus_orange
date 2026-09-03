@@ -242,8 +242,9 @@ inline void       do_tune() {
 
 void display_vfo() {
   lcd.noCursor(); // ensure no stray blink cursor when returning to radio view
-  // Line 1: frequency + mode + R (exactly like usdx-legazy:3938-3955)
+  // Line 1: VFO-indicator + frequency + mode + V/R (layout like usdx-legazy:3938-3955)
   lcd.setCursor(0, 1);
+  lcd.print('<'); // VFO A indicator (ASCII '<' - legacy uses CGRAM 0x06, we keep ASCII)
   int32_t f     = freq;
   int32_t scale = 10e6; // 10,000,000 (legacy)
   if(f / scale == 0) {  // initial space instead of zero (legacy)
@@ -260,7 +261,7 @@ void display_vfo() {
   lcd.print(ml);
   lcd.print(' ');
   lcd.setCursor(15, 1);
-  lcd.print(tx ? 'T' : ((vox) ? 'V' : 'R'));
+  lcd.print((vox) ? 'V' : 'R'); // like legacy 3955 (no TX indicator)
 
   // Line 0: call/banner (col 0) + S-meter in digits (col 9-15, like legacy smeter())
   lcd.setCursor(0, 0);
@@ -386,8 +387,8 @@ void loop() {
     }
   }
 
-  if(!(millis() % 500) && menu.state == MENU_MAIN)
-    display_vfo(); // periodic refresh
+  if(!(millis() % 500) && menu.state == MENU_MAIN && !tx && !vox_tx)
+    display_vfo(); // periodic refresh (legacy: skip while TX to avoid I2C conflict)
 
   // --- VOX based RX/TX (SSB + AM/FM, like v1) ---
   if(vox && (mode == LSB || mode == USB || mode == AM || mode == FM)) {
