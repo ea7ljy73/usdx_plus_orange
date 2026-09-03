@@ -27,12 +27,12 @@
 #define KEYED 4
 #define INTER_ELEMENT 5
 
-static unsigned long ditTime; // ms per dit
-static uint8_t       keyerControl;
-static uint8_t       keyerState;
-static uint8_t       keyer_swap = 0;
-static int           Key_state  = LOW;
-static unsigned long ktimer;
+volatile unsigned long ditTime; // ms per dit (extern for hw.h Semi-QSK)
+static uint8_t         keyerControl;
+static uint8_t         keyerState;
+volatile uint8_t       keyer_swap = 0; // exposed for the menu (Keyer Swap)
+static int             Key_state  = LOW;
+static unsigned long   ktimer;
 
 extern volatile uint8_t keyer_speed; // wpm (menu)
 extern volatile uint8_t keyer_mode;  // 0=IambicA,1=IambicB,2=Straight
