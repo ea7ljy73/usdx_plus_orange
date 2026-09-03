@@ -359,6 +359,7 @@ inline void Menu::process() {
   static uint8_t  b_pending    = 0; // BE single click waiting in DC window
   static uint32_t b_dc_deadline = 0;
   static uint8_t  b_is_dc      = 0;
+  static uint8_t  b_pt_done    = 0; // dial hold+turn adjusted volume this hold
 
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
   if(b_state == B_IDLE) {
@@ -367,6 +368,7 @@ inline void Menu::process() {
       b_t0    = millis();
       b_v     = analogSafeRead(BUTTONS_ADC);
       b_is_dc = 0;
+      b_pt_done = 0;
     }
   } else if(b_state == B_HOLD) {
     uint8_t type = (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
@@ -375,8 +377,8 @@ inline void Menu::process() {
       b_state      = B_IDLE;
       if(b_is_dc) {
         handle_event(BE_ | DC_); // dial 2nd click -> band change
-      } else if(type == BE_ && dur > 400) {
-        handle_event(BE_ | PL_); // dial long press -> stepsize_change(-1)
+      } else if(type == BE_ && dur > 400 && !b_pt_done) {
+        handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
       } else if(type == BE_) {
         b_pending      = BE_ | SC_;
         b_dc_deadline  = millis() + 400; // look for 2nd click
@@ -394,6 +396,7 @@ inline void Menu::process() {
         if(nv > 16)
           nv = -1;
         volume = nv;
+        b_pt_done = 1;
         if(volume < 0) {
           volume = 10;
           save_menu_eslot(1);
