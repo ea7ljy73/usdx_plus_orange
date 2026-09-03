@@ -231,35 +231,15 @@ volatile int16_t encoder_val;
 volatile uint8_t encoder_pressed;
 
 ISR(PCINT2_vect) { // Interrupt on rotary encoder turn (direct PIND read)
+  // EXACT legacy decoder (usdx-legazy:1128,1136-1137) for identical speed/feel.
   uint8_t p = PIND;
-  // Quadrature accumulator, divisor 2: this encoder produces ~2 transitions
-  // per detent, so emit one step every 2 accumulated transitions = 1 per
-  // detent, robust to lost/skipped transitions and bounce.
-  static int8_t quad = 0;
-  uint8_t tr = (last_state << 4) | ((p & (1 << ROT_B)) ? 2 : 0) | ((p & (1 << ROT_A)) ? 1 : 0);
-  last_state = tr;
-  switch(tr) {
-  case 0x31:
-  case 0x10:
-  case 0x02:
+  switch(last_state = (last_state << 4) | ((p & (1 << ROT_B)) ? 2 : 0) | ((p & (1 << ROT_A)) ? 1 : 0)) {
   case 0x23:
-    quad++;
+    encoder_val++;
     break;
   case 0x32:
-  case 0x20:
-  case 0x01:
-  case 0x13:
-    quad--;
-    break;
-  default:
-    break;
-  }
-  if(quad >= 2) {
-    encoder_val++;
-    quad = 0;
-  } else if(quad <= -2) {
     encoder_val--;
-    quad = 0;
+    break;
   }
 }
 

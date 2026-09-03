@@ -47,6 +47,8 @@ extern volatile uint8_t cw_tone;
   out=zc0/8
 */
 
+#pragma GCC push_options
+#pragma GCC optimize("Ofast") // filter runs inside the RX ISR (legacy 2794+2639)
 inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
 {
   static int16_t za1, za2;
@@ -223,6 +225,7 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
 
       // return zc0 / 64; // compensate the 64x front-end gain
       // legacy parity: /8 (zc0>>3) - same gain as usdx-legazy:183
-      return (zc0 >> 3);
+return (zc0 >> 3);
     }
   }
+#pragma GCC pop_options
