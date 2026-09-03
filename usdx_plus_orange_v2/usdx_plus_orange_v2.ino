@@ -38,6 +38,7 @@ volatile uint8_t keyer_mode  = 2;  // 2=SINGLE (v1 default), 0=IambicA, 1=Iambic
 // --- CAT ---
 volatile uint8_t prev_mode      = 0;
 volatile uint8_t changedModeCAT = 0;
+volatile uint32_t rxend_event   = 0; // CAT: block LCD until this time (legacy 4438)
 
 // --- Params (menú) ---
 volatile uint8_t bandval   = 3;  // band index (0-based; 40m default)
@@ -516,7 +517,14 @@ void display_vfo() {
   }
 }
 
-void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); } // validated on hardware (v2)
+void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW offset
+  if(mode == CW)
+    si5351.freq(f + cw_offset, rx_ph_q, 0); // RX in CW-R (=LSB), correct for CW-tone offset
+  else if(mode == LSB)
+    si5351.freq(f, rx_ph_q, 0); // RX in LSB
+  else
+    si5351.freq(f, 0, rx_ph_q); // RX in USB, ...
+}
 
 void setup() {
   vfo_apply_freq = vfo_hw_apply;
