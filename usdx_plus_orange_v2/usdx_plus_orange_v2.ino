@@ -173,7 +173,7 @@ void menu_print_label(uint8_t id) {
 // --- EEPROM helpers (stable slots) ---
 volatile uint16_t eeprom_offs = 0x150;
 #define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
-#define F_VER_ID 2             // bump when EEPROM layout/semantics change
+#define F_VER_ID 3             // bump when EEPROM layout/semantics change
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   eeprom_read_block(ptr, (const void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
@@ -218,13 +218,20 @@ void menu_load_all() {
         if(!never) {
           // copy in and clamp to declared range (guards rewritten/garbage slots)
           memcpy(p.value, raw, sz);
-          if(p.type == P_T8) {
+          if(p.type == P_T8S) { // signed byte (volume)
             int8_t v = *(int8_t*)p.value;
             if(v < p.min)
               v = p.min;
             if(v > p.max)
               v = p.max;
             *(int8_t*)p.value = v;
+          } else if(p.type == P_T8) { // unsigned byte
+            uint8_t v = *(uint8_t*)p.value;
+            if(v < p.min)
+              v = p.min;
+            if(v > p.max)
+              v = p.max;
+            *(uint8_t*)p.value = v;
           } else if(p.type == P_ENUM) {
             uint8_t v = *(uint8_t*)p.value;
             if(v < p.min)
@@ -254,55 +261,87 @@ void menu_load_all() {
 // --- Callbacks (post-handling effects) ---
 uint8_t prev_stepsize[2] = {5, 6}; // {STEP_1k SSB, STEP_500 CW} legacy 3843
 uint8_t prev_filt[2]     = {0, 4}; // {Full SSB, filter4 CW} legacy 2637
-void    on_mode() {
-  // legacy 5366: backup prev mode's stepsize/filt, restore current mode's
-  prev_stepsize[mode != CW] = stepsize;
-  stepsize                  = prev_stepsize[mode == CW];
-  prev_filt[mode != CW]     = filt;
-  filt                      = prev_filt[mode == CW];
-  if(mode == CW)
-    nr = 0;
-  si5351.iqmsa = 0; // enforce PLL reset
+void    on_mode() { // legacy 5572-5580: MENU edit of Mode -> hard reset + vfomode save
+  vfomode[vfosel % 2] = mode;
+  vfo_eeprom_save(); // save vfomode (legacy 5574 MODEA/B)
+  if(mode != CW)
+    stepsize = STEP_1k;
+  else
+    stepsize = STEP_500;
+  if(mode == CW) {
+    filt = 4;
+    nr   = 0;
+  } else
+    filt = 0;
+  si5351.iqmsa = 0; // enforce PLL reset (legacy 5576)
+  vfo_apply();
 }
-void on_band() {
-  vfo_save_current(); // store prev band freq/mode
-  vfo_recall_band(bandval);
-  set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
+void on_band() { // legacy BAND edit (5581 + change handler 5682): freq = band[bandval]
+  freq = (int32_t)pgm_read_dword(&band[bandval]);
+  set_lpf(freq / 1000000UL);
+  vfo_apply();
 }
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
 uint8_t vfomode[2] = {USB, USB};
-void    on_vfosel() {
-  // legacy 5430: toggle VFO, saving current freq/mode into the other slot
+void    on_vfosel() { // legacy 5585-5592
   uint8_t other   = !vfosel;
-  vfo[vfosel]     = freq;
+  vfo[vfosel]     = freq; // keep slots current (v2)
   vfomode[vfosel] = mode;
   vfosel          = other;
   freq            = vfo[vfosel];
   mode            = vfomode[vfosel];
+  if(mode != CW)
+    stepsize = STEP_1k;
+  else
+    stepsize = STEP_500;
+  if(mode == CW) {
+    filt = 4;
+    nr   = 0;
+  } else
+    filt = 0;
   vfo_apply();
 }
-void on_pwm() {
-  // rebuild LUT with new bias limits (guard: always keep max >= min)
+void on_pwm() { // legacy 5620-5622: build_lut on PWM_MIN/PWM_MAX edit
   if(pwm_max < pwm_min)
     pwm_max = pwm_min;
   for(uint16_t i = 0; i != 256; i++)
     lut[i] = (i * (int16_t)(pwm_max - pwm_min)) / 255 + pwm_min;
 }
+void on_rit() { // legacy 5594-5597
+  stepsize = (rit) ? STEP_10 : STEP_500;
+  vfo_apply();
+}
+void on_att() { // legacy 5600-5615: apply analog attenuator immediately
+  noInterrupts();
+  adc_start(0, !(att & 0x01), F_ADC_CONV);
+  admux[0] = ADMUX;
+  adc_start(1, !(att & 0x01), F_ADC_CONV);
+  admux[1] = ADMUX;
+  interrupts();
+  digitalWrite(RX, !(att & 0x02)); // att bit1: -20dB via RX line
+  pinMode(AUDIO1, (att & 0x04) ? OUTPUT : INPUT); // att bit2: -40dB terminate ADC
+  pinMode(AUDIO2, (att & 0x04) ? OUTPUT : INPUT);
+}
+void on_sifxtal() { vfo_apply(); } // legacy 5616 change=true (re-apply freq with new fxtal)
+void on_iq() { vfo_apply(); }      // legacy 5627 change=true (re-apply freq with new phase)
 void on_tx_quality() {} // no-op (kept for table symmetry)
+// legacy 5636-5643: KEY_WPM -> loadWPM, KEY_MODE -> keyerControl
+void on_keyer_speed() { loadWPM(keyer_speed); }
+void on_keyer_mode() { keyer_set_mode(keyer_mode); }
 
 
 const MenuParam MENU[] PROGMEM = {
-    {0, (void*)&volume, P_T8, -1, 16, NULL, 1, NULL},
+    {0, (void*)&volume, P_T8S, -1, 16, NULL, 1, NULL},
     {1, (void*)&mode, P_ENUM, 0, 4, mode_label, 2, on_mode},
     {2, (void*)&filt, P_ENUM, 0, 7, filt_label, 3, NULL},
-    {3, (void*)&bandval, P_ENUM, 0, 10, band_label, 4, NULL}, // legacy BAND 0..10
+    {3, (void*)&bandval, P_ENUM, 0, 10, band_label, 4, on_band}, // legacy BAND 0..10
     {4, (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
     {5, (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
-    {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, NULL}, // legacy RIT toggle (rit!=0 = active)
+    {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, on_rit}, // legacy RIT toggle (rit!=0 = active)
     {7, (void*)&agc, P_ENUM, 0, 1, offon_label, 8, NULL}, // legacy w/o FAST_AGC: offon 0..1
     {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
-    {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
+    {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, on_att},
     {10, (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},
     {11, (void*)&smode, P_ENUM, 0, 4, smode_label, 12, NULL}, // legacy 0..4 (no CLOCK/VSS)
     // CW Decoder (CW_DECODER legacy 0x21)
@@ -310,8 +349,8 @@ const MenuParam MENU[] PROGMEM = {
     // Semi QSK (SEMIQSK legacy 0x24)
     {13, (void*)&semi_qsk, P_ENUM, 0, 1, offon_label, 16, NULL},
     // Keyer Speed / Mode / Swap (KEY_WPM/KEY_MODE/KEY_PIN legacy 0x25/0x26/0x27)
-    {14, (void*)&keyer_speed, P_T8, 1, 60, NULL, 13, NULL},
-    {15, (void*)&keyer_mode, P_ENUM, 0, 2, keyer_mode_label, 14, NULL},
+    {14, (void*)&keyer_speed, P_T8, 1, 60, NULL, 13, on_keyer_speed},
+    {15, (void*)&keyer_mode, P_ENUM, 0, 2, keyer_mode_label, 14, on_keyer_mode},
     {16, (void*)&keyer_swap, P_ENUM, 0, 1, offon_label, 21, NULL}, // eslot unique (was dup 15)
     // Practice (KEY_TX legacy 0x28)
     {17, (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
@@ -327,8 +366,8 @@ const MenuParam MENU[] PROGMEM = {
     {23, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
     {24, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
     // Ref freq / IQ phase (SIFXTAL/IQ_ADJ legacy 0x83/0x84)
-    {25, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, NULL}, // eslot<=31 -> 0x248 (no VFO clash)
-    {26, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
+    {25, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, on_sifxtal}, // eslot<=31 -> 0x248 (no VFO clash)
+    {26, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, on_iq},
     // Backlight (BACKL legacy 0xA1)
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
@@ -434,26 +473,32 @@ inline void do_tune() {
 }
 
 void display_vfo() {
-  // Line 1: VFO-indicator + frequency + mode + V/R (layout like usdx-legazy:3938-3955)
+  // Line 1: VFO-indicator + frequency (or RIT) + mode + V/R (legacy 3938-3956)
   lcd.setCursor(0, 1);
   lcd.print((rit) ? ' ' : ((vfosel % 2) ? '\x07' : '\x06')); // RIT/VFO A-B arrow (legacy 3939)
   int32_t f     = freq;
   int32_t scale = 10e6; // 10,000,000 (legacy)
-  if(f / scale == 0) {  // initial space instead of zero (legacy)
-    lcd.print(' ');
-    scale /= 10;
+  if(rit) {
+    f     = rit;
+    scale = 1e3; // RIT frequency (legacy 3942-3945)
+    lcd.print("RIT ");
+    lcd.print(rit < 0 ? '-' : '+');
+  } else {
+    if(f / scale == 0) { // initial space instead of zero (legacy 3947)
+      lcd.print(' ');
+      scale /= 10;
+    }
   }
   for(; scale != 1; f %= scale, scale /= 10) {
     lcd.print((int)abs(f / scale));
     if(scale == 1000 || scale == 1000000)
-      lcd.print(','); // thousands separator
+      lcd.print(','); // thousands separator (legacy 3951)
   }
   lcd.print(' ');
-  const char* ml = (mode == LSB) ? "LSB" : (mode == USB) ? "USB" : (mode == CW) ? "CW " : (mode == FM) ? "FM " : "AM ";
-  lcd.print(ml);
+  lcd.print((const __FlashStringHelper*)pgm_read_ptr(&mode_label[mode])); // legacy 3954
   lcd.print(' ');
   lcd.setCursor(15, 1);
-  lcd.print((vox) ? 'V' : 'R'); // like legacy 3955 (no TX indicator)
+  lcd.print((vox) ? 'V' : 'R'); // like legacy 3955
 
   // Line 0: banner (col 0-3) + S-meter/dBm via smeter() (cols 9/14, legacy 3577-3587)
   lcd.setCursor(0, 0);
@@ -573,15 +618,23 @@ void loop() {
 
   // --- CW keyer & decoder ---
   if(mode == CW) {
-    if(keyer_mode == 2) { // SINGLE: key straight from paddle/DIT (v1 gating)
-      if(!digitalRead(DIT)) {
-        if(!tx)
-          switch_rxtx(1); // paddle closed -> TX
-      } else if(tx) {
-        switch_rxtx(0); // paddle released -> RX
-      }
-    } else {
+    if(keyer_mode != 2) {
       keyer_process(); // iambic A/B
+    } else {
+      uint8_t pin = (keyer_swap) ? DAH : DIT; // legacy 5269 SINGLE
+      if(!vox_tx) {
+        if(!digitalRead(pin)) { // PTT/DIT keys transmitter
+          cw_msg_event = 0;
+          switch_rxtx(1);
+          do { // hold loop (legacy 5276-5283)
+            wdt_reset();
+            delay(10);
+            if(inv ^ digitalRead(BUTTONS))
+              break; // break if button pressed (prevent lock-up)
+          } while(!digitalRead(pin)); // until released
+          switch_rxtx(0);
+        }
+      }
     }
     if(cwdec && !tx && !semi_qsk_timeout)
       cw_decode(); // CW decoder only active during RX (legacy 5176)
