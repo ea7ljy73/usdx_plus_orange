@@ -23,6 +23,8 @@ extern volatile int32_t rit;
 extern volatile uint8_t vfosel;
 extern uint8_t          vfomode[2];
 extern volatile uint32_t semi_qsk_timeout;
+extern volatile uint8_t  smode;
+extern volatile uint32_t rxend_event;
 extern void             switch_rxtx(uint8_t tx_enable);
 extern void             vfo_apply(void);
 
@@ -69,13 +71,10 @@ static void Command_IF() {
   Serial.print("0000000;"); // full TS-480 IF frame (legacy 4547)
 }
 
-static void Command_SETFreqA() {
+static void Command_SETFreqA() { // legacy 4512-4520: no range check
   if(CATcmd[2] != ';') { // 'FAxxxx...;'
-    uint32_t fq = (uint32_t)atol(CATcmd + 2);
-    if(fq >= 1500000 && fq <= 60000000) {
-      freq = fq;
-      vfo_apply(); // mode-dependent IQ phase + CW offset (legacy change handler)
-    }
+    freq = (uint32_t)atol(CATcmd + 2);
+    vfo_apply(); // mode-dependent IQ phase + CW offset (legacy change handler)
   }
 }
 static void Command_AI() { Serial.print("AI0;"); }
@@ -102,14 +101,11 @@ static void Command_GetMD() {
   cat_print_u8(mode + 1);
   cat_print(';');
 }
-static void Command_SetMD() {
-  int8_t m = CATcmd[2] - '1';
-  if(m >= LSB && m <= AM) {
-    mode = m;
-    vfomode[vfosel % 2] = mode; // legacy 4593
-    si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
-    vfo_apply();
-  }
+static void Command_SetMD() { // legacy 4589-4596: no range check
+  mode = CATcmd[2] - '1';
+  vfomode[vfosel % 2] = mode; // legacy 4593
+  si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
+  vfo_apply();
 }
 static void Command_RX() {
   switch_rxtx(0);
@@ -139,13 +135,7 @@ static void analyseCATcmd() {
   } else if(c0 == 'R' && c1 == 'T') {
     if(c2 == '1')
       Command_RT1();
-    else if(c2 == 'S' && CATcmd[8] == ';') {
-      int32_t fq = atol(CATcmd + 3);
-      if(fq >= -99999 && fq <= 99999) {
-        rit = fq;
-        si5351.freq(freq + rit, 0, 0);
-      }
-    } else if(c2 == 'C')
+    else if(c2 == 'C')
       Command_RC();
   } else if(c0 == 'I' && c1 == 'D' && c2 == ';') {
     Command_ID();
@@ -177,15 +167,18 @@ static void analyseCATcmd() {
 // called from serialEvent() in the .ino
 static void cat_serial_event() {
   if(Serial.available()) {
+    rxend_event = millis() + 10; // block display to prevent CAT interleave (legacy 4438)
     char data         = Serial.read();
     CATcmd[cat_ptr++] = data;
     if(data == ';') {
       CATcmd[cat_ptr] = '\0';
       cat_ptr         = 0;
-      if(!cat_active)
+      if(!cat_active) {
         cat_active = 1;
+        smode      = 0; // disable smeter to reduce display activity (legacy 4445)
+      }
       analyseCATcmd();
-      delay(5);
+      delay(10); // legacy 4455
     } else if(cat_ptr > (CATCMD_SIZE - 1)) {
       Serial.print("E;");
       cat_ptr = 0;

@@ -15,6 +15,10 @@
 
 // defined in main .ino (menu "Light") - used by LCD::post
 extern volatile uint8_t backlight;
+// CAT interplay (legacy 391/399): vox, cat_active, rxend_event
+extern volatile uint8_t  vox;
+extern volatile uint8_t  cat_active;
+extern volatile uint32_t rxend_event;
 
 // Serial port coexists with LCD data lines on PD0/PD1: disable UART while
 // writing the LCD, re-enable after (usdx-legazy:50 _SERIAL). WITHOUT this the
@@ -69,8 +73,15 @@ public:
     cmd(0x06); // entry left, no shift
   }
   void pre() {
-    // Disable UART so PD0/PD1 (also LCD D4/D5) don't collide while writing LCD
-    // (usdx-legazy _SERIAL). noInterrupts to keep backlight/output stable.
+    // legacy 391: complete serial + wait for rxend_event before LCD writes
+    if(!vox)
+      if(cat_active) {
+        Serial.flush();
+        for(; millis() < rxend_event;)
+          wdt_reset();
+        PORTC |= 1 << 2;
+        DDRC |= 1 << 2; // pull-up TXD via PC2 (protect CAT TX from LCD nibbles)
+      }
     UCSR0B &= ~((1 << RXEN0) | (1 << TXEN0)); // mask serial on shared pins
     noInterrupts();                           // do not allow LCD transfer to be interrupted
   }
@@ -80,6 +91,10 @@ public:
     else
       PORTD &= ~BACKLIGHT_PIN;             // backlight control
     UCSR0B |= (1 << RXEN0) | (1 << TXEN0); // re-enable serial
+    if(!vox)
+      if(cat_active) {
+        PORTC &= ~(1 << 2); // PC2 LOW to prevent CAT TX disruption via MIC input (legacy 399)
+      }
     interrupts();
   }
   void nib(uint8_t b) { // Send four bit nibble (RS low = command)
