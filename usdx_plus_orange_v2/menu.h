@@ -422,6 +422,7 @@ inline void Menu::process() {
         if(state >= MENU_EDIT) {
           state = MENU_SELECT;
           commit();
+          saved_flag = 1; // EDIT->save: next BL exits to main (legacy 5381)
         }
         if(state == MENU_SELECT)
           render();
