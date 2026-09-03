@@ -18,6 +18,8 @@
 #define DAH_L 0x02    // Dah latch
 #define DIT_PROC 0x04 // Dit is being processed
 #define IAMBICB 0x10  // 0=Iambic A, 1=Iambic B
+#define IAMBICA 0x00  // Iambic A (no bit set)
+#define SINGLE 2      // Keyer Mode 2 = straight paddle
 #define IDLE 0
 #define CHK_DIT 1
 #define CHK_DAH 2
@@ -42,6 +44,17 @@ void loadWPM(int wpm) {
 #else
   ditTime = (1200 * 5 / 4) / wpm; // 20MHz clock
 #endif
+}
+
+// Set keyerControl according to selected mode (legacy usdx-legazy:5639-5642)
+void keyer_set_mode(uint8_t mode) {
+  if(mode == 0)
+    keyerControl = IAMBICA;
+  if(mode == 1)
+    keyerControl = IAMBICB;
+  if(mode == 2)
+    keyerControl = SINGLE;
+  keyerState = IDLE;
 }
 
 void update_PaddleLatch() {
