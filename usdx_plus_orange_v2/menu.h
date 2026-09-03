@@ -347,23 +347,9 @@ inline void Menu::process() {
   static uint8_t  b_is_dc      = 0;
   static uint8_t  b_pt_done    = 0; // dial hold+turn adjusted volume this hold
 
-  // --- encoder --- (skipped while the dial is held for volume, legacy 5472)
-  int32_t enc = encoder_val;
-  uint8_t held_dial = (b_state == B_HOLD) && ((millis() - b_t0) > 400) &&
-                      (b_v >= (uint16_t)(4.8 * 1024.0 / 5.0)) && (inv ^ digitalRead(BUTTONS));
-  if(enc && !held_dial) {
-    encoder_val = 0;
-    if(state == MENU_SELECT)
-      move(enc);
-    else if(state == MENU_EDIT)
-      edit_value(enc);
-    else if(state == MENU_EDIT_TEXT)
-      edit_text(enc);
-    if(state != MENU_MAIN)
-      render();
-    return;
-  }
-
+  // --- button state machine: ALWAYS runs so the dial hold (PT volume) is
+  // tracked even while the encoder turns. BL/BR fire on release (SC/PL); the
+  // dial (BE) adds double-click (DC -> band) and hold+turn (PT -> volume). ---
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
   if(b_state == B_IDLE) {
     if(pressed) {
@@ -380,7 +366,9 @@ inline void Menu::process() {
       b_state      = B_IDLE;
       if(b_is_dc) {
         handle_event(BE_ | DC_); // dial 2nd click -> band change
-      } else if(type == BE_ && dur > 400 && !b_pt_done) {
+      } else if(type == BE_ && b_pt_done) {
+        ; // PT volume was adjusted this hold: nothing else on release
+      } else if(type == BE_ && dur > 400) {
         handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
       } else if(type == BE_) {
         b_pending      = BE_ | SC_;
@@ -423,6 +411,20 @@ inline void Menu::process() {
       b_state = B_IDLE;
       handle_event(b_pending); // single dial click -> stepsize_change(+1)
     }
+  }
+
+  // --- encoder: menu navigation (PT already consumed it for volume if held) ---
+  int32_t enc = encoder_val;
+  if(enc) {
+    encoder_val = 0;
+    if(state == MENU_SELECT)
+      move(enc);
+    else if(state == MENU_EDIT)
+      edit_value(enc);
+    else if(state == MENU_EDIT_TEXT)
+      edit_text(enc);
+    if(state != MENU_MAIN)
+      render();
   }
 }
 
