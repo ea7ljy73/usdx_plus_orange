@@ -66,6 +66,7 @@ extern void        vfo_recall_band(int8_t b);
 extern void        on_band(void);
 extern void        set_lpf(uint8_t f);
 extern void        display_vfo(void);
+extern void        display_vfo_line1(void);
 extern void        save_menu_eslot(uint8_t eslot);
 extern void        show_banner(void);
 extern void        powerDown(void);
@@ -410,7 +411,7 @@ inline void Menu::process() {
         vfo_save_current(); // persist vfomode/band
         si5351.iqmsa = 0;   // enforce PLL reset
         vfo_apply();        // re-apply freq with new mode phase/offset
-        display_vfo();      // update mode label immediately
+        display_vfo_line1(); // update mode label immediately (light)
 #ifdef CW_DECODER
         if((prev_mode == CW) && (cwdec))
           show_banner();
@@ -448,7 +449,7 @@ inline void Menu::process() {
           filt = 0;
       }
       vfo_apply();
-      display_vfo();
+      display_vfo_line1();
       break;
     case BE_ | SC_:
       if(state == MENU_MAIN) {

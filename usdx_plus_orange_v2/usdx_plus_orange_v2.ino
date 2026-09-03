@@ -470,12 +470,11 @@ inline void do_tune() {
       vfo_save_current();
       last_band_save = millis();
     }
-    display_vfo(); // instant frequency update on screen
+    display_vfo_line1(); // instant frequency update on screen (light, no smeter)
   }
 }
 
-void display_vfo() {
-  // Line 1: VFO-indicator + frequency (or RIT) + mode + V/R (legacy 3938-3956)
+void display_vfo_line1() { // light: only line 1 (freq/mode) - instant on tune
   lcd.setCursor(0, 1);
   lcd.print((rit) ? ' ' : ((vfosel % 2) ? '\x07' : '\x06')); // RIT/VFO A-B arrow (legacy 3939)
   int32_t f     = freq;
@@ -501,7 +500,10 @@ void display_vfo() {
   lcd.print(' ');
   lcd.setCursor(15, 1);
   lcd.print((vox) ? 'V' : 'R'); // like legacy 3955
+}
 
+void display_vfo() {
+  display_vfo_line1();
   // Line 0: banner (col 0-3) + S-meter/dBm via smeter() (cols 9/14, legacy 3577-3587)
   lcd.setCursor(0, 0);
   lcd.print("uSDX     ");
