@@ -397,6 +397,11 @@ inline void Menu::process() {
           nv = -1;
         volume = nv;
         b_pt_done = 1;
+        // show "Volume N" while adjusting (legacy paramAction UPDATE, 4030-4036)
+        lcd.setCursor(0, 0);
+        lcd.print("Volume ");
+        lcd.print((int)volume);
+        lcd.print("       ");
         if(volume < 0) {
           volume = 10;
           save_menu_eslot(1);
