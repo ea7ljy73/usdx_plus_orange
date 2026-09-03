@@ -559,6 +559,9 @@ void setup() {
   lcd.begin(16, 4);     // Init LCD (mismo que legacy)
   display_init_fonts(); // load CGRAM fonts (logo, VFO, S-bar)
   show_banner();        // uSDX + logo
+  lcd.setCursor(0, 1);
+  lcd.print(FIRMWARE_VERSION); // show version at boot
+  lcd.print("                ");
   delay(300);
   wdt_reset();
 
