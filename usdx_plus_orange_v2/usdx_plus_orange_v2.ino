@@ -470,6 +470,7 @@ inline void do_tune() {
       vfo_save_current();
       last_band_save = millis();
     }
+    display_vfo(); // instant frequency update on screen
   }
 }
 

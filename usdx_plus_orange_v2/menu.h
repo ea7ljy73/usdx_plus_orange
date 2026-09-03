@@ -115,12 +115,14 @@ public:
   int8_t  index = 0;
   uint8_t text_pos = 0; // string edit cursor position (legacy 'pos')
   uint8_t text_len = 0; // string edit max length
+  uint8_t saved_flag = 0; // after EDIT->save, next SELECT click exits to main
 
   void begin() {
     state = MENU_MAIN;
     index = 0;
     text_pos = 0;
     text_len = 0;
+    saved_flag = 0;
   }
 
   // Processing: should be called from loop(). Reads encoder_val / buttons.
@@ -342,51 +344,29 @@ inline void Menu::process() {
       render();
     return;
   }
-  // --- button event engine: faithful port of usdx-legazy:5294-5322 ---
-  enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PLC_ = 0x05, PT_ = 0x0C };
-  static uint8_t event = 0;
-  if(inv ^ digitalRead(BUTTONS)) {   // Left-/Right-/Rotary-button (while not already pressed)
-    if(!((event & PL_) || (event & PLC_))) { // hack: if there was long-push before, then fast forward
-      uint16_t v    = analogSafeRead(BUTTONS_ADC);
-      event         = SC_;
-      int32_t  t0   = millis();
-      for(; inv ^ digitalRead(BUTTONS);) {   // until released or long-press
-        if((millis() - t0) > 300) {
-          event = PL_;
-          break;
-        }
-        wdt_reset();
-      }
-      delay(10); // debounce
-      for(; (event != PL_) && ((millis() - t0) < 500);) { // until 2nd press or timeout
-        if(inv ^ digitalRead(BUTTONS)) {
-          event = DC_;
-          break;
-        }
-        wdt_reset();
-      }
-      for(; inv ^ digitalRead(BUTTONS);) { // until released, or encoder is turned while longpress
-        if(encoder_val && event == PL_) {
-          event = PT_;
-          break;
-        }
-        wdt_reset();
-      }
-      event |= (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
-    } else { // hack: fast forward handling
-      event = (event & 0xf0) | ((encoder_val) ? PT_ : PLC_);
+  // --- button: NON-BLOCKING state machine (SC/PL). Action fires on release, so
+  // a single click responds immediately and the loop can never hang. ---
+  enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, PL_ = 0x04 };
+  static uint8_t  b_state = 0; // 0=idle, 1=holding
+  static uint32_t b_t0    = 0;
+  static uint16_t b_v     = 0;
+  uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
+  if(b_state == 0) {
+    if(pressed) {
+      b_state = 1;
+      b_t0    = millis();
+      b_v     = analogSafeRead(BUTTONS_ADC); // classify BL/BR/BE on press-down
     }
-    switch(event) {
-    case BL_ | PL_: // Called when menu button pressed
-    case BL_ | PLC_:
+  } else if(!pressed) { // released -> dispatch (SC if <300ms, PL if >=300ms)
+    b_state = 0;
+    uint8_t ev = ((millis() - b_t0) > 300) ? PL_ : SC_;
+    ev |= (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
+    switch(ev) {
+    case BL_ | PL_: // menu button long press -> fast edit
       state = MENU_EDIT;
       render();
       break;
-    case BL_ | PT_:
-      state = MENU_SELECT;
-      render();
-      break;
-    case BL_ | SC_:
+    case BL_ | SC_: // 1: enter menu, 2: edit, 3: save (stay in select), 4: exit
 #ifdef CW_MESSAGE
       if((state == MENU_SELECT) && (index == MENU_IDX_CWMSG)) { // trigger CQ message
         cw_msg_event = millis();
@@ -395,17 +375,17 @@ inline void Menu::process() {
         break;
       }
 #endif
-      if(state == MENU_MAIN) { state = MENU_SELECT; index = 0; } // legacy 5343: enter menu (Volume first)
-      else if(state == MENU_SELECT) { state = MENU_EDIT; }
-      else if(state >= MENU_EDIT) { commit(); state = MENU_MAIN; } // legacy 5345: save + exit
+      if(state == MENU_MAIN) { state = MENU_SELECT; index = 0; saved_flag = 0; }
+      else if(state == MENU_SELECT) {
+        if(saved_flag) { state = MENU_MAIN; saved_flag = 0; }
+        else { state = MENU_EDIT; }
+      } else if(state == MENU_EDIT) { commit(); state = MENU_SELECT; saved_flag = 1; }
       if(state == MENU_EDIT)
         lcd.cursor();
       else
         lcd.noCursor();
       if(state != MENU_MAIN)
         render();
-      break;
-    case BL_ | DC_:
       break;
     case BR_ | SC_:
       if(state == MENU_MAIN) {
@@ -446,26 +426,7 @@ inline void Menu::process() {
           render();
       }
       break;
-    case BR_ | DC_:
-      filt++;
-      _init = true;
-      if(mode == CW && filt > N_FILT)
-        filt = 4;
-      if(mode == CW && filt == 4)
-        stepsize = STEP_500;
-      if(mode == CW && (filt == 5 || filt == 6) && stepsize < STEP_100)
-        stepsize = STEP_100;
-      if(mode == CW && filt == 7 && stepsize < STEP_10)
-        stepsize = STEP_10;
-      if(mode != CW && filt > 3)
-        filt = 0;
-      encoder_val = 0;
-      save_menu_eslot(3); // FILTER
-      wdt_reset();
-      delay(1500);
-      wdt_reset();
-      break;
-    case BR_ | PL_:
+    case BR_ | PL_: // RIT toggle + VFO A/B swap (legacy 5423-5437)
 #ifdef RIT_ENABLE
       rit = !rit;
       stepsize = (rit) ? STEP_10 : prev_stepsize[mode == CW];
@@ -487,6 +448,7 @@ inline void Menu::process() {
           filt = 0;
       }
       vfo_apply();
+      display_vfo();
       break;
     case BE_ | SC_:
       if(state == MENU_MAIN) {
@@ -497,6 +459,7 @@ inline void Menu::process() {
         else if(state == MENU_EDIT) {
           commit();
           state = MENU_SELECT;
+          saved_flag = 1;
         }
 #ifdef MENU_STR
         else if(state == MENU_EDIT_TEXT) {
@@ -507,40 +470,12 @@ inline void Menu::process() {
         render();
       }
       break;
-    case BE_ | DC_:
-      bandval++;
-      if(bandval >= (N_BANDS - 1))
-        bandval = 1; // excludes 6m, 160m (legacy 5467)
-      stepsize = STEP_1k;
-      on_band(); // legacy 5469 change=true -> freq=band[bandval] + set_lpf
-      break;
     case BE_ | PL_:
       stepsize_change(-1);
       break;
-    case BE_ | PT_: // push-and-turn: volume loop + powerDown (legacy 5472-5482)
-      for(; inv ^ digitalRead(BUTTONS);) { // until released
-        wdt_reset();
-        if(encoder_val) {
-          int32_t nv = volume + encoder_val; // paramAction(UPDATE, VOLUME) legacy 5476
-          encoder_val = 0;
-          if(nv < -1)
-            nv = 16;
-          if(nv > 16)
-            nv = -1;
-          volume = nv;
-          if(volume < 0) {
-            volume = 10;
-            save_menu_eslot(1);
-            powerDown();
-          }
-          save_menu_eslot(1);
-        }
-      }
-      break;
-    default: // PLC / PT / others: fast-forward already handled; ignore
+    default:
       break;
     }
-    event = 0;
   }
 }
 
