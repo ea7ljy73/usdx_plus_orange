@@ -71,17 +71,18 @@ volatile uint32_t cw_offset = 0; // CW TX/RX offset from dial (legacy 2174, set 
 volatile bool dig_mode = false;
 volatile int8_t mox = 0; // legacy parity (never set without MOX_ENABLE)
 
-// Voice processing (menu-configurable; all off by default)
-volatile uint8_t  comp_enable    = 0;
+// TX voice processing (menu-gated, default OFF -> byte-identical legacy ssb)
+volatile uint8_t  cessb_enable  = 0;   // CESSB envelope clipper
+volatile uint8_t  comp_enable   = 0;   // voice compressor (ratio ~2:1)
 volatile uint16_t comp_threshold = 128;
-volatile int16_t  comp_envelope  = 0;
-volatile int8_t   eq_low         = 0;
-volatile int8_t   eq_high        = 0;
-static int16_t    eq_low_iir     = 0;
-static int16_t    eq_high_iir    = 0;
-volatile uint8_t  tx_lowcut      = 0;
-volatile uint8_t  pre_emph       = 0;
-static int16_t    pre_z1         = 0;
+volatile int16_t  comp_envelope = 0;
+volatile int8_t   eq_low        = 0;   // mic EQ bass (-7..7)
+volatile int8_t   eq_high       = 0;   // mic EQ treble/presence (-7..7)
+static int16_t    eq_low_iir    = 0;
+static int16_t    eq_high_iir   = 0;
+volatile uint8_t  tx_lowcut     = 0;   // TX low-cut HPF: 0=off,1=100Hz,2=200Hz,3=400Hz
+volatile uint8_t  pre_emph      = 0;   // TX pre-emphasis (0..3)
+static int16_t    pre_z1        = 0;
 
 // ---------------------------------------------------------------------------
 // _vox - VOX/TX latching (tx counts up/down; 255 when freshly triggered)
@@ -122,6 +123,46 @@ inline int16_t ssb(int16_t in) {
   int16_t        i, q;
   uint8_t        j;
   static int16_t v[16];
+  // --- TX voice processing (menu-gated; all OFF -> legacy parity) ---
+  if(!dig_mode) {
+    if(comp_enable) { // voice compressor (ratio ~2:1, smoothed envelope)
+      int16_t abs_in = in < 0 ? -in : in;
+      int16_t env;
+      if(abs_in > comp_envelope)
+        comp_envelope += (abs_in - comp_envelope) >> 2; // attack ~3ms
+      else
+        comp_envelope -= (comp_envelope - abs_in) >> 10; // release ~213ms
+      env = comp_envelope;
+      if(env > comp_threshold && env > 0) {
+        int16_t excess = env - comp_threshold;
+        if(excess < 64)
+          excess = ((int16_t)((uint16_t)excess * excess)) >> 6; // soft knee
+        int32_t gain = (int32_t)(comp_threshold + (excess >> 1)) + (int32_t)(comp_threshold >> 1);
+        if(gain > env)
+          gain = env;
+        in = (int16_t)(((int32_t)in * gain) / env);
+      }
+    }
+    if(eq_low != 0 || eq_high != 0) { // mic EQ: bass + presence
+      eq_low_iir += (in - eq_low_iir) >> 4;   // LPF ~75Hz: bass
+      eq_high_iir += (in - eq_high_iir) >> 1; // LPF ~760Hz: ref for HPF
+      int16_t hi    = in - eq_high_iir;       // HPF ~760Hz: treble
+      int32_t boost = ((int32_t)eq_low_iir * eq_low) + ((int32_t)hi * eq_high);
+      in            = in + (int16_t)(boost >> 3);
+    }
+    if(tx_lowcut > 0) { // TX low-cut HPF
+      static int16_t tx_hpf_z1 = 0;
+      uint8_t        k         = 5 - tx_lowcut;
+      int16_t        lp        = tx_hpf_z1 + ((in - tx_hpf_z1) >> k);
+      tx_hpf_z1                = lp;
+      in                       = in - lp;
+    }
+    if(pre_emph > 0) { // pre-emphasis
+      int16_t pre_in = in;
+      in             = in + ((pre_in - pre_z1) * pre_emph);
+      pre_z1         = pre_in;
+    }
+  }
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
@@ -149,6 +190,17 @@ inline int16_t ssb(int16_t in) {
       (v[6] - v[8]); // Hilbert
 
   uint16_t _amp = magn(i / 2, q / 2);
+
+  // CESSB envelope clipper (menu-gated): limits I/Q magnitude to remove SSB
+  // overshoots -> ~2-3dB more effective average power, no bandwidth widening.
+  if(cessb_enable && _amp > CESSB_THRESH) {
+    uint16_t reduced = CESSB_THRESH + ((_amp - CESSB_THRESH) >> 2);
+    if(_amp) {
+      i = (int16_t)((int32_t)i * reduced / _amp);
+      q = (int16_t)((int32_t)q * reduced / _amp);
+    }
+    _amp = reduced;
+  }
 
   _vox(_amp > vox_thresh);
 

@@ -35,6 +35,13 @@ static volatile uint8_t mode=USB,filt=0,drive=2,tx=0,vox_thresh=4,amp=0,dig_mode
 static volatile uint8_t vox=0,keyerControl=0,keyerState=0;
 static int16_t OCR1BL,OCR1AL;
 static uint8_t lut[256];
+/* TX voice processing vars (all OFF -> ssb() identical to legacy) */
+static volatile uint8_t cessb_enable=0, comp_enable=0, tx_lowcut=0, pre_emph=0;
+static volatile uint16_t comp_threshold=128;
+static volatile int16_t comp_envelope=0;
+static volatile int8_t eq_low=0, eq_high=0;
+static int16_t eq_low_iir=0, eq_high_iir=0, pre_z1=0;
+#define CESSB_THRESH 200
 #define abs(x) ((x)<0?-(x):(x))
 #define magn(i,q) (abs(i)>abs(q)?abs(i)+(abs(q)>>2):abs(q)+(abs(i)>>2))
 #define _vox(a) ((void)0)
