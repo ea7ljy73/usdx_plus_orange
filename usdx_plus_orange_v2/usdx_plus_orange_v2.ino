@@ -561,16 +561,15 @@ void setup() {
 
   timer1_start(78125);
   vfo_eeprom_load();        // restore band memories
-  vfo_recall_band(bandval); // apply current band freq/mode (or default)
-  vfo_apply();              // hw freq from loaded/recalled value
-  last_band_save = millis();
-
-  on_pwm(); // build lut from pwm_min/pwm_max
-  encoder_setup();
   menu.begin();
   drive = 4; // Init settings (legacy 5072); EEPROM restore overrides if valid
   cw_offset = tones[cw_tone]; // CW TX/RX offset (legacy 5079)
   menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
+  on_pwm(); // build lut with LOADED pwm_min/max (legacy: build_lut after LOAD, 5105)
+  vfo_recall_band(bandval); // apply current band freq/mode (or default)
+  vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
+  last_band_save = millis();
+  encoder_setup();
   // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
   // rotary-key is pressed at power-on, and always disable VOX on boot.
   // NOTE: use digitalRead(BUTTONS) here (like legacy 5084) - the ADC is not yet
