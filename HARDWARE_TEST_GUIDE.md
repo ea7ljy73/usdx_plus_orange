@@ -85,43 +85,61 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
 
 ## 5. Verificación TX — CON CARGA (dummy) PRIMERO
 
-> **Nunca transmitir a radio abierta sin carga/dummy load.** Daños al PA.
+> **Nunca transmitir a radio abierta sin carga/dummy load (50Ω).** Daños al PA.
 
-### Prueba 4 — SSB TX (VOX)
-1. Modo USB, conectado a carga. Muerde/efecto contra el mic (no cantes).
-2. **No debe oírse CLICKING ni cortes** al transmitir — esto validaría el
-   timing ISR.
-3. Verifica con un radio receptor / SDR: la señal SSB debe sonar **limpia**,
-   con rechazo de la portadora y de la banda lateral opuesta.
-4. Prueba opcional: activa `TX Comp` en el menú y comprueba que el audio
-   gana fuerza sin chirridos (compresor).
+> **Paridad garantizada:** el DSP TX (`ssb()`, `freq_calc_fast`, `dsp_tx_*`)
+> está verificado byte-idéntico a `usdx-legazy` por el harness de paridad
+> (`tests/parity_tx`, 0 mismatches, RMS/peak idénticos). Es aritmética entera
+> → determinista → la emisión debe ser igual que legacy en esta placa.
 
-### Prueba 5 — CW TX (keyer)
-1. Modo CW (BR cambia modo). Keyer A por defecto.
-2. **Conecta un paddle** en DIT/DAH. Al pulsar, el keyer envía dit/dah.
-3. En el receptor debe oírse el tono CW limpio, sin chirp ni clicks.
-4. **Probar Iambic**: mantener DIT+DAH → alterna dit/dah (Iambic A). En
-   `Keyer Mode` menú si eliges B, el DIT se repite al mantener solo DIT.
+### Prueba 4 — Potencia RF
+1. Conecta **dummy load 50Ω** y un medidor de potencia / puente SWR.
+2. En USB, pulsa **DIT** (PTT en SSB, legacy 5269) y habla.
+3. Esperado: **~3-5W** con `drive=4` (default) y `pwm_max=128`. Si hay poca
+   potencia, revisa `TX Drive` y `PA Bias min/max` en el menú.
 
-### Prueba 6 — AM / FM TX
-1. Modo AM/FM via menú `Mode` (o BR).
-2. Corto contra el mic → portadora/desviación presente (en AM debe subir
-   potencia con la voz; en FM cambiar la desviación audible en receptor).
-   *Nota:* en el v2 el VOX activo solo es LSB/USB; para AM/FM se transmite
-   sólo si la keyed entry está disponible (ver limitaciones §7).
+### Prueba 5 — SSB TX en receptor/SDR
+Sintoniza un segundo receptor a la misma frecuencia:
+1. Pulsa DIT (PTT) y habla → audio SSB **limpio y natural**.
+2. **Portadora suprimida**: NO debe oírse tono continuo (si se oye, la
+   portadora no está suprimida).
+3. **Banda lateral opuesta suprimida**: el audio no debe sonar "raro"/al revés
+   (rechazo de imagen — depende de la fase IQ `rx_ph_q`, restaurada a legacy).
+4. Sin **CLICKING** ni cortes (valida el timing ISR).
+
+### Prueba 6 — CW TX (keyer)
+1. Modo CW (BR cambia modo). Conecta paddle en DIT/DAH.
+2. En el SDR sintoniza **frecuencia − 600Hz** (el v2 transmite a `freq -
+   cw_offset`, como legacy 3725). Debes oír CW limpio, sin chirp ni clicks.
+3. Iambic: mantener DIT+DAH → alterna (Iambic A/B según `Keyer Mode`).
+
+### Prueba 7 — AM / FM TX
+1. Modo AM/FM vía menú `Mode`. Pulsa **DIT/DAH** (el keyer SINGLE funciona en
+   cualquier modo, legacy 5269).
+2. En AM la portadora sube con la voz; en FM cambia la desviación audible.
+   *Nota:* VOX solo LSB/USB (legacy 5144); para AM/FM usar DIT como PTT.
+
+### Prueba 8 — Frecuencia y armónicos
+1. Compara la lectura del SDR con el display: deben coincidir (±100Hz, cristal).
+2. Barre el SDR en 2× y 3× la frecuencia: el LPF debe atenuar los armónicos.
+
+### Prueba 9 — CAT TX
+1. Conecta USB-serial (38400). `FA;`/`IF;` responden; `TX1;`/`TX0;` alternan
+   TX/RX (la señal debe oírse en el receptor).
 
 ---
 
 ## 6. Verificación de menú y persistencia
 
-### Prueba 7 — Navegación
-1. **BL corto** en principal → `MENU_SELECT` (aparece el 1er parámetro `Vol`).
-2. **Encoder** → recorre los 31 parámetros.
-3. **BL corto** en un parámetro → `EDIT` (cursor `>` visible).
-4. **Encoder** → cambia el valor (con wrap/clamp según tipo).
-5. **BL corto** en EDIT → guarda (EEPROM) y vuelve a principal.
+### Prueba 10 — Navegación (flujo 4 pulsaciones)
+1. **BL corto** en principal → `MENU_SELECT` (1er parámetro `Vol`).
+2. **Encoder** → recorre los 28 parámetros.
+3. **BL corto** → `EDIT` (cursor `>` visible).
+4. **Encoder** → cambia el valor.
+5. **BL corto** → guarda (EEPROM) y vuelve a selección.
+6. **BL corto** → sale a la pantalla principal (instantáneo).
 
-### Prueba 8 — Persistencia
+### Prueba 11 — Persistencia
 1. Cambia `Vol` a 4, `Mode` a CW, sintoniza 7.050MHz.
 2. **Apaga y vuelve a encender.**
 3. Debe recordar: volumen, modo, filtro, y la frecuencia de la banda
