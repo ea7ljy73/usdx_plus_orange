@@ -34,21 +34,23 @@ enum mode_t { LSB, USB, CW, FM, AM };
 #define SEMI_QSK 1
 #define RIT_ENABLE 1
 #define VOX_ENABLE 1
+#define KEYER 1
 
 #define KEY_CLICK 1
 #define CW_DECODER 1
+#define CW_INTERMEDIATE 1
+#define CW_MESSAGE 1
+#define MENU_STR 1
 #define LPF_SWITCHING_DL2MAN_USDX_REV3 1
 
 #define CAT 1
-#define CAT_FAST 1
 
-// CW TX carrier offset (Hz) from dial frequency; 0 = transmit on dial.
-#define CW_OFFSET 0
+// CW TX/RX offset is RUNTIME (cw_offset = tones[cw_tone], legacy 5079); no
+// compile-time CW_OFFSET constant.
 
 #define KEEP_BAND_DATA 1
 
 #define PTX 11
-#define TX_DELAY 1
 
 // =============================================================================
 // PINES (WHITE_BUTTONS)

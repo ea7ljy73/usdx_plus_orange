@@ -52,21 +52,24 @@ extern volatile int8_t  volume;
 uint8_t          lut[256];
 volatile uint8_t amp;
 volatile uint8_t vox_thresh = 4; // legacy noise-gate default
-volatile uint8_t drive      = 2;
+volatile uint8_t drive      = 4; // legacy factory default (setup forces 4)
 
 volatile uint8_t tx   = 0; // TX latch: 0=off, reaches 255 when triggered
 volatile uint8_t filt = 0; // filter select (shared with RX; owned here for MAX_DP)
 volatile uint8_t vox  = 0; // vox master enable (default OFF, like legacy usdx-legazy:228)
 volatile uint8_t quad = 0; // QUAD frequency divider state (legacy parity)
 
-volatile int16_t p_sin = 0;     // Minsky sin state
-volatile int16_t n_cos = 20000; // Minsky cos state
+volatile int8_t p_sin = 0;   // Minsky sin state (int8_t, legacy parity)
+volatile int8_t n_cos = 448 / 4; // Minsky cos state (legacy parity)
 
 volatile uint8_t tone_vol = 12;
 volatile uint8_t cw_tone  = 1;
 const uint32_t   tones[]  = {F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000, F_MCU * 700ULL / 20000000};
 
+volatile uint32_t cw_offset = 0; // CW TX/RX offset from dial (legacy 2174, set in setup)
+
 volatile bool dig_mode = false;
+volatile int8_t mox = 0; // legacy parity (never set without MOX_ENABLE)
 
 // Voice processing (menu-configurable; all off by default)
 volatile uint8_t  comp_enable    = 0;
@@ -228,10 +231,10 @@ inline void    dsp_tx() { // jitter dependent things first
 // ---------------------------------------------------------------------------
 // CW / AM / FM TX
 // ---------------------------------------------------------------------------
-inline void process_minsky() {
-  int16_t alpha = (int32_t)tones[cw_tone] * 51 / _F_SAMP_TX;
-  p_sin += (int32_t)alpha * n_cos >> 8;
-  n_cos -= (int32_t)alpha * p_sin >> 8;
+inline void process_minsky() { // legacy 2175-2182 (600 Hz sidetone)
+  int8_t alpha127 = tones[cw_tone] * 798 / _F_SAMP_TX;
+  p_sin += alpha127 * n_cos / 127;
+  n_cos -= alpha127 * p_sin / 127;
 }
 
 const uint8_t ramp[] PROGMEM = {255, 254, 252, 249, 245, 239, 233, 226, 217, 208, 198, 187, 176, 164, 152, 139,
@@ -248,7 +251,7 @@ void dsp_tx_cw() {
 #endif
   OCR1BL = lut[255];
   process_minsky();
-  OCR1AL = (p_sin >> (8 + (16 - volume))) + 128;
+  OCR1AL = (p_sin >> (16 - volume)) + 128; // legacy 2204
 }
 
 void dsp_tx_am() {

@@ -45,12 +45,19 @@ extern volatile uint8_t agc; // agc select (1/2; from main)
 
 // legacy-parity globals for the demod path:
 volatile uint8_t  rx_state   = 0;
-volatile uint8_t  _init      = 1; // first-sample accumulators reset
+volatile uint8_t  _init      = 0; // first-sample accumulators reset (legacy 2514)
 static uint32_t   absavg256  = 0;
 volatile uint32_t _absavg256 = 0;
 volatile int16_t  i, q;  // demodulated I/Q (global, used by slow_dsp)
 volatile int16_t  ocomb; // audio out comb (shared)
 volatile int16_t  qh;    // Hilbert Q (global)
+
+// CW decoder audio-amplitude feed (legacy 2303-2304, 2723-2725)
+static uint32_t   amp32 = 0;
+volatile uint32_t _amp32 = 0;
+
+// AGC state backup/restore across TX/RX (legacy 3671/3693)
+volatile int16_t _centiGain = 128;
 
 // ---------------------------------------------------------------------------
 // AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the
@@ -148,7 +155,7 @@ inline int16_t slow_dsp(int16_t ac) {
   }
 
   if(agc == 1) {
-    ac = process_agc(ac);
+    ac = process_agc_fast(ac); // legacy default (no FAST_AGC): agc_fast
     ac = ac >> (16 - volume);
   } else { // agc==0: no AGC, only volume (legacy parity w/o FAST_AGC)
     if(volume <= 13)
@@ -162,6 +169,14 @@ inline int16_t slow_dsp(int16_t ac) {
 
   if(filt)
     ac = filt_var(ac);
+
+#ifdef CW_DECODER
+  if(!(absavg256cnt % 64)) {
+    _amp32 = amp32;
+    amp32  = 0;
+  } else
+    amp32 += abs(ac); // CW decoder amplitude feed (legacy 2723-2725)
+#endif //CW_DECODER
 
   ac = min(max(ac, -512), 511);
   return ac;
