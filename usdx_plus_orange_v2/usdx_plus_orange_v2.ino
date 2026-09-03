@@ -56,23 +56,119 @@ volatile uint8_t pwm_min = 0;   // legacy default (0 for biasing BS170 directly)
 volatile uint8_t pwm_max = 128; // legacy default non-QCX (128 for biasing BS170 directly)
 
 // --- VFO ---
-volatile int32_t  freq             = 7100000;
+volatile int32_t  freq             = 14000000; // legacy initializer (3549)
 volatile uint8_t  stepsize         = 5; // STEP_1k (legacy default; indices = step_t)
 const int32_t     step_mult[]      = {10, 100, 1000, 10000};
 volatile uint32_t semi_qsk_timeout = 0;
 
-// --- Labels (enum arrays) ---
-const char* const offon_label[2] PROGMEM      = {"OFF", "ON"};
-const char* const mode_label[5] PROGMEM       = {"LSB", "USB", "CW ", "FM ", "AM "};
-const char* const filt_label[8] PROGMEM       = {"Full", "3000", "2400", "1800", "500", "200", "100", "50"};
-const char* const keyer_mode_label[3] PROGMEM = {"Iambic A", "Iambic B", "Straight"};
-const char* const band_label[11] PROGMEM      = {"160m", "80m", "60m", "40m", "30m", "20m",
-                                                 "17m",  "15m", "12m", "10m", "6m"};
-const char* const stepsize_label[10] PROGMEM  = {"10M", "1M", "0.5M", "100k", "10k", "1k", "0.5k", "100", "10", "1"};
-const char* const vfosel_label[2] PROGMEM     = {"A", "B"};
-const char* const att_label[8] PROGMEM        = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
-const char* const smode_label[5] PROGMEM      = {"OFF", "dBm", "S", "S-bar", "wpm"};
-const char* const lowcut_label[4] PROGMEM     = {"Off", "100", "200", "400"};
+// --- Labels (enum arrays) - strings in FLASH (PROGMEM), pointer array
+// in PROGMEM. Read with pgm_read_ptr -> print via __FlashStringHelper*
+// LCD overload. Saves ~500B RAM vs RAM string literals.
+static const char offon_label_0[] PROGMEM = "OFF";
+static const char offon_label_1[] PROGMEM = "ON";
+const char* const offon_label[2] PROGMEM = {offon_label_0, offon_label_1};
+
+static const char mode_label_0[] PROGMEM = "LSB";
+static const char mode_label_1[] PROGMEM = "USB";
+static const char mode_label_2[] PROGMEM = "CW ";
+static const char mode_label_3[] PROGMEM = "FM ";
+static const char mode_label_4[] PROGMEM = "AM ";
+const char* const mode_label[5] PROGMEM = {mode_label_0, mode_label_1, mode_label_2, mode_label_3, mode_label_4};
+
+static const char filt_label_0[] PROGMEM = "Full";
+static const char filt_label_1[] PROGMEM = "3000";
+static const char filt_label_2[] PROGMEM = "2400";
+static const char filt_label_3[] PROGMEM = "1800";
+static const char filt_label_4[] PROGMEM = "500";
+static const char filt_label_5[] PROGMEM = "200";
+static const char filt_label_6[] PROGMEM = "100";
+static const char filt_label_7[] PROGMEM = "50";
+const char* const filt_label[8] PROGMEM = {filt_label_0, filt_label_1, filt_label_2, filt_label_3, filt_label_4, filt_label_5, filt_label_6, filt_label_7};
+
+static const char keyer_mode_label_0[] PROGMEM = "Iambic A";
+static const char keyer_mode_label_1[] PROGMEM = "Iambic B";
+static const char keyer_mode_label_2[] PROGMEM = "Straight";
+const char* const keyer_mode_label[3] PROGMEM = {keyer_mode_label_0, keyer_mode_label_1, keyer_mode_label_2};
+
+static const char band_label_0[] PROGMEM = "160m";
+static const char band_label_1[] PROGMEM = "80m";
+static const char band_label_2[] PROGMEM = "60m";
+static const char band_label_3[] PROGMEM = "40m";
+static const char band_label_4[] PROGMEM = "30m";
+static const char band_label_5[] PROGMEM = "20m";
+static const char band_label_6[] PROGMEM = "17m";
+static const char band_label_7[] PROGMEM = "15m";
+static const char band_label_8[] PROGMEM = "12m";
+static const char band_label_9[] PROGMEM = "10m";
+static const char band_label_10[] PROGMEM = "6m";
+const char* const band_label[11] PROGMEM = {band_label_0, band_label_1, band_label_2, band_label_3, band_label_4, band_label_5, band_label_6, band_label_7, band_label_8, band_label_9, band_label_10};
+
+static const char stepsize_label_0[] PROGMEM = "10M";
+static const char stepsize_label_1[] PROGMEM = "1M";
+static const char stepsize_label_2[] PROGMEM = "0.5M";
+static const char stepsize_label_3[] PROGMEM = "100k";
+static const char stepsize_label_4[] PROGMEM = "10k";
+static const char stepsize_label_5[] PROGMEM = "1k";
+static const char stepsize_label_6[] PROGMEM = "0.5k";
+static const char stepsize_label_7[] PROGMEM = "100";
+static const char stepsize_label_8[] PROGMEM = "10";
+static const char stepsize_label_9[] PROGMEM = "1";
+const char* const stepsize_label[10] PROGMEM = {stepsize_label_0, stepsize_label_1, stepsize_label_2, stepsize_label_3, stepsize_label_4, stepsize_label_5, stepsize_label_6, stepsize_label_7, stepsize_label_8, stepsize_label_9};
+
+static const char vfosel_label_0[] PROGMEM = "A";
+static const char vfosel_label_1[] PROGMEM = "B";
+const char* const vfosel_label[2] PROGMEM = {vfosel_label_0, vfosel_label_1};
+
+static const char att_label_0[] PROGMEM = "0dB";
+static const char att_label_1[] PROGMEM = "-13dB";
+static const char att_label_2[] PROGMEM = "-20dB";
+static const char att_label_3[] PROGMEM = "-33dB";
+static const char att_label_4[] PROGMEM = "-40dB";
+static const char att_label_5[] PROGMEM = "-53dB";
+static const char att_label_6[] PROGMEM = "-60dB";
+static const char att_label_7[] PROGMEM = "-73dB";
+const char* const att_label[8] PROGMEM = {att_label_0, att_label_1, att_label_2, att_label_3, att_label_4, att_label_5, att_label_6, att_label_7};
+
+static const char smode_label_0[] PROGMEM = "OFF";
+static const char smode_label_1[] PROGMEM = "dBm";
+static const char smode_label_2[] PROGMEM = "S";
+static const char smode_label_3[] PROGMEM = "S-bar";
+static const char smode_label_4[] PROGMEM = "wpm";
+const char* const smode_label[5] PROGMEM = {smode_label_0, smode_label_1, smode_label_2, smode_label_3, smode_label_4};
+
+static const char menu_label_0[] PROGMEM = "Volume";
+static const char menu_label_1[] PROGMEM = "Mode";
+static const char menu_label_2[] PROGMEM = "Filter BW";
+static const char menu_label_3[] PROGMEM = "Band";
+static const char menu_label_4[] PROGMEM = "Tune Rate";
+static const char menu_label_5[] PROGMEM = "VFO Mode";
+static const char menu_label_6[] PROGMEM = "RIT";
+static const char menu_label_7[] PROGMEM = "AGC";
+static const char menu_label_8[] PROGMEM = "NR";
+static const char menu_label_9[] PROGMEM = "ATT";
+static const char menu_label_10[] PROGMEM = "ATT2";
+static const char menu_label_11[] PROGMEM = "S-meter";
+static const char menu_label_12[] PROGMEM = "CW Decoder";
+static const char menu_label_13[] PROGMEM = "Semi QSK";
+static const char menu_label_14[] PROGMEM = "Keyer Speed";
+static const char menu_label_15[] PROGMEM = "Keyer Mode";
+static const char menu_label_16[] PROGMEM = "Keyer Swap";
+static const char menu_label_17[] PROGMEM = "Practice";
+static const char menu_label_18[] PROGMEM = "VOX";
+static const char menu_label_19[] PROGMEM = "Noise Gate";
+static const char menu_label_20[] PROGMEM = "TX Drive";
+static const char menu_label_21[] PROGMEM = "CQ Interval";
+static const char menu_label_22[] PROGMEM = "CQ Message";
+static const char menu_label_23[] PROGMEM = "PA Bias min";
+static const char menu_label_24[] PROGMEM = "PA Bias max";
+static const char menu_label_25[] PROGMEM = "Ref freq";
+static const char menu_label_26[] PROGMEM = "IQ Phase";
+static const char menu_label_27[] PROGMEM = "Backlight";
+const char* const MENU_LABELS[28] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27};
+
+void menu_print_label(uint8_t id) {
+  lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
+}
 
 // --- EEPROM helpers (stable slots) ---
 volatile uint16_t eeprom_offs = 0x150;
@@ -195,20 +291,6 @@ void on_pwm() {
 }
 void on_tx_quality() {} // no-op (kept for table symmetry)
 
-// --- Table of menu entries (declarative; same order as legacy visible) ---
-// Flash labels, indexed via MENU_LABELS[]. (PROGMEM: strings stay in flash)
-// Exact labels of usdx-legazy paramAction (keep order == label ids below)
-const char* const MENU_LABELS[] PROGMEM = {
-    "Volume",      "Mode",        "Filter BW",   "Band",      "Tune Rate", "VFO Mode",   "RIT",
-    "AGC",         "NR",          "ATT",         "ATT2",      "S-meter",   "CW Decoder", "Semi QSK",
-    "Keyer Speed", "Keyer Mode",  "Keyer Swap",  "Practice",  "VOX",       "Noise Gate", "TX Drive",
-    "CQ Interval", "CQ Message",  "PA Bias min", "PA Bias max", "Ref freq", "IQ Phase",  "Backlight"};
-
-void menu_print_label(uint8_t id) {
-  const char* s = (const char*)pgm_read_ptr(&MENU_LABELS[id]);
-  while(char c = pgm_read_byte(s++))
-    lcd.print(c);
-}
 
 const MenuParam MENU[] PROGMEM = {
     {0, (void*)&volume, P_T8, -1, 16, NULL, 1, NULL},

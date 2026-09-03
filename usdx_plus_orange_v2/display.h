@@ -113,6 +113,11 @@ public:
     while(*s)
       write((uint8_t)*s++);
   }
+  void print(const __FlashStringHelper* s) { // PROGMEM string (F("...") / label)
+    const char* p = (const char*)s;
+    while(char c = pgm_read_byte(p++))
+      write((uint8_t)c);
+  }
   void print(char c) { write((uint8_t)c); }
   void print(int n) {
     char b[7];

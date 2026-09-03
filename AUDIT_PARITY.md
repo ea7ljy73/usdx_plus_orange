@@ -190,6 +190,83 @@ Harnesses en `usdx_plus_orange_v2/tests/{parity_tx,parity_rx}` (ver AGENTS.md v2
 
 > Objetivo: PARIDAD FUNCIONAL. Test de paridad TX/RX al 100%. Pendiente de
 > validación en hardware (2026-09-03).
+
+---
+## H. COMPARACIÓN VARIABLE A VARIABLE (legacy activo vs v2)
+
+Config activa legacy: `KEYER, CAT, CW_DECODER, TX_ENABLE, KEY_CLICK, SEMI_QSK,
+RIT_ENABLE, VOX_ENABLE, CW_MESSAGE, CW_INTERMEDIATE, REV3 LPF`, F_MCU=20M,
+F_XTAL=27M. INACTIVOS: DIAG(note), PTX, NTX, TX_DELAY, FAST_AGC, MOX, OLED,
+LCD_I2C, QCX, CAT_EXT, CAT_STREAMING, SWR_METER, VSS_METER, CLOCK, etc.
+
+| Variable | Legacy | v2 | Estado |
+|---|---|---|---|
+| mode | USB | USB | ✅ |
+| volume | 12 | 12 | ✅ |
+| agc | 1 | 1 | ✅ |
+| nr | 0 | 0 | ✅ |
+| att | 0 | 0 | ✅ |
+| att2 | 2 | 2 | ✅ |
+| filt | 0 | 0 | ✅ |
+| bandval | 3 | 3 | ✅ |
+| stepsize | STEP_1k=5 | 5 | ✅ |
+| vfosel | VFOA=0 | 0 | ✅ |
+| rit | 0 | 0 | ✅ |
+| smode | 1 | 1 | ✅ |
+| cwdec | 1 | 1 | ✅ |
+| semi_qsk | 0 | 0 | ✅ |
+| keyer_speed | 25 | 25 | ✅ |
+| keyer_mode | 2 (SINGLE) | 2 | ✅ |
+| keyer_swap | 0 | 0 | ✅ |
+| practice | 0 | 0 | ✅ |
+| vox | 0 | 0 | ✅ |
+| vox_thresh | (1<<2)=4 | 4 | ✅ |
+| drive | 2 (setup→4) | 4 (setup→4) | ✅ |
+| txdelay | 0 | 0 | ✅ |
+| pwm_min | 0 | 0 | ✅ |
+| pwm_max | 128 (no-QCX) | 128 | ✅ |
+| rx_ph_q | 90 | 90 | ✅ |
+| backlight | 8 | 8 | ✅ |
+| freq | 14000000 | 14000000 | ✅ (corregido) |
+| vfo[] | {7074000,14074000} | {7074000,14074000} | ✅ |
+| vfomode[] | {USB,USB} | {USB,USB} | ✅ |
+| tx | 0 | 0 | ✅ |
+| quad | 0 | 0 | ✅ |
+| cw_tone | 1 | 1 | ✅ |
+| p_sin | 0 (int8) | 0 (int8) | ✅ |
+| n_cos | 448/4 (int8) | 448/4 (int8) | ✅ |
+| cw_offset | tones[cw_tone] | tones[cw_tone] | ✅ |
+| tones[] | {700,600,700}·F_MCU/2e7 | igual | ✅ |
+| lut[256] | sí | sí | ✅ |
+| gain | 1024 | 1024 | ✅ |
+| centiGain | 128 | 128 | ✅ |
+| decayCount | DECAY_FACTOR=400 | 400 | ✅ |
+| _init | 0 | 0 | ✅ |
+| _centiGain | 0 | 0 | ✅ (corregido) |
+| i, q, ocomb, qh | 0 | 0 | ✅ |
+| absavg256/_absavg256 | 0 | 0 | ✅ |
+| amp32/_amp32 | 0 | 0 | ✅ |
+| avg | 256 | 256 | ✅ |
+| sym | 0 (uninit) | 0 | ✅ (corregido) |
+| filteredstate/before | LOW | LOW | ✅ |
+| realstate/before | LOW | LOW | ✅ |
+| nbtime | 16 | 16 | ✅ |
+| wpm | 25 | 25 | ✅ |
+| inv | 0 | 0 | ✅ |
+| cat_active | 0 | 0 | ✅ |
+| cw_msg[1][48] | CW_MSG1 | CW_MSG1 | ✅ |
+| cw_msg_interval | 5 | 5 | ✅ |
+| cw_msg_event/id | 0 | 0 | ✅ |
+| band[] (FT8) | 1840000…50313000 | PROGMEM igual | ✅ |
+| stepsizes[10] | 10M…1 | PROGMEM igual | ✅ |
+| prev_stepsize | {STEP_1k,STEP_500} | {5,6} | ✅ |
+| prev_filt | {0,4} | {0,4} | ✅ |
+| PTX | INACTIVO | INACTIVO | ✅ (corregido) |
+| TX_DELAY | INACTIVO | INACTIVO | ✅ (corregido) |
+| DIAG | ACTIVO | NO PORTADO | ⚠️ divergencia documentada (solo diag de arranque) |
+| change flag | presente | vía vfo_apply directo | ✅ equivalente |
+| menumode/menu | presente | menu.state | ✅ equivalente |
+| rxend_event | presente | no (CAT display lockout) | ⚠️ menor (estético CAT) |
 ---
 ## G. CHECKLIST DE DEFAULTS (uno a uno, legazy vs v2)
 
