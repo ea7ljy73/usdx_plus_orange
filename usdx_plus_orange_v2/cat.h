@@ -75,6 +75,7 @@ static void Command_SETFreqA() {
   }
 }
 static void Command_AI() { Serial.print("AI0;"); }
+static void Command_AI0() { Serial.print("AI0;"); } // legacy parity
 static void Command_AG0() { Serial.print("AG0;"); }
 static void Command_XT1() { Serial.print("XT1;"); }
 static void Command_RT1() { Serial.print("RT1;"); }
@@ -83,6 +84,15 @@ static void Command_RC() {
   Serial.print("RC;");
 }
 static void Command_FL0() { Serial.print("FL0;"); }
+static void Command_TX0() { switch_rxtx(1); } // legacy parity (TX on)
+static void Command_TX1() { switch_rxtx(1); }
+static void Command_TX2() { switch_rxtx(1); }
+static void Command_PS1() { /* no-op (legacy parity) */ }
+static void Command_VX(char c) {
+  Serial.print("VX");
+  Serial.print(c);
+  Serial.print(';');
+}
 static void Command_GetMD() {
   Serial.print("MD");
   cat_print_u8(mode + 1);
@@ -132,16 +142,24 @@ static void analyseCATcmd() {
       Command_RC();
   } else if(c0 == 'I' && c1 == 'D' && c2 == ';') {
     Command_ID();
-  } else if(c0 == 'P' && c1 == 'S' && c2 == ';') {
-    Command_PS();
+  } else if(c0 == 'P' && c1 == 'S') {
+    if(c2 == ';')
+      Command_PS();
+    else if(c2 == '1')
+      Command_PS1();
   } else if(c0 == 'A' && c1 == 'I') {
-    Command_AI();
+    if(c2 == '0' || c2 == ';')
+      Command_AI0(); // AI and AI0 both → AI0 (legacy parity)
+    else
+      Command_AI();
   } else if(c0 == 'A' && c1 == 'G' && c2 == '0') {
     Command_AG0();
   } else if(c0 == 'X' && c1 == 'T' && c2 == '1') {
     Command_XT1();
   } else if(c0 == 'F' && c1 == 'L' && c2 == '0') {
     Command_FL0();
+  } else if(c0 == 'V' && c1 == 'X' && CATcmd[3] == ';') {
+    Command_VX(c2);
   } else if(c0 == 'R' && c1 == 'S' && c2 == ';') {
     Command_RS();
   }

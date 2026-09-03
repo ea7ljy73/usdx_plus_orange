@@ -44,7 +44,8 @@ struct MenuParam {
 // helper: write a flash label to the LCD via its id (defined in .ino)
 void menu_print_label(uint8_t id);
 
-extern volatile uint8_t mode; // LSB/USB/CW/FM/AM (defined in main .ino)
+extern volatile uint8_t mode;                        // LSB/USB/CW/FM/AM (defined in main .ino)
+void                    stepsize_change(int8_t val); // defined in main .ino
 #define LSB 0
 #define USB 1
 #define CW 2
@@ -282,8 +283,9 @@ inline void Menu::process() {
           // returning to radio: no menu render (periodic display_vfo handles it)
         }
         break;
-      case BE_ | SC_:
-        // encoder push: treat as mode change too (legacy BE reserved)
+      case BE_ | SC_: // encoder push: rotate stepsize (legacy 5450-5453)
+        if(state == MENU_MAIN)
+          stepsize_change(+1);
         break;
       default: // long press (PL) - ignore / keep simple
         break;

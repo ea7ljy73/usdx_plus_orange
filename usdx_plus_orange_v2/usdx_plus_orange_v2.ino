@@ -14,6 +14,7 @@
 #include "usdx_settings.h"
 #include "vfo.h"
 #include <avr/eeprom.h>
+#include <math.h>
 
 SI5351 si5351;
 LCD    lcd;
@@ -238,8 +239,52 @@ const MenuParam MENU[] PROGMEM = {
 const int8_t MENU_COUNT = 27; // number of entries above
 
 // --- VFO / sintonia ---
+uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
+int16_t  smeter_cnt    = 0;
+int16_t  dbm           = 0;
+
+// S-meter as legacy (usdx-legazy:3565-3614); draws dBm (smode 1) or S (smode 2)
+static int16_t smeter(int16_t ref = 0) {
+  max_absavg256 = max(_absavg256, max_absavg256); // peak
+  if(smode) {
+    if((++smeter_cnt % 2048) == 0) { // slowed-down display
+      float rms = (float)max_absavg256 * (float)(1 << att2);
+      rms /= (256.0 * 1024.0 * (float)4 * 8.0 * 500.0 * 1.414 / (0.707 * 1.1)); // SDR const (legacy 3571)
+      dbm = 10 * log10((rms * rms) / 50) + 30 - ref;
+#ifdef log10
+      // (log10 needs <math.h> on AVR)
+#endif
+      lcd.noCursor();
+      if(smode == 1) { // dBm meter
+        lcd.setCursor(9, 0);
+        lcd.print((int16_t)dbm);
+        lcd.print("dBm ");
+      } else if(smode == 2) { // S-meter
+        uint8_t s = (dbm < -63) ? ((dbm - -127) / 6) : (((uint8_t)(dbm - -73)) / 10) * 10;
+        lcd.setCursor(14, 0);
+        if(s < 10)
+          lcd.print('S');
+        lcd.print((int)s);
+      }
+      max_absavg256 /= 2; // peak hold/decay (legacy 3612)
+    }
+  }
+  return dbm;
+}
+
 volatile uint32_t last_band_save = 0;
-inline void       do_tune() {
+// legacy stepsize_change (3865-3870): indices = step_t, skip .5M/10k
+void stepsize_change(int8_t val) {
+  stepsize += val;
+  if(stepsize < 1)
+    stepsize = 9; // STEP_1..STEP_10M
+  if(stepsize > 9)
+    stepsize = 1;
+  if(stepsize == 2 || stepsize == 4) // STEP_500k / STEP_10k
+    stepsize += val;
+  display_vfo();
+}
+inline void do_tune() {
   if(tx || vox_tx)
     return; // no tuning while transmitting (legacy parity)
   int32_t d = encoder_val;
@@ -289,22 +334,10 @@ void display_vfo() {
   lcd.setCursor(15, 1);
   lcd.print((vox) ? 'V' : 'R'); // like legacy 3955 (no TX indicator)
 
-  // Line 0: call/banner (col 0) + S-meter in digits (col 9-15, like legacy smeter())
+  // Line 0: banner (col 0-3) + S-meter/dBm via smeter() (cols 9/14, legacy 3577-3587)
   lcd.setCursor(0, 0);
-  lcd.print("uSDX");
-  lcd.print("      "); // cols 4-8 blank
-  int8_t  s;
-  int16_t db = (int16_t)(_absavg256 >> 10);
-  if(db < -127)
-    s = 0;
-  else if(db < -63)
-    s = (db + 127) / 6; // S0..S3 approx
-  else
-    s = 9 + (db + 73) / 10 * 10; // above ~S9
-  lcd.setCursor(13, 0);
-  lcd.print('S');
-  lcd.print((int)s);
-  lcd.print("   ");
+  lcd.print("uSDX     ");
+  smeter(); // draws according to smode (1=dBm, 2=S)
   // stepsize cursor on the frequency line (like legacy stepsize_showcursor)
   if(menu.state == MENU_MAIN) {
     lcd.setCursor(stepsize + 1, 1);

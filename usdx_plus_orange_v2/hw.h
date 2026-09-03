@@ -86,6 +86,16 @@ void timer2_start(uint32_t fs) {
   TIMSK2 |= (1 << OCIE2A);
 }
 
+// Legacy parity (usdx-legazy:3394,3413): stop timers cleanly
+void timer1_stop() {
+  OCR1AL = 0x00;
+  OCR1BL = 0x00;
+}
+void timer2_stop() { // Stop Timer2 interrupt
+  TIMSK2 &= ~(1 << OCIE2A);
+  delay(1); // wait until potential in-flight interrupts are finished
+}
+
 // ---------------------------------------------------------------------------
 // Microphone sampling for VOX detection
 // ---------------------------------------------------------------------------
