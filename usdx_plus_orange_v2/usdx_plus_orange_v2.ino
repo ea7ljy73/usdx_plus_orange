@@ -6,6 +6,7 @@
 #include "display.h"
 #include "hw.h"
 #include "i2c.h"
+#include "lpf.h"
 #include "menu.h"
 #include "rx.h"
 #include "si5351.h"
@@ -155,6 +156,7 @@ void on_mode() {
 void on_band() {
   vfo_save_current(); // store prev band freq/mode
   vfo_recall_band(bandval);
+  set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
 }
 void on_vfosel() {
   // placeholder: single VFO in v2 minimal
@@ -221,6 +223,8 @@ const int8_t MENU_COUNT = 31; // number of entries above
 // --- VFO / sintonia ---
 volatile uint32_t last_band_save = 0;
 inline void       do_tune() {
+  if(tx || vox_tx)
+    return; // no tuning while transmitting (legacy parity)
   int32_t d = encoder_val;
   if(d) {
     encoder_val = 0;
@@ -232,6 +236,7 @@ inline void       do_tune() {
     if(freq > 60000000)
       freq = 60000000;
     vfo_apply();
+    set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
     // persist on tune (throttled: ~every 2s max)
     if(millis() - last_band_save > 2000) {
       vfo_save_current();
@@ -346,9 +351,10 @@ void setup() {
     eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
     delay(500);
   }
-  vox = 0;              // disable VOX at boot (legacy parity)
-  nr  = 0;              // disable NR (legacy parity)
-  loadWPM(keyer_speed); // CW timing
+  vox = 0;                    // disable VOX at boot (legacy parity)
+  nr  = 0;                    // disable NR (legacy parity)
+  loadWPM(keyer_speed);       // CW timing
+  keyer_set_mode(keyer_mode); // initialize keyerControl (IAMBICA/B, SINGLE)
 
   start_rx(); // arm RX DSP (ADC I/Q/mic + timers + func_ptr) as legacy
   display_vfo();
