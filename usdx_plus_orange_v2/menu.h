@@ -335,20 +335,6 @@ inline void Menu::edit_value(int32_t delta) {
 }
 
 inline void Menu::process() {
-  // --- encoder ---
-  int32_t enc = encoder_val;
-  if(enc) {
-    encoder_val = 0;
-    if(state == MENU_SELECT)
-      move(enc);
-    else if(state == MENU_EDIT)
-      edit_value(enc);
-    else if(state == MENU_EDIT_TEXT)
-      edit_text(enc);
-    if(state != MENU_MAIN)
-      render();
-    return;
-  }
   // --- button: NON-BLOCKING state machine. BL/BR fire instantly on release
   // (SC/PL). The DIAL (BE) additionally detects double-click (DC -> band
   // change, legacy 5463) and hold+turn (PT -> volume, legacy 5472). ---
@@ -360,6 +346,23 @@ inline void Menu::process() {
   static uint32_t b_dc_deadline = 0;
   static uint8_t  b_is_dc      = 0;
   static uint8_t  b_pt_done    = 0; // dial hold+turn adjusted volume this hold
+
+  // --- encoder --- (skipped while the dial is held for volume, legacy 5472)
+  int32_t enc = encoder_val;
+  uint8_t held_dial = (b_state == B_HOLD) && ((millis() - b_t0) > 400) &&
+                      (b_v >= (uint16_t)(4.8 * 1024.0 / 5.0)) && (inv ^ digitalRead(BUTTONS));
+  if(enc && !held_dial) {
+    encoder_val = 0;
+    if(state == MENU_SELECT)
+      move(enc);
+    else if(state == MENU_EDIT)
+      edit_value(enc);
+    else if(state == MENU_EDIT_TEXT)
+      edit_text(enc);
+    if(state != MENU_MAIN)
+      render();
+    return;
+  }
 
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
   if(b_state == B_IDLE) {
