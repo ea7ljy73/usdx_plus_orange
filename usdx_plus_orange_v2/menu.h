@@ -385,7 +385,9 @@ inline void Menu::process() {
         lcd.cursor();
       else
         lcd.noCursor();
-      if(state != MENU_MAIN)
+      if(state == MENU_MAIN)
+        display_vfo(); // exit to main: show main screen immediately
+      else
         render();
       break;
     case BR_ | SC_:
@@ -424,7 +426,9 @@ inline void Menu::process() {
           commit();
           saved_flag = 1; // EDIT->save: next BL exits to main (legacy 5381)
         }
-        if(state == MENU_SELECT)
+        if(state == MENU_MAIN)
+          display_vfo(); // BR exits menu: show main screen immediately
+        else
           render();
       }
       break;
