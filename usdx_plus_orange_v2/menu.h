@@ -303,4 +303,8 @@ inline void Menu::render() {
     lcd.print('>');
   print_value();
   lcd.print("               ");
+  if(state == MENU_EDIT)
+    lcd.cursor(); // blink cursor on edited value
+  else
+    lcd.noCursor(); // navigation: no cursor (radio stepsize cursor returns via display_vfo)
 }
