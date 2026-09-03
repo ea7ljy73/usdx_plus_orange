@@ -56,22 +56,23 @@ volatile uint8_t pwm_min = 115;
 volatile uint8_t pwm_max = 220;
 
 // --- VFO ---
-volatile int32_t freq             = 7100000;
-volatile uint8_t stepsize         = 3; // 0=10Hz 1=100 2=1k 3=10k
-const int32_t    step_mult[]      = {10, 100, 1000, 10000};
-volatile uint8_t semi_qsk_timeout = 0;
+volatile int32_t  freq             = 7100000;
+volatile uint8_t  stepsize         = 3; // 0=10Hz 1=100 2=1k 3=10k
+const int32_t     step_mult[]      = {10, 100, 1000, 10000};
+volatile uint32_t semi_qsk_timeout = 0;
 
 // --- Labels (enum arrays) ---
-const char* const offon_label[2] PROGMEM     = {"OFF", "ON"};
-const char* const mode_label[5] PROGMEM      = {"LSB", "USB", "CW ", "FM ", "AM "};
-const char* const filt_label[8] PROGMEM      = {"Full", "3000", "2400", "1800", "500", "200", "100", "50"};
-const char* const band_label[7] PROGMEM      = {"x", "80m", "60m", "40m", "30m", "20m", "17m"};
-const char* const stepsize_label[10] PROGMEM = {"10M", "1M", ".5M", "100k", "10k", "1k", ".5k", "100", "10", "1"};
-const char* const vfosel_label[2] PROGMEM    = {"A", "B"};
-const char* const agc_label[3] PROGMEM       = {"OFF", "Fast", "Slow"};
-const char* const att_label[8] PROGMEM       = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
-const char* const smode_label[7] PROGMEM     = {"OFF", "dBm", "S", "Sbar", "wpm", "Vss", "time"};
-const char* const lowcut_label[4] PROGMEM    = {"Off", "100", "200", "400"};
+const char* const offon_label[2] PROGMEM      = {"OFF", "ON"};
+const char* const mode_label[5] PROGMEM       = {"LSB", "USB", "CW ", "FM ", "AM "};
+const char* const filt_label[8] PROGMEM       = {"Full", "3000", "2400", "1800", "500", "200", "100", "50"};
+const char* const keyer_mode_label[3] PROGMEM = {"Iambic A", "Iambic B", "Straight"};
+const char* const band_label[11] PROGMEM      = {"160m", "80m", "60m", "40m", "30m", "20m",
+                                                 "17m",  "15m", "12m", "10m", "6m"};
+const char* const stepsize_label[10] PROGMEM  = {"10M", "1M", "0.5M", "100k", "10k", "1k", "0.5k", "100", "10", "1"};
+const char* const vfosel_label[2] PROGMEM     = {"A", "B"};
+const char* const att_label[8] PROGMEM        = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
+const char* const smode_label[7] PROGMEM      = {"OFF", "dBm", "S", "Sbar", "wpm", "Vss", "time"};
+const char* const lowcut_label[4] PROGMEM     = {"Off", "100", "200", "400"};
 
 // --- EEPROM helpers (stable slots) ---
 volatile uint16_t eeprom_offs = 0x150;
@@ -172,11 +173,12 @@ void on_tx_quality() {} // no-op (kept for table symmetry)
 
 // --- Table of menu entries (declarative; same order as legacy visible) ---
 // Flash labels, indexed via MENU_LABELS[]. (PROGMEM: strings stay in flash)
-const char* const MENU_LABELS[] PROGMEM = { // keep order == label ids below
-    "Vol",       "Mode",     "FilterBW",    "Band",     "Tune Rate", "VFO Mode",  "RIT",        "AGC",
-    "NR",        "ATT",      "ATT2",        "S-Meter",  "AGC Dcy",   "Noise Blk", "CW Decoder", "Semi QSK",
-    "Practice",  "VOX",      "Noise Gate",  "TX Drive", "TX Comp",   "TX Emph",   "TX Delay",   "EQ Bass",
-    "EQ Treble", "TX LoCut", "PA bias min", "PA max",   "Ref frq",   "IQ phase",  "Light"};
+// Exact labels of usdx-legazy paramAction (keep order == label ids below)
+const char* const MENU_LABELS[] PROGMEM = {
+    "Volume",      "Mode",        "Filter BW",   "Band",     "Tune Rate", "VFO Mode",   "RIT",
+    "AGC",         "NR",          "ATT",         "ATT2",     "S-meter",   "CW Decoder", "Semi QSK",
+    "Keyer Speed", "Keyer Mode",  "Keyer Swap",  "Practice", "VOX",       "Noise Gate", "TX Drive",
+    "TX Delay",    "PA Bias min", "PA Bias max", "Ref freq", "IQ Phase",  "Backlight"};
 
 void menu_print_label(uint8_t id) {
   const char* s = (const char*)pgm_read_ptr(&MENU_LABELS[id]);
@@ -188,37 +190,43 @@ const MenuParam MENU[] PROGMEM = {
     {0, (void*)&volume, P_T8, -1, 16, NULL, 1, NULL},
     {1, (void*)&mode, P_ENUM, 0, 4, mode_label, 2, on_mode},
     {2, (void*)&filt, P_ENUM, 0, 7, filt_label, 3, NULL},
-    {3, (void*)&bandval, P_T8, 1, 6, band_label, 4, NULL},
+    {3, (void*)&bandval, P_ENUM, 0, 10, band_label, 4, NULL}, // legacy BAND 0..10
     {4, (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
     {5, (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
-    {6, (void*)&rit_on, P_ENUM, 0, 1, offon_label, 7, NULL},
-    {7, (void*)&agc, P_ENUM, 0, 2, agc_label, 8, NULL},
+    {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, NULL}, // legacy RIT toggle (rit!=0 = active)
+    {7, (void*)&agc, P_ENUM, 0, 1, offon_label, 8, NULL}, // legacy w/o FAST_AGC: offon 0..1
     {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
     {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
     {10, (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},
     {11, (void*)&smode, P_ENUM, 0, 6, smode_label, 12, NULL},
-    {12, (void*)&agc_decay, P_T8, 1, 16, NULL, 13, NULL},
-    {13, (void*)&nb_enable, P_ENUM, 0, 1, offon_label, 14, NULL},
-    {14, (void*)&cwdec, P_ENUM, 0, 1, offon_label, 15, NULL},
-    {15, (void*)&semi_qsk, P_ENUM, 0, 1, offon_label, 16, NULL},
-    {16, (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
-    {17, (void*)&vox, P_ENUM, 0, 1, offon_label, 18, NULL},
-    {18, (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
-    {19, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
-    {20, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 21, NULL},
-    {21, (void*)&pre_emph, P_T8, 0, 3, NULL, 22, NULL},
-    {22, (void*)&txdelay, P_T8, 0, 255, NULL, 23, NULL},
-    {23, (void*)&eq_low, P_T8, -7, 7, NULL, 24, NULL},
-    {24, (void*)&eq_high, P_T8, -7, 7, NULL, 25, NULL},
-    {25, (void*)&tx_lowcut, P_ENUM, 0, 3, lowcut_label, 26, NULL},
-    {26, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
-    {27, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
-    {28, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 0, NULL}, // not persisted (eslot 0)
-    {29, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
-    {30, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
+    // CW Decoder (CW_DECODER legacy 0x21)
+    {12, (void*)&cwdec, P_ENUM, 0, 1, offon_label, 15, NULL},
+    // Semi QSK (SEMIQSK legacy 0x24)
+    {13, (void*)&semi_qsk, P_ENUM, 0, 1, offon_label, 16, NULL},
+    // Keyer Speed / Mode / Swap (KEY_WPM/KEY_MODE/KEY_PIN legacy 0x25/0x26/0x27)
+    {14, (void*)&keyer_speed, P_T8, 1, 60, NULL, 13, NULL},
+    {15, (void*)&keyer_mode, P_ENUM, 0, 2, keyer_mode_label, 14, NULL},
+    {16, (void*)&keyer_swap, P_ENUM, 0, 1, offon_label, 15, NULL},
+    // Practice (KEY_TX legacy 0x28)
+    {17, (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
+    // VOX / Noise Gate (VOX/VOXGAIN legacy 0x31/0x32)
+    {18, (void*)&vox, P_ENUM, 0, 1, offon_label, 18, NULL},
+    {19, (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
+    // TX Drive (DRIVE legacy 0x33)
+    {20, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
+    // TX Delay (TXDELAY legacy 0x34)
+    {21, (void*)&txdelay, P_T8, 0, 255, NULL, 23, NULL},
+    // PA Bias min/max (PWM_MIN/PWM_MAX legacy 0x81/0x82)
+    {22, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
+    {23, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
+    // Ref freq / IQ phase (SIFXTAL/IQ_ADJ legacy 0x83/0x84)
+    {24, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 0, NULL}, // not persisted
+    {25, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
+    // Backlight (BACKL legacy 0xA1)
+    {26, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
 
-const int8_t MENU_COUNT = 31; // number of entries above
+const int8_t MENU_COUNT = 27; // number of entries above
 
 // --- VFO / sintonia ---
 volatile uint32_t last_band_save = 0;
@@ -230,13 +238,18 @@ inline void       do_tune() {
     encoder_val = 0;
     // note: stepsizes[10] (PROGMEM) matches the menu 0..9 range
     int32_t stepval = (stepsize < 10) ? (int32_t)pgm_read_dword(&stepsizes[stepsize]) : 1000;
-    freq += d * stepval;
-    if(freq < 100000)
-      freq = 100000;
-    if(freq > 60000000)
-      freq = 60000000;
-    vfo_apply();
-    set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
+    if(rit) { // RIT active: encoder tweaks the RIT offset (legacy 3849-3854)
+      rit += d * stepval;
+      rit = max(-9999, min(9999, rit));
+    } else {
+      freq += d * stepval;
+      if(freq < 100000)
+        freq = 100000;
+      if(freq > 60000000)
+        freq = 60000000;
+      vfo_apply();
+      set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
+    }
     // persist on tune (throttled: ~every 2s max)
     if(millis() - last_band_save > 2000) {
       vfo_save_current();
@@ -395,6 +408,11 @@ void loop() {
     if(cwdec && !tx) {
       cw_decode(); // decoder during RX (keyed state fed by switch_rxtx)
     }
+  }
+
+  // --- Semi-QSK: delayed RX return after CW keying (legacy 5292) ---
+  if((semi_qsk_timeout) && (millis() > semi_qsk_timeout)) {
+    switch_rxtx(0);
   }
 
   if(!(millis() % 500) && menu.state == MENU_MAIN && !tx && !vox_tx)

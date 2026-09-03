@@ -9,12 +9,12 @@
 #include <avr/pgmspace.h>
 #include <stdint.h>
 
-#define N_BANDS 12              // like v1 (160m..50c)
-#define BANDCOUNT (N_BANDS - 2) // persisted bands (skip 160m/6m floor/edge)
+#define N_BANDS 11              // legacy usdx-legazy (160m..6m)
+#define BANDCOUNT (N_BANDS - 2) // persisted bands (exclude 160m & 6m, like legacy)
 
-// FT8-style default band frequencies (v1 default, no CW_FREQS_* defines)
+// FT8-style default band frequencies (same as legacy, index 0..10)
 const uint32_t band[N_BANDS] PROGMEM = {1840000,  3573000,  5357000,  7074000,  10136000, 14074000,
-                                        18100000, 21074000, 24915000, 27000000, 28074000, 50313000};
+                                        18100000, 21074000, 24915000, 28074000, 50313000};
 
 // enum step_t + stepsizes (PROGMEM) + stepsize var
 enum step_t { STEP_10M, STEP_1M, STEP_500k, STEP_100k, STEP_10k, STEP_1k, STEP_500, STEP_100, STEP_10, STEP_1 };

@@ -22,6 +22,9 @@
 // ---------------------------------------------------------------------------
 volatile func_t func_ptr;
 
+// no-op ISR target (Semi-QSK mutes RX while waiting, legacy 2187)
+void dummy() {}
+
 // ---------------------------------------------------------------------------
 // ADC setup
 // ---------------------------------------------------------------------------
@@ -149,6 +152,13 @@ void start_rx() {
   digitalWrite(KEY_OUT, LOW); // disable KEY_OUT PWM
 }
 
+void si5351_reapply_rit() {
+  if(rit) { // apply RIT offset on RX (legacy 5712)
+    si5351.freq_calc_fast(rit);
+    si5351.SendPLLRegisterBulk();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // switch_rxtx - TX/RX switching (WHITE_BUTTONS config active)
 // ---------------------------------------------------------------------------
@@ -156,6 +166,10 @@ extern volatile uint8_t tx; // from tx.h
 extern volatile uint8_t vox_tx;
 extern volatile uint8_t txdelay;
 extern volatile uint8_t practice;
+
+// Semi-QSK (defined in main .ino / rx.h)
+extern volatile uint32_t semi_qsk_timeout;
+extern volatile uint8_t  semi_qsk;
 
 void switch_rxtx(uint8_t tx_enable) {
   TIMSK2 &= ~(1 << OCIE2A); // disable timer compare interrupt
@@ -236,7 +250,19 @@ void switch_rxtx(uint8_t tx_enable) {
   digitalWrite(PTX, LOW);        // disable TX
   si5351.freq_calc_fast(0);      // restore RX base frequency
   si5351.SendPLLRegisterBulk();  // restore PLL RX frequency
-  func_ptr = sdr_rx_00;          // RX ISR start phase
+  if(rit)
+    si5351_reapply_rit(); // apply RIT offset on RX (legacy 5712)
+  func_ptr = sdr_rx_00;   // default RX ISR start phase
+#ifdef SEMI_QSK
+  if((mode == CW) && (!(semi_qsk_timeout))) {
+    semi_qsk_timeout = millis() + ditTime * 8; // mute RX ~8 dits after CW key
+    if(semi_qsk)
+      func_ptr = dummy; // keep RX muted (no audio)
+  } else {
+    semi_qsk_timeout = 0;
+    func_ptr         = sdr_rx_00;
+  }
+#endif
   rx_state = 0;
   TIMSK2 |= (1 << OCIE2A);
 }

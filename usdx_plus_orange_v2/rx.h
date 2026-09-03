@@ -148,12 +148,9 @@ inline int16_t slow_dsp(int16_t ac) {
   }
 
   if(agc == 1) {
-    ac = process_agc_fast(ac);
-    ac = ac >> (16 - volume);
-  } else if(agc == 2) {
     ac = process_agc(ac);
     ac = ac >> (16 - volume);
-  } else {
+  } else { // agc==0: no AGC, only volume (legacy parity w/o FAST_AGC)
     if(volume <= 13)
       ac = ac >> (13 - volume);
     else
