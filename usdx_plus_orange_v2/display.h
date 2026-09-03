@@ -232,9 +232,9 @@ volatile uint8_t encoder_pressed;
 
 ISR(PCINT2_vect) { // Interrupt on rotary encoder turn (direct PIND read)
   uint8_t p = PIND;
-  // Quadrature accumulator: count all 4 transitions per cycle, emit ONE step
-  // per full cycle (legacy feel: 1 step per detent) but immune to lost/skipped
-  // transitions and bounce (opposite transitions cancel).
+  // Quadrature accumulator, divisor 2: this encoder produces ~2 transitions
+  // per detent, so emit one step every 2 accumulated transitions = 1 per
+  // detent, robust to lost/skipped transitions and bounce.
   static int8_t quad = 0;
   uint8_t tr = (last_state << 4) | ((p & (1 << ROT_B)) ? 2 : 0) | ((p & (1 << ROT_A)) ? 1 : 0);
   last_state = tr;
@@ -254,10 +254,10 @@ ISR(PCINT2_vect) { // Interrupt on rotary encoder turn (direct PIND read)
   default:
     break;
   }
-  if(quad >= 4) {
+  if(quad >= 2) {
     encoder_val++;
     quad = 0;
-  } else if(quad <= -4) {
+  } else if(quad <= -2) {
     encoder_val--;
     quad = 0;
   }
