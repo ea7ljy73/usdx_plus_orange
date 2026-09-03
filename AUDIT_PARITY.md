@@ -133,3 +133,41 @@ Verificar cuáles usa software real (Hamlib/FLDigi) y añadir los necesarios.
 - ✅ LPF band switching (05cddf1)
 - ✅ Keyer Iambic A/B init (05cddf1)
 - 🔴 Pendientes de esta auditoría listados arriba
+---
+## G. CHECKLIST DE DEFAULTS (uno a uno, legazy vs v2)
+
+| Variab | legazy | v2 ANTES | v2 AHORA | Estado |
+|---|---|---|---|---|
+| volume | 12 | 12 | 12 | ✅ |
+| mode | USB(1) | USB | USB | ✅ |
+| filt | 0 | 0 | 0 | ✅ |
+| bandval | 3 | 3 | 3 | ✅ |
+| stepsize | STEP_1k(5) | 3 | 5 | ✅ 60c5905 |
+| vfosel | VFOA(0) | 0 | 0 | ✅ |
+| rit | 0 | 0 | 0 | ✅ |
+| agc | 1 (sin FAST_AGC) | 2 | 1 | ✅ |
+| nr | 0 | 2 | 0 | ✅ |
+| att | 0 | 0 | 0 | ✅ |
+| att2 | 2 | 2 | 2 | ✅ |
+| smode | 1 | 1 | 1 | ✅ |
+| cwdec | 1 | 1 | 1 | ✅ |
+| semi_qsk | 0 | 0 | 0 | ✅ |
+| keyer_speed | 25 | 25 | 25 | ✅ |
+| keyer_mode | SINGLE(2) | 2 | 2 | ✅ |
+| keyer_swap | 0 | 0 | 0 | ✅ |
+| practice | 0 | 0 | 0 | ✅ |
+| vox | 0 | 0 | 0 | ✅ |
+| vox_thresh | 4 | 0(uninit) | 4 | ✅ |
+| drive | 2 | 2 | 2 | ✅ |
+| txdelay | 0 | 1 | 0 | ✅ |
+| pwm_min | 0 | 115 | 0 | ✅ |
+| pwm_max | 255 | 220 | 255 | ✅ |
+| rx_ph_q | 90 | 90 | 90 | ✅ |
+| backlight | 8 | 1 | 8 | ✅ |
+| vfo[] | {7074000,14074000} | - | añadido | ✅ |
+| vfomode[] | {USB,USB} | - | añadido | ✅ |
+| freq inicial | 14000000 | 0||bandval | bandval recall | ✅ via vfo_recall |
+
+### Ajustes de comportamiento (paridad)
+- on_mode: prev_stepsize[]/prev_filt[] por modo (SSB/CW) ✅
+- on_vfosel: VFO A/B toggle real (guarda/carga freq+mode) ✅

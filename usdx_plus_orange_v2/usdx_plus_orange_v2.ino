@@ -23,11 +23,10 @@ int32_t vfo_cache_freq          = 0;
 void (*vfo_apply_freq)(int32_t) = NULL;
 
 // --- Operador / control ------------------------------------------------
-volatile uint8_t mode   = USB;
-volatile int8_t  volume = 12;
-volatile uint8_t agc    = 2;
-
-volatile uint8_t txdelay  = 1; // TX relay/delay (ms)
+volatile uint8_t mode     = USB;
+volatile int8_t  volume   = 12;
+volatile uint8_t agc      = 1; // legacy default 1 (offon; w/o FAST_AGC)
+volatile uint8_t txdelay  = 0; // legacy default 0 (ms)
 volatile uint8_t practice = 0; // TX disabled
 volatile uint8_t vox_tx   = 0; // VOX currently transmitting
 
@@ -40,9 +39,9 @@ volatile uint8_t prev_mode      = 0;
 volatile uint8_t changedModeCAT = 0;
 
 // --- Params (menú) ---
-volatile uint8_t bandval   = 3; // band index (0-based; 40m default)
-volatile uint8_t smode     = 1; // S-meter mode
-volatile uint8_t backlight = 1;
+volatile uint8_t bandval   = 3;  // band index (0-based; 40m default)
+volatile uint8_t smode     = 1;  // S-meter mode
+volatile uint8_t backlight = 8;  // legacy default (was 1)
 volatile uint8_t rx_ph_q   = 90; // IQ phase
 volatile uint8_t semi_qsk  = 0;  // semi-qsk
 volatile uint8_t cwdec     = 1;  // CW decoder
@@ -52,12 +51,12 @@ volatile int32_t rit_off   = 0;  // (reserved)
 volatile uint8_t rit_on    = 0;  // RIT on/off (menu)
 
 // PA bias
-volatile uint8_t pwm_min = 115;
-volatile uint8_t pwm_max = 220;
+volatile uint8_t pwm_min = 0;   // legacy default (was 115)
+volatile uint8_t pwm_max = 255; // legacy default (was 220)
 
 // --- VFO ---
 volatile int32_t  freq             = 7100000;
-volatile uint8_t  stepsize         = 3; // 0=10Hz 1=100 2=1k 3=10k
+volatile uint8_t  stepsize         = 5; // STEP_1k (legacy default; indices = step_t)
 const int32_t     step_mult[]      = {10, 100, 1000, 10000};
 volatile uint32_t semi_qsk_timeout = 0;
 
@@ -142,16 +141,16 @@ void menu_load_all() {
 }
 
 // --- Callbacks (post-handling effects) ---
-void on_mode() {
-  if(mode != CW)
-    stepsize = 3;
-  else
-    stepsize = 1;
-  if(mode == CW) {
-    filt = 4;
-    nr   = 0;
-  } else
-    filt = 0;
+uint8_t prev_stepsize[2] = {5, 6}; // {STEP_1k SSB, STEP_500 CW} legacy 3843
+uint8_t prev_filt[2]     = {0, 4}; // {Full SSB, filter4 CW} legacy 2637
+void    on_mode() {
+  // legacy 5366: backup prev mode's stepsize/filt, restore current mode's
+  prev_stepsize[mode != CW] = stepsize;
+  stepsize                  = prev_stepsize[mode == CW];
+  prev_filt[mode != CW]     = filt;
+  filt                      = prev_filt[mode == CW];
+  if(mode == CW)
+    nr = 0;
   si5351.iqmsa = 0; // enforce PLL reset
 }
 void on_band() {
@@ -159,8 +158,18 @@ void on_band() {
   vfo_recall_band(bandval);
   set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
 }
-void on_vfosel() {
-  // placeholder: single VFO in v2 minimal
+// VFO A/B memory (legacy 3550-3553; vfosel already declared above)
+int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
+uint8_t vfomode[2] = {USB, USB};
+void    on_vfosel() {
+  // legacy 5430: toggle VFO, saving current freq/mode into the other slot
+  uint8_t other   = !vfosel;
+  vfo[vfosel]     = freq;
+  vfomode[vfosel] = mode;
+  vfosel          = other;
+  freq            = vfo[vfosel];
+  mode            = vfomode[vfosel];
+  vfo_apply();
 }
 void on_pwm() {
   // rebuild LUT with new bias limits (guard: always keep max >= min)

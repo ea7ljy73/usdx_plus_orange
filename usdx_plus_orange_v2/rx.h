@@ -35,7 +35,7 @@
 // ---------------------------------------------------------------------------
 // Globals (shared with UI / CAT / legacy parity)
 // ---------------------------------------------------------------------------
-volatile uint8_t nr        = 2; // noise reduction level
+volatile uint8_t nr        = 0; // noise reduction level (legacy default 0)
 volatile uint8_t nb_enable = 0; // noise blanker on/off
 volatile uint8_t att       = 0; // analog attenuator
 volatile uint8_t att2      = 2; // digital attenuator (CIC stage)
