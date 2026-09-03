@@ -618,29 +618,27 @@ void loop() {
   }
   menu.process(); // nav/edits when in menu; re-enters on button
 
-  // --- CW keyer & decoder ---
-  if(mode == CW) {
-    if(keyer_mode != 2) {
-      keyer_process(); // iambic A/B
-    } else {
-      uint8_t pin = (keyer_swap) ? DAH : DIT; // legacy 5269 SINGLE
-      if(!vox_tx) {
-        if(!digitalRead(pin)) { // PTT/DIT keys transmitter
-          cw_msg_event = 0;
-          switch_rxtx(1);
-          do { // hold loop (legacy 5276-5283)
-            wdt_reset();
-            delay(10);
-            if(inv ^ digitalRead(BUTTONS))
-              break; // break if button pressed (prevent lock-up)
-          } while(!digitalRead(pin)); // until released
-          switch_rxtx(0);
-        }
+  // --- CW keyer (legacy 5201-5285): iambic in CW, else SINGLE (DIT/DAH = PTT) ---
+  if(mode == CW && keyer_mode != 2) {
+    keyer_process(); // iambic A/B
+  } else {
+    uint8_t pin = ((mode == CW) && (keyer_swap)) ? DAH : DIT; // legacy 5269
+    if(!vox_tx) {
+      if(!digitalRead(pin)) { // PTT/DIT keys transmitter
+        cw_msg_event = 0;
+        switch_rxtx(1);
+        do { // hold loop (legacy 5276-5283)
+          wdt_reset();
+          delay(10);
+          if(inv ^ digitalRead(BUTTONS))
+            break; // break if button pressed (prevent lock-up)
+        } while(!digitalRead(pin)); // until released
+        switch_rxtx(0);
       }
     }
-    if(cwdec && !tx && !semi_qsk_timeout)
-      cw_decode(); // CW decoder only active during RX (legacy 5176)
   }
+  if(mode == CW && cwdec && !tx && !semi_qsk_timeout)
+    cw_decode(); // CW decoder only active during RX (legacy 5176)
 
 #ifdef CW_MESSAGE
   if((mode == CW) && (cw_msg_event) && (millis() > cw_msg_event)) { // time to send a CW message (legacy 5724)
