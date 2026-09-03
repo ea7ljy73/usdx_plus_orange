@@ -20,7 +20,11 @@ extern volatile uint8_t mode;
 extern volatile uint8_t prev_mode;
 extern volatile uint8_t changedModeCAT;
 extern volatile int32_t rit;
+extern volatile uint8_t vfosel;
+extern uint8_t          vfomode[2];
+extern volatile uint32_t semi_qsk_timeout;
 extern void             switch_rxtx(uint8_t tx_enable);
+extern void             vfo_apply(void);
 
 // --- response formatter (no sprintf, saves flash) --------------------------
 static inline void cat_print(char c) { Serial.print(c); }
@@ -62,7 +66,7 @@ static void Command_IF() {
   cat_print_u32(tf, 3);
   Serial.print("00000+0000000000");
   cat_print_u8(mode + 1);
-  cat_print(';');
+  Serial.print("0000000;"); // full TS-480 IF frame (legacy 4547)
 }
 
 static void Command_SETFreqA() {
@@ -70,7 +74,7 @@ static void Command_SETFreqA() {
     uint32_t fq = (uint32_t)atol(CATcmd + 2);
     if(fq >= 1500000 && fq <= 60000000) {
       freq = fq;
-      si5351.freq(fq, 0, 0);
+      vfo_apply(); // mode-dependent IQ phase + CW offset (legacy change handler)
     }
   }
 }
@@ -102,11 +106,14 @@ static void Command_SetMD() {
   int8_t m = CATcmd[2] - '1';
   if(m >= LSB && m <= AM) {
     mode = m;
-    si5351.freq(freq, 0, 0);
+    vfomode[vfosel % 2] = mode; // legacy 4593
+    si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
+    vfo_apply();
   }
 }
 static void Command_RX() {
   switch_rxtx(0);
+  semi_qsk_timeout = 0; // hack for multiple RX cmds (legacy 4607)
   Serial.print("RX0;");
 }
 static void Command_TX() { switch_rxtx(1); }
@@ -162,6 +169,8 @@ static void analyseCATcmd() {
     Command_VX(c2);
   } else if(c0 == 'R' && c1 == 'S' && c2 == ';') {
     Command_RS();
+  } else {
+    Serial.print("?;"); // legacy 4424-4431
   }
 }
 

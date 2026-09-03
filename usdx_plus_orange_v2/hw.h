@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/sleep.h>
 #include <avr/wdt.h>
 #include <stdint.h>
 
@@ -82,8 +83,8 @@ void timer2_start(uint32_t fs) {
   TCNT2  = 0;
   TCCR2A |= (1 << WGM21); // CTC
   TCCR2B |= (1 << CS22);  // 64 prescaler
+  TIMSK2 |= (1 << OCIE2A);               // enable before OCR2A (legacy 3411)
   OCR2A = ((F_CPU / 64) / fs) - 1;
-  TIMSK2 |= (1 << OCIE2A);
 }
 
 // Legacy parity (usdx-legazy:3394,3413): stop timers cleanly
@@ -96,13 +97,66 @@ void timer2_stop() { // Stop Timer2 interrupt
   delay(1); // wait until potential in-flight interrupts are finished
 }
 
+// legacy powerDown (usdx-legazy:3874-3920): sleep until BUTTONS pin-change wakes
+void powerDown() {
+  lcd.setCursor(0, 1);
+  lcd.print("Power-off 73 :-)");
+  lcd.print("                ");
+
+  MCUSR = ~(1 << WDRF); // may be done before wdt_disable()
+  wdt_disable();
+
+  timer2_stop();
+  timer1_stop();
+  adc_stop();
+
+  si5351.powerDown();
+
+  delay(1500);
+
+  // Disable external interrupts INT0, INT1, Pin Change
+  PCICR  = 0;
+  PCMSK0 = 0;
+  PCMSK1 = 0;
+  PCMSK2 = 0;
+  // Disable internal interrupts
+  TIMSK0 = 0;
+  TIMSK1 = 0;
+  TIMSK2 = 0;
+  WDTCSR = 0;
+  // Enable BUTTON Pin Change interrupt
+  *digitalPinToPCMSK(BUTTONS) |= (1 << digitalPinToPCMSKbit(BUTTONS));
+  *digitalPinToPCICR(BUTTONS) |= (1 << digitalPinToPCICRbit(BUTTONS));
+
+  // Power-down sub-systems
+  PRR = 0xff;
+
+  lcd.noDisplay();
+  PORTD &= ~0x08; // disable backlight
+
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  sleep_enable();
+  interrupts();
+  sleep_bod_disable();
+  sleep_cpu(); // go to sleep, wake-up by Pin Change, ...
+  sleep_disable();
+
+  do {
+    wdt_enable(WDTO_15MS);
+    for(;;)
+      ;
+  } while(0); // soft reset by triggering watchdog timeout
+}
+
 // ---------------------------------------------------------------------------
 // Microphone sampling for VOX detection
 // ---------------------------------------------------------------------------
 uint16_t analogSampleMic() {
   uint16_t adc;
   noInterrupts();
-  ADCSRA         = (1 << ADEN) | (((uint8_t)log2((uint8_t)(F_CPU / 13 / (192307 / 1)))) & 0x07);
+  ADCSRA = (1 << ADEN) | (((uint8_t)log2((uint8_t)(F_CPU / 13 / (192307 / 1)))) & 0x07);
+
+  if(vox_thresh >= 32) digitalWrite(RX, LOW); // disable RF input (legacy 3533, SDR always)
   uint8_t oldmux = ADMUX;
   for(; !(ADCSRA & (1 << ADIF));)
     ;
@@ -111,6 +165,7 @@ uint16_t analogSampleMic() {
   for(; !(ADCSRA & (1 << ADIF));)
     ;
   ADMUX = oldmux;
+  if(vox_thresh >= 32) digitalWrite(RX, HIGH); // enable RF input (legacy 3541)
   adc   = ADC;
   interrupts();
   return adc;
@@ -162,13 +217,6 @@ void start_rx() {
   digitalWrite(KEY_OUT, LOW); // disable KEY_OUT PWM
 }
 
-void si5351_reapply_rit() {
-  if(rit) { // apply RIT offset on RX (legacy 5712)
-    si5351.freq_calc_fast(rit);
-    si5351.SendPLLRegisterBulk();
-  }
-}
-
 // ---------------------------------------------------------------------------
 // switch_rxtx - TX/RX switching (WHITE_BUTTONS config active)
 // ---------------------------------------------------------------------------
@@ -180,43 +228,34 @@ extern volatile uint8_t practice;
 // Semi-QSK (defined in main .ino / rx.h)
 extern volatile uint32_t semi_qsk_timeout;
 extern volatile uint8_t  semi_qsk;
+extern volatile uint8_t  cwdec; // CW decoder enable (main .ino)
 
 void switch_rxtx(uint8_t tx_enable) {
   TIMSK2 &= ~(1 << OCIE2A); // disable timer compare interrupt
   delayMicroseconds(20);    // allow RX ISR to finalize
   noInterrupts();
-
-  if(txdelay && tx_enable && (!tx)) { // key-up TX relay in advance
-    digitalWrite(RX, LOW);            // disable RX
-    digitalWrite(PTX, HIGH);          // enable TX
-    interrupts();
-    delay(txdelay);
-    noInterrupts();
-  }
-  tx = tx_enable;
-  cw_set_keyed(tx_enable); // feed CW decoder with actual key state (RX side)
-
-  // Set sample rate for this direction: TX @F_SAMP_TX (4.8k), RX @F_SAMP_RX
-  OCR2A = ((F_CPU / 64) / ((tx_enable) ? F_SAMP_TX : F_SAMP_RX)) - 1;
-
-  if(tx_enable) {
-    // enable KEY_OUT PWM early while PLL settles
-    TCCR1A |= (1 << COM1B1); // KEY_OUT PWM (PA amplitude signal)
-    if(practice) {
-      digitalWrite(RX, LOW);                  // TX (disable RX)
-      si5351.SendRegister(SI_CLK_OE, TX0RX0); // RF disabled (practice)
-    } else {
-      digitalWrite(RX, LOW);   // TX (disable RX)
+#ifdef TX_DELAY
+#ifdef SEMI_QSK
+  if(!(semi_qsk_timeout))
+#endif
+    if((txdelay) && (tx_enable) && (!(tx)) && (!(practice))) { // key-up TX relay in advance (legacy 3655)
+      digitalWrite(RX, LOW);                                  // TX (disable RX)
+#ifdef PTX
       digitalWrite(PTX, HIGH); // TX (enable TX)
-      if(mode == CW) {
-        si5351.freq_calc_fast(-CW_OFFSET); // TX at carrier for CW
-        si5351.SendPLLRegisterBulk();
-      } else {
-        si5351.freq_calc_fast(0); // restore base freq (undo RIT offset)
-        si5351.SendPLLRegisterBulk();
-      }
-      si5351.SendRegister(SI_CLK_OE, TX1RX0); // enable RF output on CLK0
+#endif
+      lcd.setCursor(15, 1);
+      lcd.print('D'); // note that this enables interrupts again.
+      interrupts();   // hack.. to allow delay()
+      delay(F_MCU / 16000000 * txdelay);
+      noInterrupts(); // end of hack
     }
+#endif //TX_DELAY
+  tx = tx_enable;
+  if(tx_enable) { // tx
+    _centiGain = centiGain; // backup AGC setting (legacy 3671)
+#ifdef SEMI_QSK
+    semi_qsk_timeout = 0;
+#endif
     switch(mode) {
     case USB:
     case LSB:
@@ -229,50 +268,117 @@ void switch_rxtx(uint8_t tx_enable) {
       func_ptr = dsp_tx_am;
       break;
     case FM:
-    default:
       func_ptr = dsp_tx_fm;
       break;
     }
-    OCR1AL = 0x80; // SIDETONE at 2.5V
-    if(mode != CW)
-      TCCR1A &= ~(1 << COM1A1); // disable SIDETONE PWM (SSB TX interference)
-    else
-      TCCR1A |= (1 << COM1A1); // CW needs SIDETONE
-    TIMSK2 |= (1 << OCIE2A);   // enable timer ISR
-    return;
-  }
-
-  // RX
-#ifdef KEY_CLICK
-  if(OCR1BL != 0) { // ramp down amplitude to prevent key clicks
-    for(uint16_t i = 0; i != 31; i++) {
-      OCR1BL = lut[pgm_read_byte_near(&ramp[i])];
-      delayMicroseconds(60);
+  } else { // rx
+    if((mode == CW) && (!(semi_qsk_timeout))) {
+#ifdef SEMI_QSK
+#ifdef KEYER
+      semi_qsk_timeout = millis() + ditTime * 8;
+#else
+      semi_qsk_timeout = millis() + 8 * 8; // no keyer? assume dit-time of 20 WPM
+#endif //KEYER
+#endif //SEMI_QSK
+      if(semi_qsk)
+        func_ptr = dummy;
+      else
+        func_ptr = sdr_rx_00;
+    } else {
+      centiGain = _centiGain; // restore AGC setting (legacy 3693)
+#ifdef SEMI_QSK
+      semi_qsk_timeout = 0;
+#endif
+      func_ptr = sdr_rx_00;
     }
   }
-#endif
-  TCCR1A |= (1 << COM1A1);  // enable SIDETONE
-  TCCR1A &= ~(1 << COM1B1); // disable KEY_OUT PWM (prevents RX interference)
-  digitalWrite(KEY_OUT, LOW);
-  OCR1BL = 0;
-  si5351.SendRegister(SI_CLK_OE, TX0RX1);
-  digitalWrite(RX, !(att == 2)); // RX (enable unless ATT full)
-  digitalWrite(PTX, LOW);        // disable TX
-  si5351.freq_calc_fast(0);      // restore RX base frequency
-  si5351.SendPLLRegisterBulk();  // restore PLL RX frequency
-  if(rit)
-    si5351_reapply_rit(); // apply RIT offset on RX (legacy 5712)
-  func_ptr = sdr_rx_00;   // default RX ISR start phase
-#ifdef SEMI_QSK
-  if((mode == CW) && (!(semi_qsk_timeout))) {
-    semi_qsk_timeout = millis() + ditTime * 8; // mute RX ~8 dits after CW key
-    if(semi_qsk)
-      func_ptr = dummy; // keep RX muted (no audio)
-  } else {
-    semi_qsk_timeout = 0;
-    func_ptr         = sdr_rx_00;
-  }
-#endif
+  interrupts();
+  if(tx_enable)
+    ADMUX = admux[2]; // mic input for TX DSP (legacy 3702)
+  else
+    _init = 1; // reset RX accumulators after TX (legacy 3703)
   rx_state = 0;
-  TIMSK2 |= (1 << OCIE2A);
+#ifdef CW_DECODER
+  if((cwdec) && (mode == CW)) {
+    filteredstate = tx_enable;
+    dec2(); // feed CW decoder with actual key state (legacy 3706)
+  }
+#endif //CW_DECODER
+
+  if(tx_enable) { // tx
+    if(practice) {
+      digitalWrite(RX, LOW); // TX (disable RX)
+      lcd.setCursor(15, 1);
+      lcd.print('P');
+      si5351.SendRegister(SI_CLK_OE, TX0RX0);
+      // Do not enable PWM (KEY_OUT), do not enable CLK2 (legacy 3714)
+    } else {
+      digitalWrite(RX, LOW); // TX (disable RX)
+#ifdef PTX
+      digitalWrite(PTX, HIGH); // TX (enable TX)
+#endif
+      lcd.setCursor(15, 1);
+      lcd.print('T');
+      if(mode == CW) { // for CW, TX at carrier (legacy 3725)
+        si5351.freq_calc_fast(-cw_offset);
+        si5351.SendPLLRegisterBulk();
+      }
+#ifdef RIT_ENABLE
+      else if(rit) {
+        si5351.freq_calc_fast(0);
+        si5351.SendPLLRegisterBulk();
+      }
+#endif //RIT_ENABLE
+      si5351.SendRegister(SI_CLK_OE, TX1RX0);
+      OCR1AL = 0x80; // make sure SIDETONE is set at 2.5V
+      if((!mox) && (mode != CW))
+        TCCR1A &= ~(1 << COM1A1); // disable SIDETONE, prevent interference during SSB TX
+      TCCR1A |= (1 << COM1B1);    // enable KEY_OUT PWM
+#ifdef _SERIAL
+      if(cat_active) {
+        DDRC &= ~(1 << 2); // disable PC2, so that ADC2 can be used as mic input
+      }
+#endif
+    }
+  } else { // rx
+#ifdef KEY_CLICK
+    if(OCR1BL != 0) {
+      for(uint16_t i = 0; i != 31; i++) { // ramp down of amplitude: soft falling edge to prevent key clicks
+        OCR1BL = lut[pgm_read_byte_near(&ramp[i])];
+        delayMicroseconds(60);
+      }
+    }
+#endif //KEY_CLICK
+    TCCR1A |= (1 << COM1A1);                          // enable SIDETONE (was disabled to prevent interference during ssb tx)
+    TCCR1A &= ~(1 << COM1B1);
+    digitalWrite(KEY_OUT, LOW);                       // disable KEY_OUT PWM, prevents interference during RX
+    OCR1BL = 0;                                       // make sure PWM (KEY_OUT) is set to 0%
+    si5351.SendRegister(SI_CLK_OE, TX0RX1);
+#ifdef SEMI_QSK
+    if((!semi_qsk_timeout) || (!semi_qsk)) // enable RX when no longer in semi-qsk phase
+#endif //SEMI_QSK
+    {
+      digitalWrite(RX, !(att == 2)); // RX (enable RX when attenuator not on)
+#ifdef PTX
+      digitalWrite(PTX, LOW); // TX (disable TX)
+#endif
+    }
+#ifdef RIT_ENABLE
+    si5351.freq_calc_fast(rit);
+    si5351.SendPLLRegisterBulk(); // restore original PLL RX frequency
+#else
+    si5351.freq_calc_fast(0);
+    si5351.SendPLLRegisterBulk(); // restore original PLL RX frequency
+#endif //RIT_ENABLE
+    lcd.setCursor(15, 1);
+    lcd.print((vox) ? 'V' : 'R');
+#ifdef _SERIAL
+    if(!vox)
+      if(cat_active) {
+        DDRC |= (1 << 2); // enable PC2, so that ADC2 is pulled-down so that CAT TX is not disrupted via mic input
+      }
+#endif
+  }
+  OCR2A = ((F_CPU / 64) / ((tx_enable) ? F_SAMP_TX : F_SAMP_RX)) - 1;
+  TIMSK2 |= (1 << OCIE2A); // enable timer compare interrupt TIMER2_COMPA_vect
 }

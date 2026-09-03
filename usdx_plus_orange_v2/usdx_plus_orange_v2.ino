@@ -52,8 +52,8 @@ volatile int32_t rit_off   = 0;  // (reserved)
 volatile uint8_t rit_on    = 0;  // RIT on/off (menu)
 
 // PA bias
-volatile uint8_t pwm_min = 0;   // legacy default (was 115)
-volatile uint8_t pwm_max = 255; // legacy default (was 220)
+volatile uint8_t pwm_min = 0;   // legacy default (0 for biasing BS170 directly)
+volatile uint8_t pwm_max = 128; // legacy default non-QCX (128 for biasing BS170 directly)
 
 // --- VFO ---
 volatile int32_t  freq             = 7100000;
@@ -71,7 +71,7 @@ const char* const band_label[11] PROGMEM      = {"160m", "80m", "60m", "40m", "3
 const char* const stepsize_label[10] PROGMEM  = {"10M", "1M", "0.5M", "100k", "10k", "1k", "0.5k", "100", "10", "1"};
 const char* const vfosel_label[2] PROGMEM     = {"A", "B"};
 const char* const att_label[8] PROGMEM        = {"0dB", "-13dB", "-20dB", "-33dB", "-40dB", "-53dB", "-60dB", "-73dB"};
-const char* const smode_label[7] PROGMEM      = {"OFF", "dBm", "S", "Sbar", "wpm", "Vss", "time"};
+const char* const smode_label[5] PROGMEM      = {"OFF", "dBm", "S", "S-bar", "wpm"};
 const char* const lowcut_label[4] PROGMEM     = {"Off", "100", "200", "400"};
 
 // --- EEPROM helpers (stable slots) ---
@@ -83,6 +83,20 @@ void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
 }
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size) {
   eeprom_write_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
+}
+
+// save the menu entry whose eslot matches (used by button post-handling, legacy
+// paramAction(SAVE, id))
+void save_menu_eslot(uint8_t eslot) {
+  for(uint8_t i = 0; i < MENU_COUNT; i++) {
+    MenuParam p;
+    memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
+    if(p.eslot == eslot && p.value) {
+      uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : (p.type == P_TEXT) ? 48 : 1;
+      menu_eeprom_save(eslot, p.value, sz);
+      return;
+    }
+  }
 }
 
 // restore all menu parameters from EEPROM (call once at setup).
@@ -97,9 +111,9 @@ void menu_load_all() {
       MenuParam p;
       memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
       if(p.eslot && p.value) {
-        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : (p.type == P_TEXT) ? 48 : 1;
         // Read raw; only apply when slot was actually written (not all 0xFF)
-        uint8_t raw[4];
+        uint8_t raw[48];
         menu_eeprom_load(p.eslot, raw, sz);
         bool never = true;
         for(uint8_t k = 0; k < sz; k++)
@@ -185,10 +199,10 @@ void on_tx_quality() {} // no-op (kept for table symmetry)
 // Flash labels, indexed via MENU_LABELS[]. (PROGMEM: strings stay in flash)
 // Exact labels of usdx-legazy paramAction (keep order == label ids below)
 const char* const MENU_LABELS[] PROGMEM = {
-    "Volume",      "Mode",        "Filter BW",   "Band",     "Tune Rate", "VFO Mode",   "RIT",
-    "AGC",         "NR",          "ATT",         "ATT2",     "S-meter",   "CW Decoder", "Semi QSK",
-    "Keyer Speed", "Keyer Mode",  "Keyer Swap",  "Practice", "VOX",       "Noise Gate", "TX Drive",
-    "TX Delay",    "PA Bias min", "PA Bias max", "Ref freq", "IQ Phase",  "Backlight"};
+    "Volume",      "Mode",        "Filter BW",   "Band",      "Tune Rate", "VFO Mode",   "RIT",
+    "AGC",         "NR",          "ATT",         "ATT2",      "S-meter",   "CW Decoder", "Semi QSK",
+    "Keyer Speed", "Keyer Mode",  "Keyer Swap",  "Practice",  "VOX",       "Noise Gate", "TX Drive",
+    "CQ Interval", "CQ Message",  "PA Bias min", "PA Bias max", "Ref freq", "IQ Phase",  "Backlight"};
 
 void menu_print_label(uint8_t id) {
   const char* s = (const char*)pgm_read_ptr(&MENU_LABELS[id]);
@@ -208,7 +222,7 @@ const MenuParam MENU[] PROGMEM = {
     {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
     {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, NULL},
     {10, (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},
-    {11, (void*)&smode, P_ENUM, 0, 6, smode_label, 12, NULL},
+    {11, (void*)&smode, P_ENUM, 0, 4, smode_label, 12, NULL}, // legacy 0..4 (no CLOCK/VSS)
     // CW Decoder (CW_DECODER legacy 0x21)
     {12, (void*)&cwdec, P_ENUM, 0, 1, offon_label, 15, NULL},
     // Semi QSK (SEMIQSK legacy 0x24)
@@ -216,7 +230,7 @@ const MenuParam MENU[] PROGMEM = {
     // Keyer Speed / Mode / Swap (KEY_WPM/KEY_MODE/KEY_PIN legacy 0x25/0x26/0x27)
     {14, (void*)&keyer_speed, P_T8, 1, 60, NULL, 13, NULL},
     {15, (void*)&keyer_mode, P_ENUM, 0, 2, keyer_mode_label, 14, NULL},
-    {16, (void*)&keyer_swap, P_ENUM, 0, 1, offon_label, 15, NULL},
+    {16, (void*)&keyer_swap, P_ENUM, 0, 1, offon_label, 21, NULL}, // eslot unique (was dup 15)
     // Practice (KEY_TX legacy 0x28)
     {17, (void*)&practice, P_ENUM, 0, 1, offon_label, 17, NULL},
     // VOX / Noise Gate (VOX/VOXGAIN legacy 0x31/0x32)
@@ -224,19 +238,20 @@ const MenuParam MENU[] PROGMEM = {
     {19, (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
     // TX Drive (DRIVE legacy 0x33)
     {20, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
-    // TX Delay (TXDELAY legacy 0x34)
-    {21, (void*)&txdelay, P_T8, 0, 255, NULL, 23, NULL},
+    // CQ Interval / CQ Message (CWINTERVAL/CWMSG1 legacy 0x41/0x42)
+    {21, (void*)&cw_msg_interval, P_T8, 0, 60, NULL, 25, NULL},
+    {22, (void*)cw_msg[0], P_TEXT, 0, 0, NULL, 26, NULL},
     // PA Bias min/max (PWM_MIN/PWM_MAX legacy 0x81/0x82)
-    {22, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
-    {23, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
+    {23, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
+    {24, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
     // Ref freq / IQ phase (SIFXTAL/IQ_ADJ legacy 0x83/0x84)
-    {24, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 32, NULL}, // persisted like legacy SIFXTAL
-    {25, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
+    {25, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 29, NULL}, // eslot<=31 -> 0x248 (no VFO clash)
+    {26, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
     // Backlight (BACKL legacy 0xA1)
-    {26, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
+    {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
 
-const int8_t MENU_COUNT = 27; // number of entries above
+const int8_t MENU_COUNT = 28; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
@@ -313,13 +328,21 @@ inline void do_tune() {
       rit = max(-9999, min(9999, rit));
     } else {
       freq += d * stepval;
-      if(freq < 100000)
-        freq = 100000;
-      if(freq > 60000000)
-        freq = 60000000;
+      if(freq < 1) // legacy 3854 clamp
+        freq = 1;
+      if(freq > 999999999)
+        freq = 999999999;
       vfo_apply();
-      set_lpf(freq / 1000000UL); // switch LPF band (legacy 5701)
+      uint8_t f = freq / 1000000UL;
+      set_lpf(f); // switch LPF band (legacy 5701)
+      bandval = (f > 32) ? 10 : (f > 26) ? 9 : (f > 22) ? 8 : (f > 20) ? 7 : (f > 16) ? 6 : (f > 12) ? 5 : (f > 8) ? 4 : (f > 6) ? 3 : (f > 4) ? 2 : (f > 2) ? 1 : 0; // align bandval (legacy 5702)
     }
+#ifdef RIT_ENABLE
+    if(rit) { // apply RIT offset in real time (legacy 5712)
+      si5351.freq_calc_fast(rit);
+      si5351.SendPLLRegisterBulk();
+    }
+#endif
     // persist on tune (throttled: ~every 2s max)
     if(millis() - last_band_save > 2000) {
       vfo_save_current();
@@ -366,7 +389,14 @@ void display_vfo() {
   }
 }
 
-void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
+void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW offset
+  if(mode == CW)
+    si5351.freq(f + cw_offset, rx_ph_q, 0);
+  else if(mode == LSB)
+    si5351.freq(f, rx_ph_q, 0);
+  else // USB (and FM/AM)
+    si5351.freq(f, 0, rx_ph_q);
+}
 
 void setup() {
   vfo_apply_freq = vfo_hw_apply;
@@ -398,7 +428,7 @@ void setup() {
   delay(300);
   wdt_reset();
 
-  Serial.begin(16000000ULL * 115200 / F_MCU); // CAT115K (corrected for 20MHz)
+  Serial.begin(16000000ULL * 38400 / F_MCU); // CAT 38400 (legacy 5116, no CAT_STREAMING)
 
   timer1_start(78125);
   vfo_eeprom_load();        // restore band memories
@@ -409,15 +439,17 @@ void setup() {
   on_pwm(); // build lut from pwm_min/pwm_max
   encoder_setup();
   menu.begin();
+  drive = 4; // Init settings (legacy 5072); EEPROM restore overrides if valid
+  cw_offset = tones[cw_tone]; // CW TX/RX offset (legacy 5079)
   menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
   // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
   // rotary-key is pressed at power-on, and always disable VOX on boot.
   // NOTE: use digitalRead(BUTTONS) here (like legacy 5084) - the ADC is not yet
   // enabled at this point in setup, so analog ADC read would block forever on ADIF.
-  if(digitalRead(BUTTONS) == LOW) { // left button pressed at power-on -> reset settings
+  if(inv ^ digitalRead(BUTTONS)) { // left button pressed at power-on -> reset settings (legacy 5084)
     lcd.setCursor(0, 1);
     lcd.print("Reset settings..");
-    for(uint8_t i = 0; i != 32; i++) { // re-persist defaults over EEPROM
+    for(uint8_t i = 0; i != MENU_COUNT; i++) { // re-persist defaults over EEPROM
       MenuParam p;
       memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
       if(p.eslot && p.value) {
@@ -469,10 +501,18 @@ void loop() {
     } else {
       keyer_process(); // iambic A/B
     }
-    if(cwdec && !tx) {
-      cw_decode(); // decoder during RX (keyed state fed by switch_rxtx)
-    }
+    if(cwdec && !tx && !semi_qsk_timeout)
+      cw_decode(); // CW decoder only active during RX (legacy 5176)
   }
+
+#ifdef CW_MESSAGE
+  if((mode == CW) && (cw_msg_event) && (millis() > cw_msg_event)) { // time to send a CW message (legacy 5724)
+    if((cw_tx(cw_msg[cw_msg_id]) == 0) && ((cw_msg[cw_msg_id][0] == 'C') && (cw_msg[cw_msg_id][1] == 'Q')) && cw_msg_interval)
+      cw_msg_event = millis() + 1000 * cw_msg_interval;
+    else
+      cw_msg_event = 0;
+  }
+#endif //CW_MESSAGE
 
   // --- Semi-QSK: delayed RX return after CW keying (legacy 5292) ---
   if((semi_qsk_timeout) && (millis() > semi_qsk_timeout)) {
@@ -482,8 +522,8 @@ void loop() {
   if(!(millis() % 500) && menu.state == MENU_MAIN && !tx && !vox_tx)
     display_vfo(); // periodic refresh (legacy: skip while TX to avoid I2C conflict)
 
-  // --- VOX based RX/TX (SSB + AM/FM, like v1) ---
-  if(vox && (mode == LSB || mode == USB || mode == AM || mode == FM)) {
+  // --- VOX based RX/TX (SSB only, legacy 5144) ---
+  if(vox && (mode == LSB || mode == USB)) {
     if(!vox_tx) {
       static uint8_t  vox_sample;
       static uint16_t vox_adc;
@@ -497,12 +537,11 @@ void loop() {
       if(tx) {
         vox_tx = 1;
         switch_rxtx(255);
-        display_vfo();
       }
     } else if(!tx) {
       switch_rxtx(0);
       vox_tx = 0;
-      display_vfo();
+      delay(32); // legacy 5166
     }
   }
   delay(1);

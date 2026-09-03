@@ -14,7 +14,10 @@
 #include <stdint.h>
 
 #include "display.h"
+#include "si5351.h"
 #include "usdx_settings.h"
+#include "usdx_filter.h"
+#include "vfo.h"
 
 // ---------------------------------------------------------------------------
 // Menu states (identical to legacy menumode values)
@@ -52,7 +55,40 @@ void                    stepsize_change(int8_t val); // defined in main .ino
 #define FM 3
 #define AM 4
 
+// legacy button polarity: inv=0 => pressed when BUTTONS reads HIGH (usdx-legazy:162)
+uint8_t inv = 0;
+
+// helpers wired from main .ino / vfo.h (used by the button engine)
+extern void        vfo_apply(void);
+extern void        vfo_save_current(void);
+extern void        vfo_recall_band(int8_t b);
+extern void        set_lpf(uint8_t f);
+extern void        save_menu_eslot(uint8_t eslot);
+extern void        show_banner(void);
+extern void        powerDown(void);
+extern uint8_t          prev_stepsize[2];
+extern uint8_t          prev_filt[2];
+extern volatile uint8_t vfosel;
+extern volatile uint8_t cwdec;
+extern uint8_t           vfomode[2];
+extern volatile int32_t  freq;
+extern volatile int32_t  rit;
+extern volatile int8_t  volume;
+extern volatile uint8_t  bandval;
+extern volatile uint8_t  nr;
+extern volatile uint8_t  filt;
+extern volatile uint8_t  stepsize;
+extern volatile uint8_t  _init;
+extern int32_t           vfo[2];
+extern SI5351            si5351;
+#ifdef CW_MESSAGE
+extern volatile uint32_t cw_msg_event;
+extern volatile uint8_t  cw_msg_id;
+extern char              cw_msg[1][48];
+#endif
+
 #define N_MENU_ITEMS 32 // declared capacity; MENU_COUNT computed from table
+#define MENU_IDX_CWMSG 22 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
 // Forward declarations (table + eeprom helpers live in menu.cpp / .ino)
@@ -74,10 +110,14 @@ class Menu {
 public:
   uint8_t state = MENU_MAIN;
   int8_t  index = 0;
+  uint8_t text_pos = 0; // string edit cursor position (legacy 'pos')
+  uint8_t text_len = 0; // string edit max length
 
   void begin() {
     state = MENU_MAIN;
     index = 0;
+    text_pos = 0;
+    text_len = 0;
   }
 
   // Processing: should be called from loop(). Reads encoder_val / buttons.
@@ -93,6 +133,7 @@ private:
   void move(int8_t delta);
   void select_mode();
   void edit_value(int32_t delta);
+  void edit_text(int32_t delta);
   void commit();
   void print_value();
 };
@@ -102,23 +143,33 @@ extern Menu menu;
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
-inline void Menu::move(int8_t delta) {
+inline void Menu::move(int8_t delta) { // legacy 5557-5563: clamp, no wrap
   index += delta;
   if(index < 0)
-    index = MENU_COUNT - 1;
-  if(index >= MENU_COUNT)
     index = 0;
+  if(index >= MENU_COUNT)
+    index = MENU_COUNT - 1;
 }
 
 inline void Menu::commit() {
   MenuParam p;
   get_cur(p);
   if(p.eslot && p.value) {
-    uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+    uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : (p.type == P_TEXT) ? 48 : 1;
+    if(p.type == P_TEXT) { // trim trailing spaces (legacy 4070-4074)
+      char* s = (char*)p.value;
+      for(uint8_t i = sz; i > 0; i--) {
+        if((s[i - 1] == ' ') || (s[i - 1] == 0))
+          s[i - 1] = 0;
+        else
+          break;
+      }
+    }
     menu_eeprom_save(p.eslot, p.value, sz);
   }
   if(p.on_change)
     p.on_change();
+  text_pos = 0;
 }
 
 inline void Menu::print_value() {
@@ -132,7 +183,15 @@ inline void Menu::print_value() {
     if(p.enum_labels && v <= p.max)
       lcd.print((const char*)pgm_read_ptr(&p.enum_labels[v - p.min]));
   } else if(p.type == P_TEXT) {
-    lcd.print((char*)p.value);
+    char* s = (char*)p.value;
+    for(int i = 0; i != 13; i++) { // legacy 4064: 13-char window
+      char ch = s[(text_pos / 8) * 8 + i];
+      if(ch)
+        lcd.print(ch);
+      else
+        break;
+    }
+    lcd.print('\x01'); // terminator glyph (legacy 4066)
   } else {
     int32_t v = 0;
     switch(p.type) {
@@ -156,7 +215,7 @@ inline void Menu::select_mode() {
   switch(state) {
   case MENU_MAIN:
     state = MENU_SELECT;
-    move(1);
+    index = 0; // first param = Volume (legacy 5343)
     break;
   case MENU_SELECT:
     state = MENU_EDIT;
@@ -168,6 +227,30 @@ inline void Menu::select_mode() {
   default:
     state = MENU_MAIN;
     break;
+  }
+}
+
+inline void Menu::edit_text(int32_t delta) { // legacy 4048-4069 (MENU_STR)
+  MenuParam p;
+  get_cur(p);
+  if(!p.value)
+    return;
+  char* s = (char*)p.value;
+  text_len = 47;
+  if(text_pos > text_len)
+    text_pos = text_len;
+  if(delta) {
+    int8_t c = s[text_pos];
+    if(c == 0)
+      c = ' '; // edit past end -> start at space
+    int nv = c + delta;
+    if((nv < ' ') || (nv == 0))
+      nv = ' ';
+    else if(nv > 'Z')
+      nv = 'Z';
+    s[text_pos] = nv;
+    if(s[text_pos + 1] == 0 && nv != ' ')
+      s[text_pos + 1] = 0;
   }
 }
 
@@ -203,10 +286,10 @@ inline void Menu::edit_value(int32_t delta) {
     }
     if(delta) {
       v += delta;
-      if(v < p.min)
-        v = p.min;
-      if(v > p.max)
+      if(v < p.min) // legacy 4024-4026: wrap (continuous)
         v = p.max;
+      if(v > p.max)
+        v = p.min;
       switch(p.type) {
       case P_T8:
         *(int8_t*)p.value = (int8_t)v;
@@ -233,64 +316,211 @@ inline void Menu::process() {
       move(enc);
     else if(state == MENU_EDIT)
       edit_value(enc);
+    else if(state == MENU_EDIT_TEXT)
+      edit_text(enc);
     if(state != MENU_MAIN)
       render();
     return;
   }
-  // --- button: EXACTLY like usdx-legazy:5295-5330 (no ADC every loop iteration) ---
-  // Only when the digital line indicates a press do we read the ADC once, then
-  // classify BL/BR/BE and translate to our menu states. This keeps the RX ISR's
-  // use of the ADC untouched most of the time (prevents audio corruption).
-  // BL|SC: enter menu / enter value edit / save+exit (like legacy)
-  // BR|SC: (not in menu) next mode; (in menu) back from value edit to select
-  enum { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, PL_ = 0x04 };
-  uint8_t event = 0;
-  if(!digitalRead(BUTTONS)) { // pressed (active low) - like legacy 'inv^read'
-    if(!(event & (PL_ | 0x05))) {
-      uint16_t v       = analogSafeRead(BUTTONS_ADC);
-      event            = SC_;
-      unsigned long t0 = millis();
-      while(!digitalRead(BUTTONS)) { // wait release or long-press
+  // --- button event engine: faithful port of usdx-legazy:5294-5482 ---
+  enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PLC_ = 0x05, PT_ = 0x0C };
+  static uint8_t event = 0;
+  if(inv ^ digitalRead(BUTTONS)) {   // Left-/Right-/Rotary-button (while not already pressed)
+    if(!((event & PL_) || (event & PLC_))) { // hack: if there was long-push before, then fast forward
+      uint16_t v    = analogSafeRead(BUTTONS_ADC);
+      event         = SC_;
+      int32_t  t0   = millis();
+      for(; inv ^ digitalRead(BUTTONS);) {   // until released or long-press
         if((millis() - t0) > 300) {
           event = PL_;
           break;
         }
+        wdt_reset();
+      }
+      delay(10); // debounce
+      for(; (event != PL_) && ((millis() - t0) < 500);) { // until 2nd press or timeout
+        if(inv ^ digitalRead(BUTTONS)) {
+          event = DC_;
+          break;
+        }
+        wdt_reset();
+      }
+      for(; inv ^ digitalRead(BUTTONS);) { // until released, or encoder is turned while longpress
+        if(encoder_val && event == PL_) {
+          event = PT_;
+          break;
+        }
+        wdt_reset();
       }
       event |= (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
-      switch(event) {
-      case BL_ | SC_: // short left click
-        select_mode();
-        if(state == MENU_EDIT)
-          lcd.cursor();
-        else
-          lcd.noCursor();
-        if(state != MENU_MAIN)
-          render();
-        break;
-      case BR_ | SC_: // short right click: (main) next mode; (menu) back a level
-        if(state == MENU_MAIN) {
-          mode++;
-          if(mode > AM)
-            mode = LSB;
-          // (radio view refreshed periodically by display_vfo; do NOT render
-          //  the menu here, matching legacy 'change=true' radio refresh)
-        } else if(state == MENU_EDIT) {
-          commit();
-          state = MENU_SELECT;
-          render();
-        } else if(state == MENU_SELECT) {
-          state = MENU_MAIN;
-          // returning to radio: no menu render (periodic display_vfo handles it)
-        }
-        break;
-      case BE_ | SC_: // encoder push: rotate stepsize (legacy 5450-5453)
-        if(state == MENU_MAIN)
-          stepsize_change(+1);
-        break;
-      default: // long press (PL) - ignore / keep simple
+    } else { // hack: fast forward handling
+      event = (event & 0xf0) | ((encoder_val) ? PT_ : PLC_);
+    }
+    switch(event) {
+    case BL_ | PL_:  // Called when menu button pressed
+    case BL_ | PLC_: // or kept pressed
+      state = MENU_EDIT;
+      render();
+      break;
+    case BL_ | PT_:
+      state = MENU_SELECT;
+      render();
+      break;
+    case BL_ | SC_:
+#ifdef CW_MESSAGE
+      if((state == MENU_SELECT) && (index == MENU_IDX_CWMSG)) { // trigger CQ message
+        cw_msg_event  = millis();
+        cw_msg_id     = 0;
+        state         = MENU_MAIN;
         break;
       }
+#endif
+      if(state == MENU_MAIN) { state = MENU_SELECT; index = 0; } // enter menu (Volume first, legacy 5343)
+      else if(state == MENU_SELECT) { state = MENU_EDIT; }
+      else if(state >= MENU_EDIT) { commit(); state = MENU_MAIN; }
+      if(state == MENU_EDIT)
+        lcd.cursor();
+      else
+        lcd.noCursor();
+      if(state != MENU_MAIN)
+        render();
+      break;
+    case BL_ | DC_:
+      break;
+    case BR_ | SC_:
+      if(state == MENU_MAIN) {
+        int8_t prev_mode = mode;
+        if(rit) {
+          rit      = 0;
+          stepsize = prev_stepsize[mode == CW];
+          break;
+        }
+        mode += 1;
+        if(mode > CW)
+          mode = LSB; // skip all other modes (only LSB, USB, CW)
+        if(mode == CW)
+          nr = 0;
+        prev_stepsize[prev_mode == CW] = stepsize;
+        stepsize                      = prev_stepsize[mode == CW];
+        prev_filt[prev_mode == CW]    = filt;
+        filt                          = prev_filt[mode == CW];
+        vfomode[vfosel % 2]           = mode;
+        save_menu_eslot(2); // MODE
+        save_menu_eslot(3); // FILTER
+        vfo_save_current(); // persist vfomode/band
+        si5351.iqmsa = 0;   // enforce PLL reset
+        vfo_apply();        // re-apply freq with new mode phase/offset
+#ifdef CW_DECODER
+        if((prev_mode == CW) && (cwdec))
+          show_banner();
+#endif
+      } else {
+        if(state == MENU_SELECT)
+          state = MENU_MAIN;
+        if(state >= MENU_EDIT) {
+          state = MENU_SELECT;
+          commit();
+        }
+        if(state == MENU_SELECT)
+          render();
+      }
+      break;
+    case BR_ | DC_:
+      filt++;
+      _init = true;
+      if(mode == CW && filt > N_FILT)
+        filt = 4;
+      if(mode == CW && filt == 4)
+        stepsize = STEP_500;
+      if(mode == CW && (filt == 5 || filt == 6) && stepsize < STEP_100)
+        stepsize = STEP_100;
+      if(mode == CW && filt == 7 && stepsize < STEP_10)
+        stepsize = STEP_10;
+      if(mode != CW && filt > 3)
+        filt = 0;
+      encoder_val = 0;
+      save_menu_eslot(3); // FILTER
+      wdt_reset();
+      delay(1500);
+      wdt_reset();
+      break;
+    case BR_ | PL_:
+#ifdef RIT_ENABLE
+      rit = !rit;
+      stepsize = (rit) ? STEP_10 : prev_stepsize[mode == CW];
+      if(!rit) { // after RIT comes VFO A/B swap
+#else
+      {
+#endif
+        vfosel = !vfosel;
+        freq   = vfo[vfosel % 2];
+        mode   = vfomode[vfosel % 2];
+        if(mode != CW)
+          stepsize = STEP_1k;
+        else
+          stepsize = STEP_500;
+        if(mode == CW) {
+          filt = 4;
+          nr   = 0;
+        } else
+          filt = 0;
+      }
+      vfo_apply();
+      break;
+    case BE_ | SC_:
+      if(state == MENU_MAIN) {
+        stepsize_change(+1);
+      } else {
+        if(state == MENU_SELECT)
+          state = MENU_EDIT;
+        else if(state == MENU_EDIT) {
+          commit();
+          state = MENU_SELECT;
+        }
+#ifdef MENU_STR
+        else if(state == MENU_EDIT_TEXT) {
+          if(text_pos < 47)
+            text_pos++; // NEXT_CH (legacy 5458); stay in text edit
+        }
+#endif
+        render();
+      }
+      break;
+    case BE_ | DC_:
+      bandval++;
+      if(bandval >= (N_BANDS - 1))
+        bandval = 1; // excludes 6m, 160m
+      stepsize = STEP_1k;
+      vfo_recall_band(bandval);
+      set_lpf(freq / 1000000UL);
+      break;
+    case BE_ | PL_:
+      stepsize_change(-1);
+      break;
+    case BE_ | PT_: // push-and-turn: volume loop + powerDown (legacy 5472-5482)
+      for(; inv ^ digitalRead(BUTTONS);) { // until released
+        wdt_reset();
+        if(encoder_val) {
+          int32_t nv = volume + encoder_val; // paramAction(UPDATE, VOLUME) legacy 5476
+          encoder_val = 0;
+          if(nv < -1)
+            nv = 16;
+          if(nv > 16)
+            nv = -1;
+          volume = nv;
+          if(volume < 0) {
+            volume = 10;
+            save_menu_eslot(1);
+            powerDown();
+          }
+          save_menu_eslot(1);
+        }
+      }
+      break;
+    default: // PLC / PT / others: fast-forward already handled; ignore
+      break;
     }
+    event = 0;
   }
 }
 

@@ -134,6 +134,63 @@ Verificar cuáles usa software real (Hamlib/FLDigi) y añadir los necesarios.
 - ✅ Keyer Iambic A/B init (05cddf1)
 - 🔴 Pendientes de esta auditoría listados arriba
 ---
+## RESULTADOS DE TESTS DE PARIDAD (verificados con harness host, 2026-09-03)
+
+Harnesses en `usdx_plus_orange_v2/tests/{parity_tx,parity_rx}` (ver AGENTS.md v2).
+
+### TX `ssb()` — PARIDAD EXACTA
+0/2000 mismatches. sum|df| 1694248 = 1694248, RMS 1919.1 = 1919.1, peak 4800 = 4800.
+
+### RX DSP (cadena completa: CIC + Hilbert + demod + AGC + NR + filtros)
+**TODOS los tests: 0 mismatches (100% paridad exacta).**
+
+| Config | mismatch |
+|---|---|
+| USB/LSB/CW/AM/FM core (agc=0, filt=0) | 0.00% |
+| att2=0, volume=16 | 0.00% |
+| NR (nr=3, nr=8) | 0.00% |
+| filt=1/2/3 (SSB 2900/2400/1800) | 0.00% |
+| filt=4/7 (CW 600/18) | 0.00% |
+| agc=1 (AGC ON) | 0.00% |
+
+### Divergencias CORREGIDAS (2026-09-03) para lograr paridad total
+1. ✅ AGC: `slow_dsp` agc==1 → `process_agc_fast` (legacy, sin FAST_AGC).
+2. ✅ Filtros SSB 2/3: 2ª biquad `>>1`→`>>2`; CW: términos `>>6/>>2/>>4/>>5`,
+   `return zc0>>3` (ganancia legacy).
+3. ✅ `process_minsky`/`dsp_tx_cw`: tono CW 600Hz legacy (int8, `798/127`),
+   OCR1AL `>> (16-volume)`.
+4. ✅ `CW_OFFSET` runtime (`cw_offset = tones[cw_tone]`, legacy 5079); aplicado
+   en TX CW y en RX vía `vfo_hw_apply` (fase IQ por modo).
+5. ✅ `si5351.powerDown()` reg 24 = `0b00010000`.
+6. ✅ `switch_rxtx` reescrito como port fiel de legacy: `_centiGain` backup/
+   restore, `semi_qsk_timeout=0` en TX, `ADMUX=admux[2]` TX / `_init=1` RX,
+   indicadores 'D'/'P'/'T'/'V'/'R', gating semi-QSK de relés, `_SERIAL` PC2,
+   `interrupts()`, OCR2A+TIMSK2 al final.
+7. ✅ `timer2_start`: TIMSK2 antes de OCR2A (orden legacy).
+8. ✅ `analogSampleMic`: toggles RX con `vox_thresh>=32`; `analogSafeRead`:
+   algoritmo activo legacy (prescaler 128 + settle).
+9. ✅ VOX: solo LSB/USB + `delay(32)` al volver a RX.
+10. ✅ CW decoder: portada etapa audio legacy (`_amp32`/EA/noise-blanker →
+    `filteredstate` → `dec2()` OLD_CW + `printsym` CW_INTERMEDIATE).
+11. ✅ CW_MESSAGE: `cw_tx`, `delayWithKeySense`, CQ Interval/CQ Message en menú.
+12. ✅ CAT: `IF` frame 38 chars (falta `0000000`), `SETFreqA`/`SetMD` vía
+    `vfo_apply` (fase), `RX;` semi_qsk_timeout, respuesta `?;`.
+13. ✅ Menú: motor de botones completo de legacy (SC/DC/PL/PT), ciclo de modo
+    LSB→USB→CW con backup/restore stepsize/filt, filtro por doble click, banda
+    por BE|DC, RIT+VFO swap por BR|PL, volumen/powerDown por BE|PT; orden de
+    parámetros = legacy (28, CQ Interval/Message, sin TX Delay); edición de
+    string (CQ Message); wrap en edición; navegación con clamp (sin wrap).
+14. ✅ Defaults: `drive=4`, `pwm_max=128`, `pwm_min=0`.
+15. ✅ EEPROM: eslots únicos (sin colisión 15 ni 32), reset loop `MENU_COUNT`.
+16. ✅ Polaridad de botón: `inv=0` (pulsado=HIGH, legacy 162) en setup y menú.
+17. ✅ CAT baud 38400 (legacy, sin CAT_STREAMING).
+18. ✅ `powerDown()` portado (sleep + wake por pin-change).
+19. ✅ `do_tune`: clamp freq legacy (1..999999999), alineación bandval, RIT
+    aplicado en tiempo real.
+
+> Objetivo: PARIDAD FUNCIONAL. Test de paridad TX/RX al 100%. Pendiente de
+> validación en hardware (2026-09-03).
+---
 ## G. CHECKLIST DE DEFAULTS (uno a uno, legazy vs v2)
 
 | Variab | legazy | v2 ANTES | v2 AHORA | Estado |

@@ -7,6 +7,7 @@
 
 #include <Arduino.h>
 #include <avr/pgmspace.h>
+#include <avr/wdt.h>
 #include <stdint.h>
 
 #include "usdx_settings.h"
@@ -122,67 +123,183 @@ void keyer_process() { // call from loop() when mode==CW
 }
 
 // ---------------------------------------------------------------------------
-// Decoder (from v1 OLD_CW path) - writes cw_line[]
+// Decoder - faithful port of usdx-legazy OLD_CW (audio stage + timing stage)
+// Writes cw_line[] (decoupled from LCD, v2 design).
 // ---------------------------------------------------------------------------
 const char m2c[] PROGMEM = "~ "
                            "ETIANMSURWDKGOHVF*L*PJBXCYZQ**54S3***2**+***J16=/"
                            "***H*7*G*8*90************?_****\"**.****@***'**-***"
                            "*****;!*)*****,****:****";
 
-static unsigned long hightimesavg = 0;
+// audio stage (legacy 2301-2330)
+static int32_t  avg             = 256;
+static bool     realstate       = LOW;
+static bool     realstatebefore = LOW;
+static uint8_t  nbtime          = 16; // ms noise blanker
+static uint32_t laststarttime   = 0;
+
+// timing stage (legacy 2324-2330)
+static unsigned long hightimesavg        = 0;
 static unsigned long lowduration;
 static unsigned long highduration;
 static unsigned long starttimehigh       = 0;
 static unsigned long startttimelow       = 0;
 static uint8_t       sym                 = 1;
-static uint8_t       filteredstate       = 0;
-static uint8_t       filteredstatebefore = 1;
+static bool          filteredstate       = LOW;
+static bool          filteredstatebefore = LOW;
 
 char             cw_line[] = "                "; // 16 chars + null
 volatile uint8_t cw_event  = 0;
 volatile uint8_t wpm       = 25;
 
-void printsym() {
+extern volatile uint32_t _amp32; // audio amplitude feed (rx.h)
+
+void dec2(); // forward (timing decoder)
+
+#ifndef EA
+#define EA(y, x, one_over_alpha) (y) = (y) + ((x) - (y)) / (one_over_alpha);
+#endif
+
+void printsym(bool submit = true) { // legacy 2308-2317
   if(sym < 128) {
     char ch = pgm_read_byte_near(m2c + sym);
     if(ch != '*') {
+#ifdef CW_INTERMEDIATE
+      cw_line[15] = ch;
+      cw_event    = true;
+      if(submit) { // only shift when submit is true, otherwise update last char only
+        for(int i = 0; i != 15; i++)
+          cw_line[i] = cw_line[i + 1];
+        cw_line[15] = ' ';
+      }
+#else
       for(int i = 0; i != 15; i++)
         cw_line[i] = cw_line[i + 1];
       cw_line[15] = ch;
-      cw_event    = 1;
+      cw_event    = true;
+#endif
     }
   }
-  sym = 1;
+  if(submit)
+    sym = 1;
 }
 
+// audio-amplitude decoder (legacy 2333-2357): _amp32 -> threshold -> noise
+// blanker -> filteredstate -> dec2(). Called from loop() during RX CW.
 void cw_decode() {
-  if(filteredstate != filteredstatebefore) {
-    if(filteredstate) { // keyed (HIGH): ended a low
+  int32_t in = _amp32;
+  EA(avg, in, (1 << 8));
+  realstate = (in > (avg * 1 / 2)); // threshold
+
+  // here we clean up the state with a noise blanker
+  if(realstate != realstatebefore)
+    laststarttime = millis();
+  if((millis() - laststarttime) > nbtime) {
+    if(realstate != filteredstate)
+      filteredstate = realstate;
+  } else
+    avg += avg / 100; // keep threshold above noise spikes (increase threshold with 1%)
+
+  dec2();
+  realstatebefore = realstate;
+}
+
+// timing decoder (legacy OLD_CW dec2, 2437-2483)
+void dec2() {
+  if(filteredstate != filteredstatebefore) { // then we do want to have some durations on high and low
+    if(filteredstate == HIGH) {
       starttimehigh = millis();
       lowduration   = (millis() - startttimelow);
       if((sym > 1) && lowduration > (hightimesavg * 2)) { // letter space
         printsym();
         wpm = (1200 / hightimesavg * 4 / 3);
       }
-      if(lowduration >= hightimesavg * 5) { // word space
+      if(lowduration >= hightimesavg * (5)) { // word space
         sym = 1;
-        printsym();
+        printsym(); // (print additional space)
       }
-    } else { // not keyed (LOW): ended a high
+    }
+    if(filteredstate == LOW) {
       startttimelow = millis();
       highduration  = (millis() - starttimehigh);
       if(highduration < (2 * hightimesavg) || hightimesavg == 0)
-        hightimesavg = (highduration + hightimesavg + hightimesavg) / 3;
+        hightimesavg = (highduration + hightimesavg + hightimesavg) / 3; // now we know avg dit time (rolling 3 avg)
       if(highduration > (5 * hightimesavg))
-        hightimesavg = highduration / 3;
-      if(highduration > (hightimesavg / 2))
-        sym = (sym << 1) | (highduration > (hightimesavg * 2)); // dit(0)/dah(1)
+        hightimesavg = highduration / 3; // if speed decrease fast ..
+      if(highduration > (hightimesavg / 2)) { // dit (0) or dash (1)
+        sym = (sym << 1) | (highduration > (hightimesavg * 2));
+#if defined(CW_INTERMEDIATE) && !defined(OLED) && !defined(LCD_I2C) && (F_MCU >= 20000000)
+        printsym(false);
+#endif
+      }
     }
   }
-  if(((millis() - startttimelow) > hightimesavg * 6) && (sym > 1))
-    printsym();
+  if(((millis() - startttimelow) > hightimesavg * (6)) && (sym > 1))
+    printsym(); // write if no more letters
   filteredstatebefore = filteredstate;
 }
 
 // feed the decoder with the current key state (from switch_rxtx)
 void cw_set_keyed(uint8_t keyed) { filteredstate = keyed; }
+
+// ---------------------------------------------------------------------------
+// CW messages (legacy 2243-2294, CW_MESSAGE)
+// ---------------------------------------------------------------------------
+#ifdef CW_MESSAGE
+extern uint8_t inv; // button polarity (menu.h)
+volatile uint8_t cw_msg_interval = 5; // number of seconds CW message is repeated
+volatile uint32_t cw_msg_event    = 0;
+volatile uint8_t  cw_msg_id       = 0; // selected message
+char              cw_msg[1][48]   = {CW_MSG1};
+
+uint8_t delayWithKeySense(uint32_t ms) { // legacy 2246-2256
+  uint32_t event = millis() + ms;
+  for(; millis() < event;) {
+    wdt_reset();
+    if(inv ^ digitalRead(BUTTONS) || !digitalRead(DAH) || !digitalRead(DIT)) {
+      for(; inv ^ digitalRead(BUTTONS);)
+        wdt_reset(); // wait until buttons released
+      return 1;      // stop when button/key pressed
+    }
+  }
+  return 0;
+}
+
+int cw_tx(char ch) { // legacy 2266-2286: transmit message in CW
+  char sym;
+  for(uint8_t j = 0; (sym = pgm_read_byte_near(m2c + j)); j++) { // lookup msg[i] in m2c
+    if(sym == ch) {
+      wdt_reset();
+      uint8_t k = 0x80;
+      for(; !(j & k); k >>= 1);
+      k >>= 1; // shift start of cw code to MSB
+      if(k == 0)
+        delay(ditTime * 4); // space -> add word space
+      else {
+        for(; k; k >>= 1) { // send dit/dah one by one
+          switch_rxtx(1);   // key-on tx
+          if(delayWithKeySense(ditTime * ((j & k) ? 3 : 1))) {
+            switch_rxtx(0);
+            return 1;
+          }
+          switch_rxtx(0); // key-off tx
+          if(delayWithKeySense(ditTime))
+            return 1; // add symbol space
+        }
+        if(delayWithKeySense(ditTime * 2))
+          return 1; // add letter space
+      }
+      break; // next character
+    }
+  }
+  return 0;
+}
+
+int cw_tx(char* msg) { // legacy 2288-2294
+  for(uint8_t i = 0; msg[i]; i++) {
+    if(cw_tx(msg[i]))
+      return 1;
+  }
+  return 0;
+}
+#endif //CW_MESSAGE

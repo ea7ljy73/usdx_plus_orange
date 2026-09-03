@@ -149,7 +149,7 @@ public:
   }
   void powerDown() {
     SendRegister(3, 0b11111111); // Disable all CLK outputs
-    SendRegister(24, 0);
+    SendRegister(24, 0b00010000); // CLK2 disabled-state HIGH (legacy 1630: pre-charge gate cap)
     SendRegister(25, 0);
     for(int addr = 16; addr != 24; addr++)
       SendRegister(addr, 0b10000000);

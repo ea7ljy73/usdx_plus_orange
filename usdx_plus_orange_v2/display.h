@@ -126,6 +126,8 @@ public:
     cmd(0x01);
     delay(3);
   }
+  void noDisplay() { cmd(0x08); } // display off (powerDown, legacy)
+  void display() { cmd(0x0c); }   // display on
   void createChar(uint8_t l, uint8_t glyph[]) {
     cmd(0x40 | ((l & 0x7) << 3));
     for(int i = 0; i != 8; i++)
@@ -181,20 +183,21 @@ void show_banner() {
 // RX ISR keeps the ADC most of the time.
 //   thresholds (5V ref):  <4.2V => BL (left), <4.8V => BR (right), else BE
 // ---------------------------------------------------------------------------
-uint16_t analogSafeRead(uint8_t adcpin) { // returns 10-bit ADC value (channel 0..7)
+uint16_t analogSafeRead(uint8_t adcpin) { // legacy active variant (usdx-legazy:3495-3510)
   noInterrupts();
-  uint8_t oldmux = ADMUX;
-  ADMUX          = (adcpin & 0x0f) | (1 << REFS0);
   for(; !(ADCSRA & (1 << ADIF));)
-    ; // wait pending conv
-  delayMicroseconds(16);
-  ADCSRA |= (1 << ADSC);
-  for(; !(ADCSRA & (1 << ADIF));)
-    ;
-  ADMUX      = oldmux;
-  uint16_t v = ADC;
+    ; // wait until (a potential previous) ADC conversion is completed
+  uint8_t adcsra = ADCSRA;
+  uint8_t admux  = ADMUX;
+  ADCSRA &= ~(1 << ADIE);                              // disable interrupts when measurement complete
+  ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // 128 prescaler for 9.6kHz
+  ADMUX  = (1 << REFS0);                               // restore reference voltage AREF (5V)
+  delay(1);                                            // settle
+  int val = analogRead(adcpin);
+  ADCSRA = adcsra;
+  ADMUX  = admux;
   interrupts();
-  return v;
+  return val;
 }
 
 // BUTTONS pin 17 = PC3/A3 => ADC channel 3 (NOT (17&15)=1!)
