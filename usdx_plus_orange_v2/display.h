@@ -142,6 +142,39 @@ public:
 extern LCD lcd; // instance defined in main .ino
 
 // ---------------------------------------------------------------------------
+// Fonts (CGRAM 1..8) - exact copies of usdx-legazy:3427-3472
+//  1=logo, 2..5=s-meter bars, 6=VFO-A arrow, 7=VFO-B arrow, 8=TBD
+// ---------------------------------------------------------------------------
+#define N_FONTS 8
+const uint8_t display_fonts[N_FONTS][8] PROGMEM = {
+    {0b01000, 0b00100, 0b01010, 0b00101, 0b01010, 0b00100, 0b01000, 0b00000}, // 1 logo
+    {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000}, // 2 s-meter 0 bars
+    {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000}, // 3 s-meter 1 bars
+    {0b10000, 0b10000, 0b10100, 0b10100, 0b10100, 0b10100, 0b10100, 0b10100}, // 4 s-meter 2 bars
+    {0b10000, 0b10000, 0b10101, 0b10101, 0b10101, 0b10101, 0b10101, 0b10101}, // 5 s-meter 3 bars
+    {0b01100, 0b10010, 0b11110, 0b10010, 0b10010, 0b00000, 0b00000, 0b00000}, // 6 VFO-A arrow
+    {0b11100, 0b10010, 0b11100, 0b10010, 0b11100, 0b00000, 0b00000, 0b00000}, // 7 VFO-B arrow
+    {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000}, // 8 TBD
+};
+
+void display_init_fonts() {
+  uint8_t item[8];
+  for(uint8_t i = 0; i != N_FONTS; i++) {
+    memcpy_P(item, display_fonts[i], 8);
+    lcd.createChar(0x01 + i, item);
+  }
+}
+
+// show_banner (legacy 3922-3932): uSDX + logo CGRAM
+void show_banner() {
+  lcd.setCursor(0, 0);
+  lcd.print("uSDX");
+  lcd.print('\x01'); // logo CGRAM
+  lcd.print("        ");
+  lcd.print("        ");
+}
+
+// ---------------------------------------------------------------------------
 // Button(s) read by ADC (usdx-legazy parity): BUTTONS=A3/ADC3 feeds a resistor
 // divider for Left/Right/Encoder push. Reads happen ONLY when a key press is
 // detected on the digital line (see menu.h), never every loop iteration, so the
