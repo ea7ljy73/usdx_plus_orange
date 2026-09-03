@@ -358,9 +358,9 @@ inline void Menu::process() {
       b_t0    = millis();
       b_v     = analogSafeRead(BUTTONS_ADC); // classify BL/BR/BE on press-down
     }
-  } else if(!pressed) { // released -> dispatch (SC if <300ms, PL if >=300ms)
+  } else if(!pressed) { // released -> dispatch (SC if <400ms, PL if >=400ms)
     b_state = 0;
-    uint8_t ev = ((millis() - b_t0) > 300) ? PL_ : SC_;
+    uint8_t ev = ((millis() - b_t0) > 400) ? PL_ : SC_;
     ev |= (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
     switch(ev) {
     case BL_ | PL_: // menu button long press -> fast edit
