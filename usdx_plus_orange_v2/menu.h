@@ -40,7 +40,7 @@ struct MenuParam {
   void*              value;       // pointer to the target variable
   uint8_t            type;        // param_type_t
   int32_t            min, max;    // numeric range; enums use index
-  const void* const* enum_labels; // PROGMEM array of __FlashStringHelper* (P_ENUM)
+  const char* const* enum_labels; // PROGMEM array of pointers to PROGMEM strings (P_ENUM)
   uint8_t            eslot;       // eeprom slot, 0 = not persisted
   void (*on_change)();            // post-handling callback
 };
@@ -183,7 +183,7 @@ inline void Menu::print_value() {
   if(p.type == P_ENUM) {
     uint8_t v = *(uint8_t*)p.value;
     if(p.enum_labels && v <= p.max)
-      lcd.print((const __FlashStringHelper*)pgm_read_ptr(&((const void* const*)p.enum_labels)[v - p.min]));
+      lcd.print((const __FlashStringHelper*)pgm_read_ptr(&p.enum_labels[v - p.min]));
   } else if(p.type == P_TEXT) {
     char* s = (char*)p.value;
     for(int i = 0; i != 13; i++) { // legacy 4064: 13-char window
