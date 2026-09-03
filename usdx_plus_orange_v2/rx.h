@@ -60,8 +60,12 @@ volatile uint32_t _amp32 = 0;
 volatile int16_t _centiGain = 0;
 
 // ---------------------------------------------------------------------------
-// AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the
-// hang-time + noise-floor improvement is deferred / reintroduced later).
+// AGC with hang-time and adaptive noise floor (v1 M0PUB, improved RX).
+//  - out math unchanged (legacy parity); only gain-tracking is refined.
+//  - nfloor: slow adaptive estimate of background noise; gain only recovers
+//    when signal is clearly above it (no pumping on hiss).
+//  - hang: after a strong signal drops, gain is held for hang_cnt before
+//    recovering (syllable gaps don't pump).
 // ---------------------------------------------------------------------------
 #pragma GCC push_options
 #pragma GCC optimize("Ofast") // RX DSP compiled Ofast like usdx-legazy:2794-2795
@@ -72,29 +76,48 @@ volatile uint8_t agc_decay = 8;
 static uint16_t decayCount = DECAY_FACTOR;
 
 inline int16_t process_agc(int16_t in) {
-  static bool small = true;
-  int16_t     out;
+  static bool     small    = true;
+  static uint16_t nfloor   = 64;  // adaptive noise floor (scaled like centiGain)
+  static uint16_t hang_cnt = 0;   // samples since signal last present
+  int16_t         out;
 
   if(centiGain >= 128)
-    out = (centiGain >> 5) * in; // net gain >= 1
+    out = (int16_t)(((int32_t)(centiGain >> 5) * in) >> 2);
   else
-    out = (centiGain >> 2) * (in >> 3); // net gain < 1
-  out >>= 2;
+    out = (int16_t)(((int32_t)(centiGain >> 2) * (in >> 3)) >> 2);
 
-  if(HI(abs(out)) > HI(1536)) {
+  uint16_t abs_out = abs(out);
+
+  // Adaptive noise floor: leaks down toward quiet level, rises slowly.
+  if(abs_out < nfloor)
+    nfloor -= (nfloor - abs_out) >> 4;
+  else
+    nfloor += (abs_out - nfloor) >> 11;
+  if(nfloor < 16)
+    nfloor = 16;
+
+  if(HI(abs_out) > HI(1536)) {
     centiGain -= (centiGain >> 4); // fast attack
+    hang_cnt   = 0;
   } else {
-    if(HI(abs(out)) > HI(1024))
+    if(HI(abs_out) > HI(256)) {
+      hang_cnt = 0; // signal present
+    } else if(hang_cnt < 2048) {
+      hang_cnt++; // hang countdown (up to ~262ms @7812Hz)
+    }
+    if(HI(abs_out) > HI(1024))
       small = false;
-    if(--decayCount == 0) { // slow ramp up when signal disappears
-      if(small) {
+    if(--decayCount == 0) {
+      decayCount = ((mode == CW) ? 2 : (uint16_t)agc_decay) * 100;
+      if(small && (hang_cnt >= 600) && ((HI(abs_out) << 8) > ((uint32_t)nfloor * 3))) {
         if(centiGain < (INT16_MAX - (INT16_MAX >> 4)))
           centiGain += (centiGain >> 4);
         else
           centiGain = INT16_MAX;
       }
-      decayCount = DECAY_FACTOR;
-      small      = true;
+      small = true;
+      if(hang_cnt >= 2048)
+        nfloor = (nfloor * 3) >> 2; // re-learn floor after long silence
     }
   }
   return out;
@@ -158,7 +181,7 @@ inline int16_t slow_dsp(int16_t ac) {
   }
 
   if(agc == 1) {
-    ac = process_agc_fast(ac); // legacy default (no FAST_AGC): agc_fast
+    ac = process_agc(ac); // improved AGC: hang-time + noise floor
     ac = ac >> (16 - volume);
   } else { // agc==0: no AGC, only volume (legacy parity w/o FAST_AGC)
     if(volume <= 13)

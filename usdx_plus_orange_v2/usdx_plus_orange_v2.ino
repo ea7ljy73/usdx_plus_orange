@@ -165,7 +165,13 @@ static const char menu_label_24[] PROGMEM = "PA Bias max";
 static const char menu_label_25[] PROGMEM = "Ref freq";
 static const char menu_label_26[] PROGMEM = "IQ Phase";
 static const char menu_label_27[] PROGMEM = "Backlight";
-const char* const MENU_LABELS[28] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27};
+static const char menu_label_28[] PROGMEM = "CESSB";
+static const char menu_label_29[] PROGMEM = "TX Comp";
+static const char menu_label_30[] PROGMEM = "TX Emph";
+static const char menu_label_31[] PROGMEM = "EQ Bass";
+static const char menu_label_32[] PROGMEM = "EQ Treble";
+static const char menu_label_33[] PROGMEM = "TX LoCut";
+const char* const MENU_LABELS[34] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -371,9 +377,16 @@ const MenuParam MENU[] PROGMEM = {
     {26, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, on_iq},
     // Backlight (BACKL legacy 0xA1)
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
+    // TX quality (v2 improvements; default OFF -> legacy parity)
+    {28, (void*)&cessb_enable, P_ENUM, 0, 1, offon_label, 22, NULL},
+    {29, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 23, NULL},
+    {30, (void*)&pre_emph, P_T8, 0, 3, NULL, 24, NULL},
+    {31, (void*)&eq_low, P_T8S, -7, 7, NULL, 0, NULL},
+    {32, (void*)&eq_high, P_T8S, -7, 7, NULL, 0, NULL},
+    {33, (void*)&tx_lowcut, P_T8, 0, 3, NULL, 0, NULL},
 };
 
-const int8_t MENU_COUNT = 28; // number of entries above
+const int8_t MENU_COUNT = 34; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
