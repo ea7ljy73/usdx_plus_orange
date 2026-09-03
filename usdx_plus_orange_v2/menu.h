@@ -27,8 +27,9 @@
 #define MENU_EDIT 2      // editing parameter value
 #define MENU_EDIT_TEXT 3 // editing a text value
 
-// Parameter types
-enum param_type_t { P_T8, P_T16, P_T32, P_ENUM, P_TEXT };
+// Parameter types. P_T8S = signed byte (volume -1..16), P_T8 = unsigned byte
+// (pwm_min/max, rx_ph_q, vox_thresh, ... match legacy's uint8_t templating).
+enum param_type_t { P_T8S, P_T8, P_T16, P_T32, P_ENUM, P_TEXT };
 
 // Program labels: stored in a single PROGMEM table (indexed by id) to save RAM.
 // Defined in the .ino as an array of PROGMEM-string pointers named MENU_LABELS.
@@ -62,6 +63,7 @@ uint8_t inv = 0;
 extern void        vfo_apply(void);
 extern void        vfo_save_current(void);
 extern void        vfo_recall_band(int8_t b);
+extern void        on_band(void);
 extern void        set_lpf(uint8_t f);
 extern void        save_menu_eslot(uint8_t eslot);
 extern void        show_banner(void);
@@ -195,8 +197,11 @@ inline void Menu::print_value() {
   } else {
     int32_t v = 0;
     switch(p.type) {
-    case P_T8:
+    case P_T8S:
       v = *(int8_t*)p.value;
+      break;
+    case P_T8:
+      v = *(uint8_t*)p.value;
       break;
     case P_T16:
       v = *(int16_t*)p.value;
@@ -205,6 +210,8 @@ inline void Menu::print_value() {
       v = *(int32_t*)p.value;
       break;
     }
+    if((p.min < 0) && (v >= 0))
+      lcd.print('+'); // legacy 4032: + prefix for positive when min<0
     char b[12];
     ltoa(v, b, 10);
     lcd.print(b);
@@ -259,6 +266,12 @@ inline void Menu::edit_value(int32_t delta) {
   get_cur(p);
   if(!p.value)
     return;
+  // dynamic ranges like legacy paramAction PWM_MIN/PWM_MAX (4211-4212)
+  extern volatile uint8_t pwm_min, pwm_max;
+  if(p.value == (void*)&pwm_min)
+    p.max = pwm_max - 1;
+  else if(p.value == (void*)&pwm_max)
+    p.min = pwm_min;
   if(p.type == P_ENUM || p.type == P_TEXT) {
     uint8_t v = *(uint8_t*)p.value;
     if(delta) {
@@ -274,8 +287,11 @@ inline void Menu::edit_value(int32_t delta) {
   } else {
     int32_t v = 0;
     switch(p.type) {
-    case P_T8:
+    case P_T8S:
       v = *(int8_t*)p.value;
+      break;
+    case P_T8:
+      v = *(uint8_t*)p.value;
       break;
     case P_T16:
       v = *(int16_t*)p.value;
@@ -291,8 +307,11 @@ inline void Menu::edit_value(int32_t delta) {
       if(v > p.max)
         v = p.min;
       switch(p.type) {
-      case P_T8:
+      case P_T8S:
         *(int8_t*)p.value = (int8_t)v;
+        break;
+      case P_T8:
+        *(uint8_t*)p.value = (uint8_t)v;
         break;
       case P_T16:
         *(int16_t*)p.value = (int16_t)v;
@@ -322,56 +341,35 @@ inline void Menu::process() {
       render();
     return;
   }
-  // --- button event engine: faithful port of usdx-legazy:5294-5482 ---
-  enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PLC_ = 0x05, PT_ = 0x0C };
-  static uint8_t event = 0;
-  if(inv ^ digitalRead(BUTTONS)) {   // Left-/Right-/Rotary-button (while not already pressed)
-    if(!((event & PL_) || (event & PLC_))) { // hack: if there was long-push before, then fast forward
-      uint16_t v    = analogSafeRead(BUTTONS_ADC);
-      event         = SC_;
-      int32_t  t0   = millis();
-      for(; inv ^ digitalRead(BUTTONS);) {   // until released or long-press
-        if((millis() - t0) > 300) {
-          event = PL_;
-          break;
-        }
-        wdt_reset();
-      }
-      delay(10); // debounce
-      for(; (event != PL_) && ((millis() - t0) < 500);) { // until 2nd press or timeout
-        if(inv ^ digitalRead(BUTTONS)) {
-          event = DC_;
-          break;
-        }
-        wdt_reset();
-      }
-      for(; inv ^ digitalRead(BUTTONS);) { // until released, or encoder is turned while longpress
-        if(encoder_val && event == PL_) {
-          event = PT_;
-          break;
-        }
-        wdt_reset();
-      }
-      event |= (v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
-    } else { // hack: fast forward handling
-      event = (event & 0xf0) | ((encoder_val) ? PT_ : PLC_);
+  // --- button: NON-BLOCKING state machine (SC/PL). Action fires on release, so
+  // a single click responds immediately and the loop can never hang. Events
+  // BL/BR/BE x SC/PL mapped to the same actions as usdx-legazy. ---
+  enum { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PLC_ = 0x05, PT_ = 0x0C };
+  static uint8_t  b_state = 0; // 0=idle, 1=holding
+  static uint32_t b_t0    = 0;
+  static uint16_t b_v     = 0;
+  uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
+  if(b_state == 0) {
+    if(pressed) {
+      b_state = 1;
+      b_t0    = millis();
+      b_v     = analogSafeRead(BUTTONS_ADC); // classify BL/BR/BE on press-down
     }
-    switch(event) {
-    case BL_ | PL_:  // Called when menu button pressed
-    case BL_ | PLC_: // or kept pressed
+  } else if(!pressed) { // released -> dispatch
+    b_state = 0;
+    uint8_t ev = ((millis() - b_t0) > 300) ? PL_ : SC_;
+    ev |= (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
+    switch(ev) {
+    case BL_ | PL_: // menu button long press -> fast edit
       state = MENU_EDIT;
-      render();
-      break;
-    case BL_ | PT_:
-      state = MENU_SELECT;
       render();
       break;
     case BL_ | SC_:
 #ifdef CW_MESSAGE
       if((state == MENU_SELECT) && (index == MENU_IDX_CWMSG)) { // trigger CQ message
-        cw_msg_event  = millis();
-        cw_msg_id     = 0;
-        state         = MENU_MAIN;
+        cw_msg_event = millis();
+        cw_msg_id    = 0;
+        state        = MENU_MAIN;
         break;
       }
 #endif
@@ -384,8 +382,6 @@ inline void Menu::process() {
         lcd.noCursor();
       if(state != MENU_MAIN)
         render();
-      break;
-    case BL_ | DC_:
       break;
     case BR_ | SC_:
       if(state == MENU_MAIN) {
@@ -489,10 +485,9 @@ inline void Menu::process() {
     case BE_ | DC_:
       bandval++;
       if(bandval >= (N_BANDS - 1))
-        bandval = 1; // excludes 6m, 160m
+        bandval = 1; // excludes 6m, 160m (legacy 5467)
       stepsize = STEP_1k;
-      vfo_recall_band(bandval);
-      set_lpf(freq / 1000000UL);
+      on_band(); // legacy 5469 change=true -> freq=band[bandval] + set_lpf
       break;
     case BE_ | PL_:
       stepsize_change(-1);
@@ -517,10 +512,9 @@ inline void Menu::process() {
         }
       }
       break;
-    default: // PLC / PT / others: fast-forward already handled; ignore
+    default: // DC/PT/PLC not generated by the non-blocking detector; ignored
       break;
     }
-    event = 0;
   }
 }
 
