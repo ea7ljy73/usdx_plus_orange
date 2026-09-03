@@ -63,6 +63,9 @@ volatile int16_t _centiGain = 0;
 // AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the
 // hang-time + noise-floor improvement is deferred / reintroduced later).
 // ---------------------------------------------------------------------------
+#pragma GCC push_options
+#pragma GCC optimize("Ofast") // RX DSP compiled Ofast like usdx-legazy:2794-2795
+
 static int16_t   centiGain = 128;
 volatile uint8_t agc_decay = 8;
 #define DECAY_FACTOR 400 // AGC decay <DECAY_FACTOR> slower than attack
@@ -356,3 +359,5 @@ inline int16_t sdr_rx_common_i() {
 #endif
   return ac;
 }
+
+#pragma GCC pop_options
