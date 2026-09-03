@@ -56,8 +56,8 @@ volatile int16_t  qh;    // Hilbert Q (global)
 static uint32_t   amp32 = 0;
 volatile uint32_t _amp32 = 0;
 
-// AGC state backup/restore across TX/RX (legacy 3671/3693)
-volatile int16_t _centiGain = 128;
+// AGC state backup/restore across TX/RX (legacy 3640/3671/3693)
+volatile int16_t _centiGain = 0;
 
 // ---------------------------------------------------------------------------
 // AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the

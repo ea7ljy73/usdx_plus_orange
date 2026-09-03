@@ -144,7 +144,7 @@ static unsigned long lowduration;
 static unsigned long highduration;
 static unsigned long starttimehigh       = 0;
 static unsigned long startttimelow       = 0;
-static uint8_t       sym                 = 1;
+static uint8_t       sym                 = 0; // legacy uninitialized (2302)
 static bool          filteredstate       = LOW;
 static bool          filteredstatebefore = LOW;
 

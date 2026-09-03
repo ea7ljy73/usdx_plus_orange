@@ -191,9 +191,6 @@ void initPins() {
   pinMode(AUDIO1, INPUT);
   pinMode(AUDIO2, INPUT);
 
-  digitalWrite(PTX, LOW);
-  pinMode(PTX, OUTPUT);
-
   pinMode(ROT_A, INPUT_PULLUP);
   pinMode(ROT_B, INPUT_PULLUP);
 }
