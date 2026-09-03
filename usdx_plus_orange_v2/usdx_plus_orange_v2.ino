@@ -180,7 +180,7 @@ void menu_print_label(uint8_t id) {
 // --- EEPROM helpers (stable slots) ---
 volatile uint16_t eeprom_offs = 0x150;
 #define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
-#define F_VER_ID 3             // bump when EEPROM layout/semantics change
+#define F_VER_ID 4             // bump when EEPROM layout/semantics change
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   eeprom_read_block(ptr, (const void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
