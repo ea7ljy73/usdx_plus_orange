@@ -384,7 +384,8 @@ int16_t  dbm           = 0;
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
   if(smode) {
-    if((++smeter_cnt % 2048) == 0) { // slowed-down display
+    { // drawn each display_vfo (500ms) - legacy gate %2048 was per-loop; here
+      // the caller already throttles, so removing it keeps the meter live
       float rms = (float)max_absavg256 * (float)(1 << att2);
       rms /= (256.0 * 1024.0 * (float)4 * 8.0 * 500.0 * 1.414 / (0.707 * 1.1)); // SDR const (legacy 3571)
       dbm = 10 * log10((rms * rms) / 50) + 30 - ref;
@@ -504,9 +505,11 @@ void display_vfo_line1() { // light: only line 1 (freq/mode) - instant on tune
 
 void display_vfo() {
   display_vfo_line1();
-  // Line 0: banner (col 0-3) + S-meter/dBm via smeter() (cols 9/14, legacy 3577-3587)
+  // Line 0: banner uSDX+logo (cols 0-4) + S-meter (col 9+, legacy 3577-3587)
   lcd.setCursor(0, 0);
-  lcd.print("uSDX     ");
+  lcd.print("uSDX");
+  lcd.print('\x01'); // logo CGRAM (legacy 3926)
+  lcd.print("    "); // gap before the meter
   smeter(); // draws according to smode (1=dBm, 2=S, 3=Sbar, 4=wpm)
   // CW decoder on line 0 (legacy 5187): right-aligned RX CW
   if(mode == CW && cwdec && cw_event && !tx) {
