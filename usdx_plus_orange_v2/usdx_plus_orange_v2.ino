@@ -618,7 +618,9 @@ void loop() {
   wdt_reset();
 
   if(menu.state == MENU_MAIN) {
-    do_tune(); // encoder = tuning
+    // skip tuning while a button is held: dial hold+turn = VOLUME (legacy 5472)
+    if(!(inv ^ digitalRead(BUTTONS)))
+      do_tune();
   }
   menu.process(); // nav/edits when in menu; re-enters on button
 
