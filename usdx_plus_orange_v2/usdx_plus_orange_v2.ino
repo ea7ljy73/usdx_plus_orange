@@ -242,10 +242,10 @@ inline void       do_tune() {
 
 void display_vfo() {
   lcd.noCursor(); // ensure no stray blink cursor when returning to radio view
-  // Line 0: frequency with thousands separators + mode + V/R
-  lcd.setCursor(0, 0);
+  // Line 1: frequency + mode + R (exactly like usdx-legazy:3938-3955)
+  lcd.setCursor(0, 1);
   int32_t f     = freq;
-  int32_t scale = 10e6; // 10,000,000 (legacy 3937)
+  int32_t scale = 10e6; // 10,000,000 (legacy)
   if(f / scale == 0) {  // initial space instead of zero (legacy)
     lcd.print(' ');
     scale /= 10;
@@ -253,29 +253,31 @@ void display_vfo() {
   for(; scale != 1; f %= scale, scale /= 10) {
     lcd.print((int)abs(f / scale));
     if(scale == 1000 || scale == 1000000)
-      lcd.print(','); // thousands separator (legacy)
+      lcd.print(','); // thousands separator
   }
   lcd.print(' ');
   const char* ml = (mode == LSB) ? "LSB" : (mode == USB) ? "USB" : (mode == CW) ? "CW " : (mode == FM) ? "FM " : "AM ";
   lcd.print(ml);
-  lcd.setCursor(14, 0);
+  lcd.print(' ');
+  lcd.setCursor(15, 1);
   lcd.print(tx ? 'T' : ((vox) ? 'V' : 'R'));
-  // Line 1: CW decoder (RX CW) or S-meter bar + side info
-  lcd.setCursor(0, 1);
-  if(mode == CW && cw_line[15] != ' ') {
-    lcd.print(cw_line);
-  } else {
-    int16_t db = (int16_t)(_absavg256 >> 10);
-    db         = (db < 0) ? 0 : (db > 6) ? 6 : db;
-    lcd.print("S");
-    for(int8_t s = 0; s < 6; s++)
-      lcd.print((s < db) ? '=' : '-');
-    lcd.print("AGC");
-    lcd.print((int)agc + 1);
-    lcd.print(" V");
-    lcd.print((int)volume);
-  }
-  lcd.print("        ");
+
+  // Line 0: call/banner (col 0) + S-meter in digits (col 9-15, like legacy smeter())
+  lcd.setCursor(0, 0);
+  lcd.print("uSDX");
+  lcd.print("      "); // cols 4-8 blank
+  int8_t  s;
+  int16_t db = (int16_t)(_absavg256 >> 10);
+  if(db < -127)
+    s = 0;
+  else if(db < -63)
+    s = (db + 127) / 6; // S0..S3 approx
+  else
+    s = 9 + (db + 73) / 10 * 10; // above ~S9
+  lcd.setCursor(13, 0);
+  lcd.print('S');
+  lcd.print((int)s);
+  lcd.print("   ");
 }
 
 void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
