@@ -91,20 +91,14 @@ enum mode_t { LSB, USB, CW, FM, AM };
 // =============================================================================
 #define KEEP_BAND_DATA 1 // memoria de banda por frecuencia/modo (v1/v2)
 
-#define SWAP_ROTARY 1 // placa uSDX+ cruza A/B del encoder (v1 orange)
+// SWAP_ROTARY: INACTIVO (igual que usdx-legazy). Encoder ROT_A=PD6, ROT_B=PD7.
+// Si el sentido sale invertido en hardware, invertir aquí ROT_A<->ROT_B.
 
 // =============================================================================
 // PINES (WHITE_BUTTONS) - mismos que v1 orange / usdx-legazy
 // =============================================================================
 #define ROT_A 6    // PD6 (pin 12)
 #define ROT_B 7    // PD7 (pin 13)
-// v1 orange define SWAP_ROTARY: la placa cruza A/B del encoder -> invertir.
-#ifdef SWAP_ROTARY
-#  undef ROT_A
-#  undef ROT_B
-#  define ROT_A 7 // PD7 (pin 13)
-#  define ROT_B 6 // PD6 (pin 12)
-#endif
 #define LCD_D4 0   // PD0 (pin 2)
 #define LCD_D5 1   // PD1 (pin 3)
 #define LCD_D6 2   // PD2 (pin 4)
