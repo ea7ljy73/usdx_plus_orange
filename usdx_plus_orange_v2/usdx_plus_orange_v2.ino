@@ -241,7 +241,6 @@ inline void       do_tune() {
 }
 
 void display_vfo() {
-  lcd.noCursor(); // ensure no stray blink cursor when returning to radio view
   // Line 1: VFO-indicator + frequency + mode + V/R (layout like usdx-legazy:3938-3955)
   lcd.setCursor(0, 1);
   lcd.print('<'); // VFO A indicator (ASCII '<' - legacy uses CGRAM 0x06, we keep ASCII)
@@ -279,6 +278,11 @@ void display_vfo() {
   lcd.print('S');
   lcd.print((int)s);
   lcd.print("   ");
+  // stepsize cursor on the frequency line (like legacy stepsize_showcursor)
+  if(menu.state == MENU_MAIN) {
+    lcd.setCursor(stepsize + 1, 1);
+    lcd.cursor();
+  }
 }
 
 void vfo_hw_apply(int32_t f) { si5351.freq(f, 0, 0); }
