@@ -51,8 +51,8 @@ extern volatile int8_t  volume;
 // ---------------------------------------------------------------------------
 uint8_t          lut[256];
 volatile uint8_t amp;
-volatile uint8_t vox_thresh;
-volatile uint8_t drive = 2;
+volatile uint8_t vox_thresh = 4; // legacy noise-gate default
+volatile uint8_t drive      = 2;
 
 volatile uint8_t tx   = 0; // TX latch: 0=off, reaches 255 when triggered
 volatile uint8_t filt = 0; // filter select (shared with RX; owned here for MAX_DP)
