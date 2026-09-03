@@ -80,12 +80,12 @@ Verificar cuáles usa software real (Hamlib/FLDigi) y añadir los necesarios.
 | Punto | Legacy | v2 | Estado |
 |---|---|---|---|
 | Frecuencia línea 1 | ✅ | ✅ | |
-| VFO indicator | CGRAM `\x06` | `'<'` ASCII | ⚠️ dif |
+| VFO indicator | CGRAM `\x06` | CGRAM `\x06/\x07` | ✅ 55b5785 |
 | Cursor stepsize | ✅ | ✅ | |
 | S-meter | dígitos dbm/S con log10 | aprox | 🔴 |
-| `show_banner` | uSDX + logo | "uSDX v2" | ⚠️ |
+| `show_banner` | uSDX + logo | uSDX + logo CGRAM | ✅ final |
 | `stepsize_change` | rotar stepsize con botón | no | 🔴 falta |
-| CW decoder en línea 0 | muestra en RX CW | v2 mantiene línea distinta | ⚠️ |
+| CW decoder en línea 0 | muestra en RX CW | muestra en linea 0 | ✅ final |
 
 ---
 
@@ -110,9 +110,9 @@ Verificar cuáles usa software real (Hamlib/FLDigi) y añadir los necesarios.
 - Params TX (comp/eq/pre/lowcut): ✅ QUITADOS del menu (copia exacta legazy)
   - el menu v2 ahora tiene los 27 parametros de usdx-legazy
 - CAT: faltan AI0/PS1/TX0/TX1/TX2/UA/UD/UK/VX (10). 
-- smeter: aprox _absavg256>>10, no log10/calibrado. 🔴
-- stepsize_change: el v2 no tiene rotacion de paso por boton. 🔴
-- timer2_stop: no hay forma de detener la ISR RX. 🔴
+- smeter: ✅ calibrado (log10) + smode 1/2/3(S-bar)/4(wpm)
+- stepsize_change: ✅ implementado (encoder push)
+- timer2_stop/timer1_stop: ✅ implementados
 
 ## F. Mi priorización propuesta (orden de trabajo tras la auditoría)
 

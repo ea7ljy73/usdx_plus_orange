@@ -230,7 +230,7 @@ const MenuParam MENU[] PROGMEM = {
     {22, (void*)&pwm_min, P_T8, 0, 254, NULL, 27, on_pwm},
     {23, (void*)&pwm_max, P_T8, 1, 255, NULL, 28, on_pwm},
     // Ref freq / IQ phase (SIFXTAL/IQ_ADJ legacy 0x83/0x84)
-    {24, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 0, NULL}, // not persisted
+    {24, (void*)&si5351.fxtal, P_T32, 14000000, 28000000, NULL, 32, NULL}, // persisted like legacy SIFXTAL
     {25, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, NULL},
     // Backlight (BACKL legacy 0xA1)
     {26, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
@@ -265,6 +265,22 @@ static int16_t smeter(int16_t ref = 0) {
         if(s < 10)
           lcd.print('S');
         lcd.print((int)s);
+      } else if(smode == 3) { // S-bar (legacy 3584-3587, CGRAM fonts 2..5)
+        int8_t s = (dbm < -63) ? ((dbm - -127) / 6) : (((uint8_t)(dbm - -73)) / 10) * 10;
+        char   tmp[5];
+        for(uint8_t i = 0; i != 4; i++) {
+          tmp[i] = max(2, min(5, s + 1));
+          s      = s - 3;
+        }
+        tmp[4] = 0;
+        lcd.setCursor(12, 0);
+        for(uint8_t i = 0; i != 4; i++)
+          lcd.write(tmp[i]);  // glyphs 2..5 (bars)
+      } else if(smode == 4) { // wpm (legacy 3590-3592, CW_DECODER)
+        lcd.setCursor(14, 0);
+        if(mode == CW)
+          lcd.print((int)wpm);
+        lcd.print("  ");
       }
       max_absavg256 /= 2; // peak hold/decay (legacy 3612)
     }
@@ -315,7 +331,7 @@ inline void do_tune() {
 void display_vfo() {
   // Line 1: VFO-indicator + frequency + mode + V/R (layout like usdx-legazy:3938-3955)
   lcd.setCursor(0, 1);
-  lcd.print('<'); // VFO A indicator (ASCII '<' - legacy uses CGRAM 0x06, we keep ASCII)
+  lcd.print((rit) ? ' ' : ((vfosel % 2) ? '\x07' : '\x06')); // RIT/VFO A-B arrow (legacy 3939)
   int32_t f     = freq;
   int32_t scale = 10e6; // 10,000,000 (legacy)
   if(f / scale == 0) {  // initial space instead of zero (legacy)
@@ -337,7 +353,12 @@ void display_vfo() {
   // Line 0: banner (col 0-3) + S-meter/dBm via smeter() (cols 9/14, legacy 3577-3587)
   lcd.setCursor(0, 0);
   lcd.print("uSDX     ");
-  smeter(); // draws according to smode (1=dBm, 2=S)
+  smeter(); // draws according to smode (1=dBm, 2=S, 3=Sbar, 4=wpm)
+  // CW decoder on line 0 (legacy 5187): right-aligned RX CW
+  if(mode == CW && cwdec && cw_event && !tx) {
+    lcd.setCursor(8, 0);
+    lcd.print(cw_line + 8);
+  }
   // stepsize cursor on the frequency line (like legacy stepsize_showcursor)
   if(menu.state == MENU_MAIN) {
     lcd.setCursor(stepsize + 1, 1);
@@ -371,8 +392,9 @@ void setup() {
   // legacy only re-enables serial carefully after the display is up.
   delay(100);
   wdt_reset();
-  lcd.begin(16, 4); // Init LCD (mismo que legacy)
-  lcd.print("uSDX v2");
+  lcd.begin(16, 4);     // Init LCD (mismo que legacy)
+  display_init_fonts(); // load CGRAM fonts (logo, VFO, S-bar)
+  show_banner();        // uSDX + logo
   delay(300);
   wdt_reset();
 
