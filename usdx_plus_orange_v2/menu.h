@@ -107,6 +107,9 @@ extern const int8_t MENU_COUNT;
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size);
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size);
 
+// button events (legacy 5294): BL/BR/BE x SC/DC/PL
+enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04 };
+
 // ---------------------------------------------------------------------------
 // Menu machine
 // ---------------------------------------------------------------------------
@@ -142,6 +145,7 @@ private:
   void edit_text(int32_t delta);
   void commit();
   void print_value();
+  void handle_event(uint8_t ev);
 };
 
 extern Menu menu;
@@ -345,24 +349,74 @@ inline void Menu::process() {
       render();
     return;
   }
-  // --- button: NON-BLOCKING state machine (SC/PL). Action fires on release, so
-  // a single click responds immediately and the loop can never hang. ---
-  enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, PL_ = 0x04 };
-  static uint8_t  b_state = 0; // 0=idle, 1=holding
-  static uint32_t b_t0    = 0;
-  static uint16_t b_v     = 0;
+  // --- button: NON-BLOCKING state machine. BL/BR fire instantly on release
+  // (SC/PL). The DIAL (BE) additionally detects double-click (DC -> band
+  // change, legacy 5463) and hold+turn (PT -> volume, legacy 5472). ---
+  enum btn_st_t { B_IDLE = 0, B_HOLD = 1, B_DCWAIT = 2 };
+  static uint8_t  b_state      = B_IDLE;
+  static uint32_t b_t0         = 0;
+  static uint16_t b_v          = 0;
+  static uint8_t  b_pending    = 0; // BE single click waiting in DC window
+  static uint32_t b_dc_deadline = 0;
+  static uint8_t  b_is_dc      = 0;
+
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
-  if(b_state == 0) {
+  if(b_state == B_IDLE) {
     if(pressed) {
-      b_state = 1;
+      b_state = B_HOLD;
       b_t0    = millis();
-      b_v     = analogSafeRead(BUTTONS_ADC); // classify BL/BR/BE on press-down
+      b_v     = analogSafeRead(BUTTONS_ADC);
+      b_is_dc = 0;
     }
-  } else if(!pressed) { // released -> dispatch (SC if <400ms, PL if >=400ms)
-    b_state = 0;
-    uint8_t ev = ((millis() - b_t0) > 400) ? PL_ : SC_;
-    ev |= (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
-    switch(ev) {
+  } else if(b_state == B_HOLD) {
+    uint8_t type = (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
+    if(!pressed) { // released -> dispatch
+      uint32_t dur = millis() - b_t0;
+      b_state      = B_IDLE;
+      if(b_is_dc) {
+        handle_event(BE_ | DC_); // dial 2nd click -> band change
+      } else if(type == BE_ && dur > 400) {
+        handle_event(BE_ | PL_); // dial long press -> stepsize_change(-1)
+      } else if(type == BE_) {
+        b_pending      = BE_ | SC_;
+        b_dc_deadline  = millis() + 400; // look for 2nd click
+        b_state        = B_DCWAIT;
+      } else {
+        handle_event(((dur > 400) ? PL_ : SC_) | type); // BL/BR instant
+      }
+    } else if((millis() - b_t0) > 400 && type == BE_) {
+      // dial held long + turning -> PT: volume adjust while held (legacy 5472)
+      if(encoder_val) {
+        int32_t nv = volume + encoder_val;
+        encoder_val = 0;
+        if(nv < -1)
+          nv = 16;
+        if(nv > 16)
+          nv = -1;
+        volume = nv;
+        if(volume < 0) {
+          volume = 10;
+          save_menu_eslot(1);
+          powerDown();
+        }
+        save_menu_eslot(1);
+      }
+    }
+  } else if(b_state == B_DCWAIT) {
+    if(pressed) { // 2nd click -> will fire DC on release
+      b_state = B_HOLD;
+      b_t0    = millis();
+      b_v     = analogSafeRead(BUTTONS_ADC);
+      b_is_dc = 1;
+    } else if(millis() > b_dc_deadline) {
+      b_state = B_IDLE;
+      handle_event(b_pending); // single dial click -> stepsize_change(+1)
+    }
+  }
+}
+
+inline void Menu::handle_event(uint8_t ev) {
+  switch(ev) {
     case BL_ | PL_: // menu button long press -> fast edit
       state = MENU_EDIT;
       render();
@@ -476,6 +530,13 @@ inline void Menu::process() {
         render();
       }
       break;
+    case BE_ | DC_: // dial double-click -> band change (legacy 5463-5470)
+      bandval++;
+      if(bandval >= (N_BANDS - 1))
+        bandval = 1; // excludes 6m, 160m
+      stepsize = STEP_1k;
+      on_band(); // freq = band[bandval] + set_lpf + vfo_apply
+      break;
     case BE_ | PL_:
       stepsize_change(-1);
       break;
@@ -483,7 +544,6 @@ inline void Menu::process() {
       break;
     }
   }
-}
 
 inline void Menu::render() {
   MenuParam p;
