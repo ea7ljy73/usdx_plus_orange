@@ -384,14 +384,14 @@ int16_t  dbm           = 0;
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
   if(smode) {
-    { // drawn each display_vfo (500ms) - legacy gate %2048 was per-loop; here
-      // the caller already throttles, so removing it keeps the meter live
+    if((++smeter_cnt & 3) == 0) { // recompute dBm (log10) every 4th (2s), like
+      // legacy %2048 per-loop, so the slow float log10 doesn't block the RX
+      // ISR on every 500ms display refresh.
       float rms = (float)max_absavg256 * (float)(1 << att2);
       rms /= (256.0 * 1024.0 * (float)4 * 8.0 * 500.0 * 1.414 / (0.707 * 1.1)); // SDR const (legacy 3571)
       dbm = 10 * log10((rms * rms) / 50) + 30 - ref;
-#ifdef log10
-      // (log10 needs <math.h> on AVR)
-#endif
+    }
+    { // draw every call using cached dbm
       lcd.noCursor();
       if(smode == 1) { // dBm meter
         lcd.setCursor(9, 0);
@@ -683,7 +683,6 @@ void loop() {
       delay(32); // legacy 5166
     }
   }
-  delay(1);
 }
 
 // Arduino serial event (CAT)
