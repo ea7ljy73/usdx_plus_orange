@@ -155,8 +155,6 @@ HDR = r'''
 #define AM 3
 #define FM 4
 #define CW_MODE 2
-#define CW 2
-static volatile uint8_t agc_decay = 8;
 
 /* ---- AVR stubs ---- */
 static volatile uint8_t ADMUX_s, ADCSRA_s;
