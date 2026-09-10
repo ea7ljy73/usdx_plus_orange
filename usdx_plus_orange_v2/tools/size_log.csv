@@ -1,0 +1,2 @@
+fecha,git,flash,ram,nota,top_text
+2026-09-10,4e2b71a,29820,1157,base pre-Fase 1 + perf.h/ab,main:6236;_Z9sdr_rx_00v:3456;_ZN4Menu12handle_eventEh.constprop.4:1490;_Z3ssbi:962;_ZL16cat_serial_eventv:936;_ZN6SI53514freqEljj.constprop.21:916;_Z11display_vfov:796;_Z11switch_rxtxh:764;_Z4dec2v:626;_ZN4Menu6renderEv.constprop.7:484;_ZN6SI53512msEammhhjh.constprop.22:476;MENU:476

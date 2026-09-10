@@ -1,0 +1,12 @@
+== AB TX (dos tonos 700+1100, SSB reconstruida) ==
+TX drive=2        mic=  150 usb= 0.634 img= -36.4dBc imd3=  -8.0dBc car= -64.2dBc
+TX drive=4        mic=  150 usb= 0.636 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX drive=6        mic=  150 usb= 0.636 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX bajo           mic=   60 usb= 0.637 img= -42.4dBc imd3=  -8.1dBc car= -91.1dBc
+TX alto           mic=  300 usb= 0.636 img= -31.9dBc imd3=  -7.7dBc car= -71.5dBc
+== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==
+RX piso=   0.0
+RX filt=0 pico= 1200Hz rms=  114.9 hd2= -65.2dBc hd3= -18.1dBc
+RX filt=1 pico= 1200Hz rms=  114.0 hd2= -45.7dBc hd3= -33.6dBc
+RX filt=2 pico= 2800Hz rms=  115.7 hd2= -47.6dBc hd3= -72.6dBc
+RX filt=3 pico=  400Hz rms=  119.0 hd2= -23.8dBc hd3=  -7.5dBc
