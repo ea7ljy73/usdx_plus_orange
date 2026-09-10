@@ -11,6 +11,7 @@
 
 #include <Arduino.h>
 #include <avr/pgmspace.h>
+#include <avr/wdt.h>
 #include <stdint.h>
 
 #include "display.h"
@@ -70,6 +71,7 @@ extern void        display_vfo_line1(void);
 extern void        save_menu_eslot(uint8_t eslot);
 extern void        show_banner(void);
 extern void        powerDown(void);
+extern volatile uint32_t save_event_time; // deferred VFO persist (main .ino, legacy 5684)
 extern uint8_t          prev_stepsize[2];
 extern uint8_t          prev_filt[2];
 extern volatile uint8_t vfosel;
@@ -107,8 +109,8 @@ extern const int8_t MENU_COUNT;
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size);
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size);
 
-// button events (legacy 5294): BL/BR/BE x SC/DC/PL
-enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04 };
+// button events (legacy 5294): BL/BR/BE x SC/DC/PL/PT
+enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PT_ = 0x0C };
 
 // ---------------------------------------------------------------------------
 // Menu machine
@@ -153,12 +155,12 @@ extern Menu menu;
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
-inline void Menu::move(int8_t delta) { // legacy 5557-5563: clamp, no wrap
+inline void Menu::move(int8_t delta) { // G8RDI cycle-menu parity (v1): wrap around
   index += delta;
   if(index < 0)
-    index = 0;
-  if(index >= MENU_COUNT)
     index = MENU_COUNT - 1;
+  if(index >= MENU_COUNT)
+    index = 0;
 }
 
 inline void Menu::commit() {
@@ -232,9 +234,16 @@ inline void Menu::select_mode() {
     state = MENU_SELECT;
     index = 0; // first param = Volume (legacy 5343)
     break;
-  case MENU_SELECT:
-    state = MENU_EDIT;
+  case MENU_SELECT: {
+    MenuParam p;
+    get_cur(p);
+    if(p.type == P_TEXT) {
+      state    = MENU_EDIT_TEXT; // strings enter text-edit mode (legacy 4057)
+      text_pos = 0;
+    } else
+      state = MENU_EDIT;
     break;
+  }
   case MENU_EDIT:
     commit();
     state = MENU_MAIN;
@@ -366,18 +375,26 @@ inline void Menu::process() {
       b_state      = B_IDLE;
       if(b_is_dc) {
         handle_event(BE_ | DC_); // dial 2nd click -> band change
-      } else if(type == BE_ && b_pt_done) {
-        ; // PT volume was adjusted this hold: nothing else on release
-      } else if(type == BE_ && dur > 400) {
+      } else if(b_pt_done) {
+        if(state == MENU_MAIN)
+          display_vfo(); // PT volume done: back to main screen (legacy change=true)
+        ; // else PT quick-menu consumed this hold: nothing else on release
+      } else if(type == BE_ && dur > 300) {
         handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
       } else if(type == BE_) {
         b_pending      = BE_ | SC_;
-        b_dc_deadline  = millis() + 400; // look for 2nd click
+        b_dc_deadline  = millis() + 500; // look for 2nd click (legacy 500ms window)
         b_state        = B_DCWAIT;
       } else {
-        handle_event(((dur > 400) ? PL_ : SC_) | type); // BL/BR instant
+        handle_event(((dur > 300) ? PL_ : SC_) | type); // BL/BR instant (legacy 300ms PL)
       }
-    } else if((millis() - b_t0) > 400 && type == BE_) {
+    } else if((millis() - b_t0) > 300 && type == BL_ && !b_pt_done) {
+      // left held + turning -> PT: quick-menu entry (legacy BL|PT, 5329)
+      if(encoder_val) {
+        b_pt_done = 1;
+        handle_event(BL_ | PT_);
+      }
+    } else if((millis() - b_t0) > 300 && type == BE_) {
       // dial held long + turning -> PT: volume adjust while held (legacy 5472)
       if(encoder_val) {
         int32_t nv = volume + encoder_val;
@@ -388,9 +405,12 @@ inline void Menu::process() {
           nv = -1;
         volume = nv;
         b_pt_done = 1;
-        // show "Volume N" while adjusting (legacy paramAction UPDATE, 4030-4036)
-        lcd.setCursor(0, 0);
-        lcd.print("Volume ");
+        // show "Volume: +N" on line 2 while adjusting (legacy paramAction UPDATE, 3996/4030-4036)
+        lcd.noCursor();
+        lcd.setCursor(0, 1);
+        lcd.print(F("Volume: "));
+        if(volume >= 0)
+          lcd.print('+'); // legacy + prefix (min<0)
         lcd.print((int)volume);
         lcd.print("       ");
         if(volume < 0) {
@@ -430,6 +450,12 @@ inline void Menu::process() {
 
 inline void Menu::handle_event(uint8_t ev) {
   switch(ev) {
+    case BL_ | PT_: // left held + turn -> quick-menu entry (legacy 5329, drops edit w/o save)
+      if(state == MENU_MAIN) { state = MENU_SELECT; /* keep index */ }
+      else if(state >= MENU_EDIT) { state = MENU_SELECT; saved_flag = 0; }
+      lcd.noCursor();
+      render();
+      break;
     case BL_ | PL_: // menu button long press -> fast edit
       state = MENU_EDIT;
       render();
@@ -446,8 +472,14 @@ inline void Menu::handle_event(uint8_t ev) {
       if(state == MENU_MAIN) { state = MENU_SELECT; index = 0; saved_flag = 0; }
       else if(state == MENU_SELECT) {
         if(saved_flag) { state = MENU_MAIN; saved_flag = 0; }
-        else { state = MENU_EDIT; }
+        else {
+          MenuParam p;
+          get_cur(p);
+          if(p.type == P_TEXT) { state = MENU_EDIT_TEXT; text_pos = 0; } // legacy 4057
+          else state = MENU_EDIT;
+        }
       } else if(state == MENU_EDIT) { commit(); state = MENU_SELECT; saved_flag = 1; }
+      else if(state == MENU_EDIT_TEXT) { commit(); state = MENU_SELECT; saved_flag = 1; }
       if(state == MENU_EDIT)
         lcd.cursor();
       else
@@ -521,25 +553,26 @@ inline void Menu::handle_event(uint8_t ev) {
           filt = 0;
       }
       vfo_apply();
+      save_event_time = millis() + 1000; // persist RIT/VFO state when idle
       display_vfo_line1();
       break;
     case BE_ | SC_:
       if(state == MENU_MAIN) {
         stepsize_change(+1);
       } else {
-        if(state == MENU_SELECT)
-          state = MENU_EDIT;
-        else if(state == MENU_EDIT) {
+        if(state == MENU_SELECT) {
+          MenuParam p;
+          get_cur(p);
+          if(p.type == P_TEXT) { state = MENU_EDIT_TEXT; text_pos = 0; } // legacy 4057
+          else state = MENU_EDIT;
+        } else if(state == MENU_EDIT) {
           commit();
           state = MENU_SELECT;
           saved_flag = 1;
-        }
-#ifdef MENU_STR
-        else if(state == MENU_EDIT_TEXT) {
+        } else if(state == MENU_EDIT_TEXT) {
           if(text_pos < 47)
-            text_pos++; // NEXT_CH (legacy 5458); stay in text edit
+            text_pos++; // NEXT_CH (legacy 4052); stay in text edit
         }
-#endif
         render();
       }
       break;
@@ -548,7 +581,41 @@ inline void Menu::handle_event(uint8_t ev) {
       if(bandval >= (N_BANDS - 1))
         bandval = 1; // excludes 6m, 160m
       stepsize = STEP_1k;
-      on_band(); // freq = band[bandval] + set_lpf + vfo_apply
+      on_band(); // freq = band memory/default + set_lpf + vfo_apply
+      vfo[vfosel % 2] = freq; // VFO follows band change (legacy change block)
+      save_event_time = millis() + 1000; // persist when idle (legacy 5684)
+      display_vfo(); // immediate refresh + stepsize cursor (legacy change block)
+      break;
+    case BR_ | DC_: // right double-click -> filter BW cycle (legacy 5384-5396)
+      filt++;
+      _init = true;
+      if(mode == CW && filt > N_FILT)
+        filt = 4;
+      if(mode == CW && filt == 4)
+        stepsize = STEP_500; // reset stepsize for 500Hz filter
+      if(mode == CW && (filt == 5 || filt == 6) && stepsize < STEP_100)
+        stepsize = STEP_100; // for CW BW 200, 100 -> step = 100 Hz
+      if(mode == CW && filt == 7 && stepsize < STEP_10)
+        stepsize = STEP_10; // for CW BW 50 -> step = 10 Hz
+      if(mode != CW && filt > 3)
+        filt = 0;
+      encoder_val = 0;
+      save_menu_eslot(3); // FILTER
+      { // show new filter briefly (legacy UPDATE + 1500ms)
+        MenuParam fp;
+        memcpy_P(&fp, (PGM_P)&MENU[2], sizeof(MenuParam));
+        lcd.setCursor(0, 0);
+        menu_print_label(fp.label);
+        lcd.print("               ");
+        lcd.setCursor(0, 1);
+        lcd.print(' ');
+        lcd.print((const __FlashStringHelper*)pgm_read_ptr(&fp.enum_labels[filt]));
+        lcd.print("               ");
+        wdt_reset();
+        delay(1500);
+        wdt_reset();
+      }
+      display_vfo(); // back to main screen (legacy change=true refresh)
       break;
     case BE_ | PL_:
       stepsize_change(-1);
@@ -571,6 +638,9 @@ inline void Menu::render() {
   lcd.print("               ");
   if(state == MENU_EDIT)
     lcd.cursor(); // blink cursor on edited value
-  else
+  else if(state == MENU_EDIT_TEXT) {
+    lcd.setCursor((text_pos % 8) + 1, 1); // cursor on edited char (legacy 4067)
+    lcd.cursor();
+  } else
     lcd.noCursor(); // navigation: no cursor (radio stepsize cursor returns via display_vfo)
 }

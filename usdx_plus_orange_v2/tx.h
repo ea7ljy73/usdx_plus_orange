@@ -1,7 +1,8 @@
 // tx.h - uSDX Plus Orange v2
 // Transmit DSP: polar SSB modulator, CW/AM/FM TX ISRs, mic processing.
-// Extracted from v1 Section 07/08, behavior identical (incl. bugfixes already
-// applied: legacy LPF 1/9 + smooth clipper + CESSB + comp/EQ/lowcut/pre).
+// Strict parity with usdx-legazy.ino (verified working hardware).
+// High-end improvements (CESSB, voice comp, mic EQ, low-cut, pre-emphasis)
+// are DEFERRED: reintroduce one by one, verified by parity tests.
 
 #pragma once
 
@@ -31,7 +32,7 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 #define MULTI_ADC 1                     // multiple ADC conversions (+12dB mic gain)
 #define MORE_MIC_GAIN 1                 // extra mic gain for SSB quality
 
-#define CESSB_THRESH 200 // CESSB envelope clipper threshold
+#define CESSB_THRESH 200 // (reserved for deferred CESSB improvement)
 #define AM_BASE 32       // AM carrier bias
 #define AF_BIAS 32       // mic positive bias offset
 
@@ -62,26 +63,14 @@ volatile uint8_t quad = 0; // QUAD frequency divider state (legacy parity)
 volatile int8_t p_sin = 0;   // Minsky sin state (int8_t, legacy parity)
 volatile int8_t n_cos = 448 / 4; // Minsky cos state (legacy parity)
 
-volatile uint8_t tone_vol = 12;
+volatile uint8_t tone_vol = 12; // (reserved)
 volatile uint8_t cw_tone  = 1;
 const uint32_t   tones[]  = {F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 20000000, F_MCU * 700ULL / 20000000};
 
 volatile uint32_t cw_offset = 0; // CW TX/RX offset from dial (legacy 2174, set in setup)
 
-volatile bool dig_mode = false;
+volatile bool dig_mode = false; // (reserved, always false: legacy parity)
 volatile int8_t mox = 0; // legacy parity (never set without MOX_ENABLE)
-
-// Voice processing (menu-configurable; all off by default)
-volatile uint8_t  comp_enable    = 0;
-volatile uint16_t comp_threshold = 128;
-volatile int16_t  comp_envelope  = 0;
-volatile int8_t   eq_low         = 0;
-volatile int8_t   eq_high        = 0;
-static int16_t    eq_low_iir     = 0;
-static int16_t    eq_high_iir    = 0;
-volatile uint8_t  tx_lowcut      = 0;
-volatile uint8_t  pre_emph       = 0;
-static int16_t    pre_z1         = 0;
 
 // ---------------------------------------------------------------------------
 // _vox - VOX/TX latching (tx counts up/down; 255 when freshly triggered)

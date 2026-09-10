@@ -24,6 +24,8 @@ extern volatile int32_t freq;
 extern volatile uint8_t mode;
 extern volatile uint8_t bandval;
 extern volatile uint8_t stepsize;
+extern int32_t vfo[2];     // VFO A/B freq (owned by main .ino, legacy parity)
+extern uint8_t vfomode[2]; // VFO A/B mode (owned by main .ino, legacy parity)
 extern void (*vfo_apply_freq)(int32_t); // hook to si5351.freq (set in .ino)
 extern int32_t vfo_cache_freq;          // last applied freq
 
@@ -34,27 +36,41 @@ static uint8_t mode_last[BANDCOUNT];
 // EEPROM layout after menu region (menu slots: 0x150 + eslot*8, eslot up to 31
 // -> 0x248). VFO starts at 0x250 to avoid overlap.
 #define EEPROM_VFO_OFF 0x250
-#define EEPROM_VFO_SIZE (BANDCOUNT * (sizeof(int32_t) + 1))
+#define EEPROM_VFO_BANDSIZE (BANDCOUNT * (sizeof(int32_t) + 1))
+#define EEPROM_VFO_AB_OFF (EEPROM_VFO_OFF + EEPROM_VFO_BANDSIZE)
 
 // load freq/mode memory from EEPROM (call at setup)
 void vfo_eeprom_load() {
   eeprom_read_block(freq_last, (const void*)EEPROM_VFO_OFF, sizeof(freq_last));
   eeprom_read_block(mode_last, (const void*)(EEPROM_VFO_OFF + sizeof(freq_last)), sizeof(mode_last));
+  // VFO A/B state (legacy FREQA/FREQB/MODEA/MODEB parity): apply only sane values
+  int32_t vtmp[2];
+  uint8_t mtmp[2];
+  eeprom_read_block(vtmp, (const void*)EEPROM_VFO_AB_OFF, sizeof(vtmp));
+  eeprom_read_block(mtmp, (const void*)(EEPROM_VFO_AB_OFF + sizeof(vtmp)), sizeof(mtmp));
+  for(uint8_t k = 0; k < 2; k++) {
+    if(vtmp[k] >= 100000L && vtmp[k] <= 60000000L)
+      vfo[k] = vtmp[k]; // else keep compiled defaults (virgin EEPROM)
+    if(mtmp[k] <= 4)
+      vfomode[k] = mtmp[k];
+  }
 }
 
 void vfo_eeprom_save() {
-  eeprom_write_block(freq_last, (void*)EEPROM_VFO_OFF, sizeof(freq_last));
-  eeprom_write_block(mode_last, (void*)(EEPROM_VFO_OFF + sizeof(freq_last)), sizeof(mode_last));
+  eeprom_update_block(freq_last, (void*)EEPROM_VFO_OFF, sizeof(freq_last));
+  eeprom_update_block(mode_last, (void*)(EEPROM_VFO_OFF + sizeof(freq_last)), sizeof(mode_last));
+  eeprom_update_block(vfo, (void*)EEPROM_VFO_AB_OFF, sizeof(int32_t) * 2);
+  eeprom_update_block(vfomode, (void*)(EEPROM_VFO_AB_OFF + sizeof(int32_t) * 2), 2);
 }
 
-// save current freq/mode into slot for current band
+// save current freq/mode into slot for current band + VFO A/B state
 void vfo_save_current() {
-  if(bandval < 1 || bandval > BANDCOUNT)
-    return;
-  uint8_t b    = bandval - 1;
-  freq_last[b] = freq;
-  mode_last[b] = mode;
-  vfo_eeprom_save();
+  if(bandval >= 1 && bandval <= BANDCOUNT) {
+    uint8_t b    = bandval - 1;
+    freq_last[b] = freq;
+    mode_last[b] = mode;
+  }
+  vfo_eeprom_save(); // VFO A/B always persisted (legacy FREQA/B parity)
 }
 
 // recall/apply band memory for a band (or default if none stored)
