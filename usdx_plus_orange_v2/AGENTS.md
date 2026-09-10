@@ -18,7 +18,7 @@ reintroducir mejoras.
 ```bash
 cd usdx_plus_orange_v2
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 26938B (83%) flash, 1162B (56%) RAM, 0 warnings
+# Build actual: 29750B (92%) flash, 1157B (56%) RAM, 0 warnings
 ```
 
 ## Tests de paridad (host, sin hardware)

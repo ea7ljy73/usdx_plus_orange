@@ -179,7 +179,7 @@ void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   eeprom_read_block(ptr, (const void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size) {
-  eeprom_write_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
+  eeprom_update_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 
 // save the menu entry whose eslot matches (used by button post-handling, legacy
@@ -260,11 +260,12 @@ void menu_load_all() {
 }
 
 // --- Callbacks (post-handling effects) ---
+extern volatile uint32_t save_event_time; // deferred VFO persist (defined below)
 uint8_t prev_stepsize[2] = {5, 6}; // {STEP_1k SSB, STEP_500 CW} legacy 3843
 uint8_t prev_filt[2]     = {0, 4}; // {Full SSB, filter4 CW} legacy 2637
 void    on_mode() { // legacy 5572-5580: MENU edit of Mode -> hard reset + vfomode save
   vfomode[vfosel % 2] = mode;
-  vfo_eeprom_save(); // save vfomode (legacy 5574 MODEA/B)
+  vfo_save_current(); // persist band slot + VFO state (legacy 5574 MODEA/B)
   if(mode != CW)
     stepsize = STEP_1k;
   else
@@ -277,8 +278,8 @@ void    on_mode() { // legacy 5572-5580: MENU edit of Mode -> hard reset + vfomo
   si5351.iqmsa = 0; // enforce PLL reset (legacy 5576)
   vfo_apply();
 }
-void on_band() { // legacy BAND edit (5581 + change handler 5682): freq = band[bandval]
-  freq = (int32_t)pgm_read_dword(&band[bandval]);
+void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band memory or default
+  vfo_recall_band(bandval); // freq/mode from band memory (or default band freq)
   set_lpf(freq / 1000000UL);
   vfo_apply();
 }
@@ -301,6 +302,7 @@ void    on_vfosel() { // legacy 5585-5592
     nr   = 0;
   } else
     filt = 0;
+  save_event_time = millis() + 1000; // persist swapped VFO when idle (legacy change block)
   vfo_apply();
 }
 void on_pwm() { // legacy 5620-5622: build_lut on PWM_MIN/PWM_MAX edit
@@ -426,7 +428,7 @@ static int16_t smeter(int16_t ref = 0) {
   return dbm;
 }
 
-volatile uint32_t last_band_save = 0;
+volatile uint32_t save_event_time = 0; // deferred VFO persist (legacy 5684/5717: save 1s after last tune, never while tuning)
 // legacy stepsize_change (3865-3870): indices = step_t, skip .5M/10k
 void stepsize_change(int8_t val) {
   stepsize += val;
@@ -436,7 +438,8 @@ void stepsize_change(int8_t val) {
     stepsize = 1;
   if(stepsize == 2 || stepsize == 4) // STEP_500k / STEP_10k
     stepsize += val;
-  display_vfo();
+  lcd.setCursor(stepsize + 1, 1); // cursor only (legacy stepsize_showcursor, no full redraw)
+  lcd.cursor();
 }
 inline void do_tune() {
   if(tx || vox_tx)
@@ -455,6 +458,8 @@ inline void do_tune() {
         freq = 1;
       if(freq > 999999999)
         freq = 999999999;
+      vfo[vfosel % 2] = freq; // VFO follows tune (legacy 5682)
+      save_event_time = millis() + 1000; // schedule persist when idle (legacy 5684: no EEPROM wear while tuning)
       vfo_apply();
       uint8_t f = freq / 1000000UL;
       set_lpf(f); // switch LPF band (legacy 5701)
@@ -466,11 +471,6 @@ inline void do_tune() {
       si5351.SendPLLRegisterBulk();
     }
 #endif
-    // persist on tune (throttled: ~every 2s max)
-    if(millis() - last_band_save > 2000) {
-      vfo_save_current();
-      last_band_save = millis();
-    }
     display_vfo_line1(); // instant frequency update on screen (light, no smeter)
   }
 }
@@ -568,34 +568,43 @@ void setup() {
   Serial.begin(16000000ULL * 38400 / F_MCU); // CAT 38400 (legacy 5116, no CAT_STREAMING)
 
   timer1_start(78125);
-  vfo_eeprom_load();        // restore band memories
   menu.begin();
   drive = 4; // Init settings (legacy 5072); EEPROM restore overrides if valid
   cw_offset = tones[cw_tone]; // CW TX/RX offset (legacy 5079)
-  menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
-  on_pwm(); // build lut with LOADED pwm_min/max (legacy: build_lut after LOAD, 5105)
-  vfo_recall_band(bandval); // apply current band freq/mode (or default)
-  vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
-  last_band_save = millis();
-  encoder_setup();
-  // Legacy parity (usdx-legazy:5084,5098): force factory-default reset when the
-  // rotary-key is pressed at power-on, and always disable VOX on boot.
   // NOTE: use digitalRead(BUTTONS) here (like legacy 5084) - the ADC is not yet
   // enabled at this point in setup, so analog ADC read would block forever on ADIF.
-  if(inv ^ digitalRead(BUTTONS)) { // left button pressed at power-on -> reset settings (legacy 5084)
+  // Legacy parity (usdx-legazy:5083-5092): reset to factory defaults when the
+  // rotary-key is pressed at power-on or the version signature mismatches.
+  // The check runs BEFORE any EEPROM load so RAM still holds compiled defaults.
+  bool do_reset = (inv ^ digitalRead(BUTTONS)) ||
+                  (eeprom_read_byte((const uint8_t*)EEPROM_MAGIC_OFF) != F_VER_ID);
+  if(do_reset) {
     lcd.setCursor(0, 1);
     lcd.print("Reset settings..");
-    for(uint8_t i = 0; i != MENU_COUNT; i++) { // re-persist defaults over EEPROM
+    for(uint8_t i = 0; i != MENU_COUNT; i++) { // persist compiled defaults
       MenuParam p;
       memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
       if(p.eslot && p.value) {
-        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : (p.type == P_TEXT) ? 48 : 1;
         menu_eeprom_save(p.eslot, p.value, sz);
       }
     }
+    for(uint8_t b = 0; b < BANDCOUNT; b++) { freq_last[b] = 0; mode_last[b] = 0; } // band defaults
+    // vfo[]/vfomode[] still hold compiled defaults (no load happened)
+    vfo_eeprom_save();
     eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
     delay(500);
+  } else {
+    vfo_eeprom_load(); // restore band + VFO A/B memories
+    menu_load_all(); // restore saved menu params (volume, mode, agc, drive, ...)
   }
+  on_pwm(); // build lut with LOADED pwm_min/max (legacy: build_lut after LOAD, 5105)
+  freq = vfo[vfosel % 2]; // restore last VFO state (legacy boot parity, 5101)
+  mode = vfomode[vfosel % 2];
+  bandval = (freq / 1000000UL > 32) ? 10 : (freq / 1000000UL > 26) ? 9 : (freq / 1000000UL > 22) ? 8 : (freq / 1000000UL > 20) ? 7 : (freq / 1000000UL > 16) ? 6 : (freq / 1000000UL > 12) ? 5 : (freq / 1000000UL > 8) ? 4 : (freq / 1000000UL > 6) ? 3 : (freq / 1000000UL > 4) ? 2 : (freq / 1000000UL > 2) ? 1 : 0; // align bandval with freq (legacy change block)
+  vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
+  save_event_time = 0;      // no pending VFO persist at boot
+  encoder_setup();
   vox = 0;                    // disable VOX at boot (legacy parity)
   nr  = 0;                    // disable NR (legacy parity)
   loadWPM(keyer_speed);       // CW timing
@@ -663,8 +672,18 @@ void loop() {
     switch_rxtx(0);
   }
 
-  if(!(millis() % 500) && menu.state == MENU_MAIN && !tx && !vox_tx)
-    display_vfo(); // periodic refresh (legacy: skip while TX to avoid I2C conflict)
+  // --- Deferred VFO persist (legacy 5717): save freq when 1s passed since
+  // last tune, never while tuning (no EEPROM wear, no tune stalls) ---
+  if(save_event_time && (int32_t)(millis() - save_event_time) >= 0) {
+    vfo_save_current();
+    save_event_time = 0;
+  }
+
+  static uint32_t last_display = 0; // throttled periodic refresh (single-shot)
+  if(menu.state == MENU_MAIN && !tx && !vox_tx && (int32_t)(millis() - last_display) >= 500) {
+    last_display = millis();
+    display_vfo(); // refresh S-meter/decoder (legacy: skip while TX to avoid I2C conflict)
+  }
 
   // --- VOX based RX/TX (SSB only, legacy 5144) ---
   if(vox && (mode == LSB || mode == USB)) {
