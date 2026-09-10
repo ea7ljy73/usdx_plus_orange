@@ -383,16 +383,34 @@ uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
 int16_t  smeter_cnt    = 0;
 int16_t  dbm           = 0;
 
+// 20*log10 LUTs (Fase 1: S-meter sin float; maxerr 0.61dB vs exacto, verificado
+// en host; legacy truncaba float con hasta ~1dB de error + UB con att2=16)
+static const uint8_t  SM_FRAC[128] PROGMEM = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,27,28,29,30,31,32,33,34,34,35,36,37,38,39,39,40,41,42,43,43,44,45,46,47,47,48,49,50,50,51,52,53,53,54,55,56,56,57,58,59,59,60,61,61,62,63,63,64,65,65,66,67,67,68,69,69,70,71,71,72,73,73,74,75,75,76,77,77,78,78,79,80,80,81,81,82,83,83,84,84,85,86,86,87,87,88,89,89,90,90,91,91,92,92,93,94,94,95,95,96};
+static const uint16_t SM_EXP[32] PROGMEM = {0,96,193,289,385,482,578,674,771,867,963,1060,1156,1252,1349,1445,1541,1638,1734,1830,1927,2023,2119,2216,2312,2408,2505,2601,2697,2794,2890,2986};
+static const uint16_t SM_ATT[17] PROGMEM = {0,96,193,289,385,482,578,674,771,867,963,1060,1156,1252,1349,1445,1541};
+#define SM_C 2954 // round(184.636*16): 20*log10(K)-(30-10*log10(50)), K = SDR const
+
+// 20*log10(M) en 1/16 dB (M>=1). Equivale a la fórmula float de legacy 3571:
+//   rms = M*2^att2 / (256*1024*4*8*500*1.414/(0.707*1.1))
+//   dbm = 10*log10(rms*rms/50) + 30 - ref
+static int16_t sm_log20_16(uint32_t M) {
+  uint8_t e = 31 - __builtin_clz(M); // floor(log2), __builtin_clz(0) indef -> M>=1
+  uint8_t j = (e >= 7) ? ((M >> (e - 7)) & 0xFF) - 128 : ((M << (7 - e)) & 0xFF) - 128;
+  return (int16_t)(pgm_read_word(&SM_EXP[e]) + pgm_read_byte(&SM_FRAC[j]));
+}
+
 // S-meter as legacy (usdx-legazy:3565-3614); draws dBm (smode 1) or S (smode 2)
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
   if(smode) {
-    if((++smeter_cnt & 3) == 0) { // recompute dBm (log10) every 4th (2s), like
-      // legacy %2048 per-loop, so the slow float log10 doesn't block the RX
-      // ISR on every 500ms display refresh.
-      float rms = (float)max_absavg256 * (float)(1 << att2);
-      rms /= (256.0 * 1024.0 * (float)4 * 8.0 * 500.0 * 1.414 / (0.707 * 1.1)); // SDR const (legacy 3571)
-      dbm = 10 * log10((rms * rms) / 50) + 30 - ref;
+    if((++smeter_cnt & 3) == 0) { // recompute dBm every 4th (2s): integer log10,
+      // sin el float de legacy (lib FP + log10 ~1KB flash, lento en AVR)
+      uint32_t M = max_absavg256;
+      if(M == 0)
+        M = 1;
+      uint8_t a = (att2 > 16) ? 16 : att2;
+      int16_t t = sm_log20_16(M) + (int16_t)pgm_read_word(&SM_ATT[a]) - SM_C;
+      dbm       = ((t >= 0) ? ((t + 8) >> 4) : -((8 - t) >> 4)) - ref;
     }
     { // draw every call using cached dbm
       lcd.noCursor();

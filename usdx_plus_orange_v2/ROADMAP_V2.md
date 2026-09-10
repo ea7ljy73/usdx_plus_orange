@@ -32,10 +32,12 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 
 ## Fase 1 — Liberar margen (~+1,5 KB flash, +headroom CPU)
 
-1. S-meter `float`→punto fijo con LUT entera de log10 (~−1 KB flash;
-   paridad ±1 dB).
-2. `freq_calc_fast` versión AG6NS (−81 % ciclos; tune y TX más rápidos).
-3. I2C bulk diferencial (solo registros cambiados; −30–50 % tiempo I2C en TX).
+- [x] 1. S-meter `float`→punto fijo con LUT entera de log10 (−1158 B flash;
+  maxerr 0,61 dB vs exacto, verificado en host; legacy truncaba + UB att2=16).
+- [x] 2. `freq_calc_fast` exacto sin división 64 bit (+742 B, ~3–4× menos
+  ciclos; bit-exacto probado en host en 19,7M combinaciones div/df/fxtal).
+- [x] 3. I2C bulk diferencial, solo regs cambiados (+80 B, +5 B RAM; mismos
+  bytes en bus; **pendiente validar TX + duty PD5 en HW**).
 
 ## Fase 2 — Fluidez
 
@@ -70,3 +72,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 |---|---|---|---|---|---|
 | 2026-09-10 | 29820 / 1157 | — (medir PD5) | — (medir PD5) | — (medir) | base pre-Fase 1 |
 | 2026-09-10 | — | — | — | — | AB base TX: img −36dBc, imd3 −8dBc, car −60…−90dBc (drive 2–6, mic 60–300); RX: piso 0, pico/hd2/hd3 por filtro (ver tests/ab/ab_last.txt) |
+| 2026-09-10 | 29484 / 1166 | — | — | — | fin Fase 1 (−336 B netos). AB idéntico al base (F1 sin cambio DSP). PENDIENTE HW: TX ok + duty PD5 (F1.2/F1.3) |
