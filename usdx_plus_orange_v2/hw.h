@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "cw.h" // cw_set_keyed for decoder feeding
+#include "perf.h" // Fase 0: sonda carga CPU (coste 0 sin PERF_METER)
 #include "rx.h"
 #include "si5351.h"
 #include "tx.h"
@@ -74,7 +75,11 @@ void timer1_start(uint32_t fs) {
 // ---------------------------------------------------------------------------
 // Sample-rate timer2 ISR (calls func_ptr)
 // ---------------------------------------------------------------------------
-ISR(TIMER2_COMPA_vect) { func_ptr(); }
+ISR(TIMER2_COMPA_vect) {
+  perf_isr_enter();
+  func_ptr();
+  perf_isr_exit();
+}
 
 void timer2_start(uint32_t fs) {
   ASSR &= ~(1 << AS2); // Timer2 clocked from CLK I/O (like Timer0/1)

@@ -8,6 +8,7 @@
 #include "i2c.h"
 #include "lpf.h"
 #include "menu.h"
+#include "perf.h" // Fase 0: medidor carga CPU (coste 0 sin PERF_METER)
 #include "rx.h"
 #include "si5351.h"
 #include "tx.h"
@@ -605,6 +606,7 @@ void setup() {
   vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
   save_event_time = 0;      // no pending VFO persist at boot
   encoder_setup();
+  perf_init(); // sonda PD5 solo con PERF_METER
   vox = 0;                    // disable VOX at boot (legacy parity)
   nr  = 0;                    // disable NR (legacy parity)
   loadWPM(keyer_speed);       // CW timing
@@ -628,6 +630,8 @@ void setup() {
 
 void loop() {
   wdt_reset();
+  perf_loop_tick();
+  perf_report();
 
   if(menu.state == MENU_MAIN) {
     // skip tuning while a button is held: dial hold+turn = VOLUME (legacy 5472)
