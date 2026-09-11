@@ -33,6 +33,9 @@ PREAMBLE="""#include <stdint.h>
 #define MORE_MIC_GAIN 1
 static volatile uint8_t mode=USB,filt=0,drive=2,tx=0,vox_thresh=4,amp=0,dig_mode=0;
 static volatile uint8_t vox=0,keyerControl=0,keyerState=0;
+static volatile uint8_t comp_enable=0,tx_lowcut=0; // F3.9b/c: off en paridad
+static int16_t comp_env=0,lc_lp=0;
+#define COMP_TH 128
 static int16_t OCR1BL,OCR1AL;
 static uint8_t lut[256];
 #define abs(x) ((x)<0?-(x):(x))

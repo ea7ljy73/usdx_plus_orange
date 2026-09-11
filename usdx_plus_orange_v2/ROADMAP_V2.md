@@ -67,8 +67,14 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 
 ## Fase 4 — RX
 
-12. AGC hang + noise floor, detector tras filtros (opción), decay rápido CW.
-13. NR_FIR opcional por niveles (3–8 FIR, 0–2 EA actual).
+- [x] 12. AGC hang: EVALUADO Y REVERTIDO. Sin diferencia medible (dinámica
+  lenta del AGC domina; bug uint8→uint16 cazado por el camino). Paridad intacta.
+- [x] NB impulsos RX: PORTADO de v1 Y REVERTIDO. Post-Hilbert no puede actuar
+  (ringing 14 taps lo puentea + integrador acumula). Un blanker útil iría
+  pre-Hilbert. Sin efecto medido.
+- [x] Drive-by: `MENU_IDX_CWMSG` desactualizado tras inserts (apuntaba a TX Comp,
+  disparaba CQ al editar comp). Corregido a 26 y reverificado tras revert NB.
+- [ ] 13. NR_FIR opcional por niveles (3–8 FIR, 0–2 EA actual).
 14. LMS notch solo en path CW (en voz interfería).
 15. S-meter calibrado real tras punto fijo; Goertzel CW como experimento.
 

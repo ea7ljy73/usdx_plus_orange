@@ -203,6 +203,71 @@ static void m_rx_floor(void) {
   rx_run(1, 0, 12, 0, 0, 2);
   printf("RX piso=%6.1f\n", rx_rms(8000));
 }
+// F4 AGC: ráfagas 800Hz (1200 on/1200 off) + ruido constante. Mide bombeo en
+// huecos, sobreoscilación de ataque y nivel de ráfaga.
+static void rx_fill_burst(void) {
+  unsigned s = 777;
+  for(int i = 0; i < RXN; i++) {
+    double t    = (double)i / 31250.0;
+    int    on   = ((i / 1200) % 2) == 0;
+    s           = s * 1103515245 + 12345;
+    double nzv  = 4.0 * ((int)(s >> 16) % 2000 - 1000) / 1000.0; // ruido bajo
+    double tone = on ? 150.0 * sin(2 * M_PI * 800.0 * t) : 0.0; // sin saturar
+    double tc   = on ? 150.0 * cos(2 * M_PI * 800.0 * t) : 0.0;
+    iq_i[i]     = 511 + (int16_t)(tone + nzv);
+    iq_q[i]     = 511 + (int16_t)(tc + nzv);
+  }
+}
+static double win_rms(int n0, int n1) { // RMS AC (sin DC)
+  double mean = 0;
+  for(int i = n0; i < n1; i++)
+    mean += rx_audio[i];
+  mean /= (n1 - n0);
+  double s = 0;
+  for(int i = n0; i < n1; i++) {
+    double d = rx_audio[i] - mean;
+    s += d * d;
+  }
+  return sqrt(s / (n1 - n0));
+}
+// F4 NB: tono 800 + impulsos periódicos (10x, cada ~3000 muestras).
+// Métrica: nivel del tono (no debe cambiar on/off = no perder recepción) y
+// energía residual de picos (debe caer con NB on).
+static int m_nb;
+static void rx_fill_impulse(void) {
+  for(int i = 0; i < RXN; i++) {
+    double t = (double)i / 31250.0;
+    int    sp = (i % 3000 < 4); // ráfaga RFI 4 muestras a rails
+    iq_i[i] = sp ? 1023 : 511 + (int16_t)(60.0 * sin(2 * M_PI * 800.0 * t));
+    iq_q[i] = sp ? 0 : 511 + (int16_t)(60.0 * cos(2 * M_PI * 800.0 * t));
+  }
+}
+static void m_rx_impulse(void) {
+  extern void rx_nb_v2(uint8_t);
+  rx_nb_v2((uint8_t)m_nb);
+  rx_fill_impulse();
+  rx_run(1, 0, 12, 0, 0, 2); // agc=0: mide NB puro sin AGC
+  int    skip = 8000;
+  double tone = rx_goertzel(1200.0, 31250.0, skip, RXN);
+  double pk = 0;
+  for(int i = skip; i < RXN; i++)
+    if(abs(rx_audio[i]) > pk)
+      pk = abs(rx_audio[i]);
+  printf("RX nb=%d tono800=%7.1f pico_max=%6.0f\n", m_nb, tone, (double)pk);
+}
+static void m_rx_burst(void) {  rx_fill_burst();
+  rx_run(1, 1, 12, 0, 0, 2); // agc=1
+  // hueco 2 (3600..4800): primera mitad (hang 600) vs segunda (libre)
+  double g1 = win_rms(3600, 4200), g2 = win_rms(4200, 4800);
+  // ataque 3. ráfaga (6000..7200): pico primeros 60 vs rms resto
+  double pk = 0;
+  for(int i = 6000; i < 6060; i++)
+    if(abs(rx_audio[i]) > pk)
+      pk = abs(rx_audio[i]);
+  double st = win_rms(6300, 7200);
+  printf("RX burst gap1=%6.1f gap2=%6.1f overshoot=%5.2f steady=%6.1f\n", g1, g2,
+         pk / (st + 1e-9), st);
+}
 
 int main(void) {
   ab_tx_init();
@@ -269,6 +334,9 @@ int main(void) {
 
   printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
   isolate(m_rx_floor);
+  m_nb = 0;
+  isolate(m_rx_impulse); // testigo RFI (NB revertido: documenta robustez base)
+  isolate(m_rx_burst); // F4 baseline bombeo AGC
   for(int f = 0; f <= 3; f++) {
     m_filt = f;
     isolate(m_rx_tone);
