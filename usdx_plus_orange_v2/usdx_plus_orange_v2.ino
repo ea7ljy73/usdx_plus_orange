@@ -313,7 +313,7 @@ void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band m
 }
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
-uint8_t vfomode[2] = {USB, USB};
+uint8_t vfomode[2] = {LSB, USB}; // VFOA=LSB (40m), VFOB=USB (v1 G8RDI: was USB,USB)
 void    on_vfosel() { // legacy 5585-5592
   uint8_t other   = !vfosel;
   vfo[vfosel]     = freq; // keep slots current (v2)
