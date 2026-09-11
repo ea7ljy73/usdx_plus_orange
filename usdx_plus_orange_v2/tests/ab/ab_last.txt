@@ -25,3 +25,22 @@ RX filt=0 pico= 1200Hz rms=  114.9 hd2= -65.2dBc hd3= -18.1dBc
 RX filt=1 pico= 1200Hz rms=  114.0 hd2= -45.7dBc hd3= -33.6dBc
 RX filt=2 pico= 2800Hz rms=  115.7 hd2= -47.6dBc hd3= -72.6dBc
 RX filt=3 pico=  400Hz rms=  119.0 hd2= -23.8dBc hd3=  -7.5dBc
+== AB RX NR (agc=0, tono 800 limpio + solo-ruido por nivel) ==
+RX nr=0 tono800=   23.9
+RX nr=0 ruido=   53.7
+RX nr=1 tono800=   23.9
+RX nr=1 ruido=   53.7
+RX nr=2 tono800=   23.9
+RX nr=2 ruido=   52.8
+RX nr=3 tono800=   23.9
+RX nr=3 ruido=   51.2
+RX nr=4 tono800=   23.9
+RX nr=4 ruido=   49.5
+RX nr=5 tono800=   24.0
+RX nr=5 ruido=   46.7
+RX nr=6 tono800=   24.0
+RX nr=6 ruido=   43.5
+RX nr=7 tono800=   24.1
+RX nr=7 ruido=   39.5
+RX nr=8 tono800=   24.2
+RX nr=8 ruido=   35.3

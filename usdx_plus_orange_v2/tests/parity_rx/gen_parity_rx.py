@@ -135,6 +135,13 @@ def collect(src):
         elif re.match(r'#define\s+AGC_(HANG_SSB|HANG_CW|FLOOR)\b', s):
             f4.append(s)
     body['f4'] = '\n'.join(f4)
+    # Tablas PROGMEM usadas por el DSP (NR_K): a RAM en el TU + stub de lectura
+    t = []
+    m = re.search(r'static\s+const\s+uint8_t\s+(NR_K\[\d+\])\s+PROGMEM\s*=\s*(\{[^}]*\});', src)
+    if m:
+        t.append('static const uint8_t %s = %s;' % (m.group(1), m.group(2)))
+        t.append('#define pgm_read_byte(p) (*(const uint8_t*)(p))')
+    body['tables'] = '\n'.join(t)
     return body
 
 L = collect('\n'.join(LEG))
@@ -232,6 +239,8 @@ static int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
         txt += '\n' + b + '\n'
     if body.get('f4'):
         txt += '\n/* F4 context (auto-extraído de la fuente) */\n' + body['f4'] + '\n'
+    if body.get('tables'):
+        txt += '\n/* tablas DSP (auto-extraídas, en RAM) */\n' + body['tables'] + '\n'
     add(body['process_agc_fast'])
     add(body['process_agc'])
     add(body['process_nr'])

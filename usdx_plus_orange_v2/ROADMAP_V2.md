@@ -74,7 +74,10 @@ Margen: ~2,4 KB flash, ~890 B RAM.
   pre-Hilbert. Sin efecto medido.
 - [x] Drive-by: `MENU_IDX_CWMSG` desactualizado tras inserts (apuntaba a TX Comp,
   disparaba CQ al editar comp). Corregido a 26 y reverificado tras revert NB.
-- [ ] 13. NR_FIR opcional por niveles (3–8 FIR, 0–2 EA actual).
+- [x] 13. NR 2-polos en cascada (12dB/oct, cortes ~3000..850Hz, +~110 B).
+  AB: tono intacto en todos los niveles, ruido 53,7→35,3 monótono.
+  Divergencia intencional legacy en nr>=2 (paridad TX exacta, RX resto 0 %).
+- [ ] 14. LMS notch solo CW / 15. Goertzel (aparcados: flash al 95 %).
 14. LMS notch solo en path CW (en voz interfería).
 15. S-meter calibrado real tras punto fijo; Goertzel CW como experimento.
 
@@ -96,3 +99,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-11 | 30326 / 1177 | — | — | — | F3.9 CESSB revertido (0 efecto medido). Queda: comp/EQ si cabe |
 | 2026-09-11 | 30476 / 1180 | — | — | — | F3.9b comp voz 2:1 (+150 B, menú+eslot 24). AB mixto: IMD −10,3→−12,6dBc |
 | 2026-09-11 | 30598 / 1183 | — | — | — | F3.9c LoCut (+122 B, menú+eslot 32 banco extra). AB: −3,6/−9/−19dB@100Hz |
+| 2026-09-11 | 30724 / 1185 | — | — | — | F4 NR 2-polos (+126 B). AB: tono intacto, ruido 53,7→35,3 |

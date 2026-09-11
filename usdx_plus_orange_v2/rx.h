@@ -115,12 +115,23 @@ inline int16_t process_agc_fast(int16_t in) {
 }
 
 // ---------------------------------------------------------------------------
-// Noise reduction
+// Noise reduction: 2-pole EA lowpass (12dB/oct). nr=1 passthrough (legacy),
+// nr 2..8 cortes ~3000..850Hz. El 1-polo legacy colapsaba a 10Hz en nr=8
+// (-40dB en 1kHz: mudo); este quita siseo sin cargarse la voz. ~40 ciclos,
+// 4B RAM, 7B tabla. Divergencia intencional legacy en nr>=2 (conmutada por
+// el propio nivel NR; nr 0/1 idénticos).
 // ---------------------------------------------------------------------------
+static const uint8_t NR_K[7] PROGMEM = {250, 240, 229, 211, 191, 167, 142};
 inline int16_t process_nr(int16_t in) {
-  static int16_t ea1;
-  ea1 = EA(ea1, in, 1 << (nr - 1));
-  return ea1;
+  static int16_t ea1, ea2;
+  if(nr <= 1) {
+    ea1 = ea2 = in;
+    return in; // bypass (estados siguen, sin thump al conmutar)
+  }
+  uint8_t k = pgm_read_byte(&NR_K[(nr <= 8) ? nr - 2 : 6]);
+  ea1 += (int16_t)(((int32_t)k * (in - ea1)) >> 8);
+  ea2 += (int16_t)(((int32_t)k * (ea1 - ea2)) >> 8);
+  return ea2;
 }
 
 // ---------------------------------------------------------------------------

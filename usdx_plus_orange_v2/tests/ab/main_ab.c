@@ -230,7 +230,21 @@ static double win_rms(int n0, int n1) { // RMS AC (sin DC)
   }
   return sqrt(s / (n1 - n0));
 }
-// F4 NB: tono 800 + impulsos periódicos (10x, cada ~3000 muestras).
+// F4 NR: por nivel 0..8, tono limpio 800 (nivel intacto?) + solo-ruido
+// (reducción?). agc=0 para medir NR puro. Estado virgen por fork.
+static int m_nr;
+static void m_rx_nr_tone(void) {
+  rx_fill(800.0, 300.0, 0.0);
+  rx_run(1, 0, 12, m_nr, 0, 2);
+  int    skip = 8000;
+  double tone = rx_goertzel(1200.0, 31250.0, skip, RXN);
+  printf("RX nr=%d tono800=%7.1f\n", m_nr, tone);
+}
+static void m_rx_nr_noise(void) {
+  rx_fill(800.0, 0.0, 120.0);
+  rx_run(1, 0, 12, m_nr, 0, 2);
+  printf("RX nr=%d ruido=%7.1f\n", m_nr, rx_rms(8000));
+}
 // Métrica: nivel del tono (no debe cambiar on/off = no perder recepción) y
 // energía residual de picos (debe caer con NB on).
 static int m_nb;
@@ -340,6 +354,12 @@ int main(void) {
   for(int f = 0; f <= 3; f++) {
     m_filt = f;
     isolate(m_rx_tone);
+  }
+  printf("== AB RX NR (agc=0, tono 800 limpio + solo-ruido por nivel) ==\n");
+  for(int n = 0; n <= 8; n++) {
+    m_nr = n;
+    isolate(m_rx_nr_tone);
+    isolate(m_rx_nr_noise);
   }
   return 0;
 }
