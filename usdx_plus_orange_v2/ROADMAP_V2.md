@@ -89,3 +89,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-11 | 30326 / 1177 | — | — | — | F3.8 ALC (+138 B). AB tonos: usb −18dB sostenido |
 | 2026-09-11 | 30326 / 1177 | — | — | — | F3.9 CESSB revertido (0 efecto medido). Queda: comp/EQ si cabe |
 | 2026-09-11 | 30476 / 1180 | — | — | — | F3.9b comp voz 2:1 (+150 B, menú+eslot 24). AB mixto: IMD −10,3→−12,6dBc |
+| 2026-09-11 | 30598 / 1183 | — | — | — | F3.9c LoCut (+122 B, menú+eslot 32 banco extra). AB: −3,6/−9/−19dB@100Hz |

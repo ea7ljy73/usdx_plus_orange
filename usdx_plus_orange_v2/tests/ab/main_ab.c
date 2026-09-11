@@ -20,6 +20,7 @@ extern void    ab_tx_init(void);
 extern void    ab_ssb(int16_t in);
 extern void    ab_dig_mode(uint8_t v);
 extern void    ab_comp(uint8_t v);
+extern void    ab_lowcut(uint8_t v);
 extern int16_t ab_df_out;
 extern uint8_t ab_amp_out;
 extern volatile uint8_t drive;
@@ -239,6 +240,21 @@ int main(void) {
   // + IMD. Con tonos constantes el ALC lo enmascara todo.
   drive = 4;
   tx_env_crest("env150", 150.0); // testigo ALC con envolvente tipo voz
+  // F3.9c lowcut: respuesta a 100Hz vs 1000Hz en zona lineal (drive 0)
+  drive = 0;
+  for(int lc = 0; lc <= 3; lc++) {
+    char tag[16];
+    ab_lowcut((uint8_t)lc);
+    tx_run2(100.0, 100.0, 0.0, 100.0);
+    double r100 = cgoertzel(100.0, 480, TXN);
+    tx_run2(100.0, 1000.0, 0.0, 1000.0);
+    double r1000 = cgoertzel(1000.0, 480, TXN);
+    snprintf(tag, sizeof(tag), "locut%d", lc);
+    printf("TX %-14s 100Hz=%6.3f 1000Hz=%6.3f rej=%5.1fdB\n", tag, r100, r1000,
+           20 * log10(r100 / (r1000 + 1e-12)));
+  }
+  ab_lowcut(0);
+  drive = 4;
   // F3.9b compresor: misma envolvente con comp on/off (debe bajar crest)
   ab_comp(1);
   tx_env_crest("compON", 150.0);

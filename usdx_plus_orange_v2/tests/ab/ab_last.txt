@@ -10,6 +10,10 @@ TX flat voz  400= 0.058 2000= 0.099 diff=  4.7dB
 TX flat digi 400= 0.078 2000= 0.084 diff=  0.5dB
 TX digi700+1100   mic=  150 usb= 0.077 img= -32.4dBc imd3=  -8.3dBc car= -89.6dBc
 TX env150         mic=  150 usb= 0.077 imd3=  -7.7dBc crest=1.00
+TX locut0         100Hz= 0.015 1000Hz= 0.075 rej=-13.8dB
+TX locut1         100Hz= 0.011 1000Hz= 0.080 rej=-17.4dB
+TX locut2         100Hz= 0.006 1000Hz= 0.085 rej=-22.9dB
+TX locut3         100Hz= 0.002 1000Hz= 0.093 rej=-32.4dB
 TX compON         mic=  150 usb= 0.077 imd3=  -7.9dBc crest=1.01
 TX mixOFF         mic=   80 usb= 0.075 imd3= -10.3dBc crest=1.11
 TX mixComp        mic=   80 usb= 0.073 imd3= -12.6dBc crest=1.19

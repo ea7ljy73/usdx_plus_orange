@@ -51,6 +51,8 @@ volatile uint8_t mode = USB, filt = 0, drive = 2, tx = 1, vox_thresh = 4, amp = 
 volatile uint8_t vox = 0, quad = 0;
 volatile uint8_t dig_mode = 0; // F3.7: expuesto para A/B (bool en fw, truthiness igual)
 volatile uint8_t comp_enable = 0; // F3.9b: expuesto para A/B
+volatile uint8_t tx_lowcut = 0; // F3.9c: expuesto para A/B
+static int16_t lc_lp = 0;
 static int16_t OCR1BL, OCR1AL;
 static uint8_t lut[256];
 #define abs(x) ((x) < 0 ? -(x) : (x))
@@ -78,5 +80,6 @@ uint8_t ab_amp_out;
 void ab_ssb(int16_t in){ ab_df_out = ssb(in); ab_amp_out = amp; }
 void ab_dig_mode(uint8_t v){ dig_mode = v; }
 void ab_comp(uint8_t v){ comp_enable = v; }
+void ab_lowcut(uint8_t v){ tx_lowcut = v; }
 """)
 print("ab_tx.c generado (tx=1, LUT lineal)")

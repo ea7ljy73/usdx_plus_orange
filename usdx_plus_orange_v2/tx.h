@@ -41,6 +41,9 @@ volatile bool     comp_enable = false; // F3.9b: voice compressor 2:1 (menu)
 #define COMP_TH 128                    // threshold on |ac| (post 6dB gain scale)
 static int16_t comp_env = 0;           // envelope follower state
 
+volatile uint8_t tx_lowcut = 0; // F3.9c: HPF micro 0=off,1=100Hz,2=200Hz,3=400Hz
+static int16_t  lc_lp     = 0;  // HPF state
+
 // ---------------------------------------------------------------------------
 // External references (defined in other modules)
 // ---------------------------------------------------------------------------
@@ -116,6 +119,11 @@ inline int16_t ssb(int16_t in) {
   static int16_t v[16];
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
+  if(tx_lowcut && !dig_mode) { // F3.9c HPF: quita retumbe sub-audio (ahorra IMD)
+    int16_t hp = in - lc_lp;   // fc ~= 4800/(2*pi*2^(4-v)): 100/200/400Hz
+    lc_lp += hp >> (4 - tx_lowcut);
+    in = hp;
+  }
 #ifdef MORE_MIC_GAIN
   int16_t ac;
   if(dig_mode) { // F3.7 flat path for digital modes (legacy DIG_MODE formula)
