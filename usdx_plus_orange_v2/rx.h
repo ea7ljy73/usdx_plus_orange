@@ -36,10 +36,8 @@
 // Globals (shared with UI / CAT / legacy parity)
 // ---------------------------------------------------------------------------
 volatile uint8_t nr        = 0; // noise reduction level (legacy default 0)
-volatile uint8_t nb_enable = 0; // noise blanker on/off
 volatile uint8_t att       = 0; // analog attenuator
 volatile uint8_t att2      = 2; // digital attenuator (CIC stage)
-volatile uint8_t rf_atten  = 0;
 
 extern volatile uint8_t agc; // agc select (1/2; from main)
 
@@ -60,14 +58,13 @@ volatile uint32_t _amp32 = 0;
 volatile int16_t _centiGain = 0;
 
 // ---------------------------------------------------------------------------
-// AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (strict parity; the
-// hang-time + noise-floor improvement is deferred / reintroduced later).
+// AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (paridad exacta; un hang
+// timer evaluado en F4 no mostró diferencia medible y se revirtió).
 // ---------------------------------------------------------------------------
 #pragma GCC push_options
 #pragma GCC optimize("Ofast") // RX DSP compiled Ofast like usdx-legazy:2794-2795
 
 static int16_t   centiGain = 128;
-volatile uint8_t agc_decay = 8;
 #define DECAY_FACTOR 400 // AGC decay <DECAY_FACTOR> slower than attack
 static uint16_t decayCount = DECAY_FACTOR;
 
