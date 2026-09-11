@@ -440,7 +440,7 @@ static int16_t sm_log20_16(uint32_t M) {
 // (%2048 loops). Ours: same structure with time-based ticks (10x100ms).
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
-  if(smode && (++smeter_cnt % 10) == 0) { // slowed down display slightly
+  if(smode && (++smeter_cnt % 5) == 0) { // display ~2Hz: fluido sin saturar
     { // recompute dBm: integer log10 (~100 ciclos), sin el float de legacy
       uint32_t M = max_absavg256;
       if(M == 0)
