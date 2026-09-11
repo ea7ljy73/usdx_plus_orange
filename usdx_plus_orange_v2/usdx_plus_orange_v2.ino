@@ -393,7 +393,6 @@ const int8_t MENU_COUNT = 28; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
-int16_t  smeter_cnt    = 0;
 int16_t  dbm           = 0;
 
 // 20*log10 LUTs (Fase 1: S-meter sin float; maxerr 0.61dB vs exacto, verificado
@@ -416,8 +415,7 @@ static int16_t sm_log20_16(uint32_t M) {
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
   if(smode) {
-    if((++smeter_cnt & 3) == 0) { // recompute dBm every 4th (2s): integer log10,
-      // sin el float de legacy (lib FP + log10 ~1KB flash, lento en AVR)
+    { // recompute dBm every tick: integer log10 (~100 ciclos), sin el float de legacy
       uint32_t M = max_absavg256;
       if(M == 0)
         M = 1;
@@ -736,7 +734,7 @@ void loop() {
   }
 
   static uint32_t last_display = 0; // throttled periodic refresh (single-shot)
-  if(menu.state == MENU_MAIN && !tx && !vox_tx && (int32_t)(millis() - last_display) >= 500) {
+  if(menu.state == MENU_MAIN && !tx && !vox_tx && (int32_t)(millis() - last_display) >= 100) {
     last_display = millis();
     display_tick(); // light meter-only refresh (legacy: skip while TX to avoid I2C conflict)
   }
