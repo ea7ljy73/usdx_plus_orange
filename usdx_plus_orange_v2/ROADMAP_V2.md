@@ -56,7 +56,11 @@ Margen: ~2,4 KB flash, ~890 B RAM.
   máx −18 dB; excluye drive=8 y dig_mode). Sin display ni menú (+138 B).
   AB tonos: usb −18 dB ante saturación sostenida (esperado); IMD de fase sin
   cambio (−8 dBc). PENDIENTE HW voz real.
-9. CESSB, compresor, EQ, low-cut, pre-énfasis una a una, conmutadas y medidas.
+- [x] 9. CESSB: EVALUADO Y REVERTIDO. Con drive en saturación y ALC activo,
+  un pre-clipper I/Q no puede actuar nunca (todo lo que supera _amp 16 sale
+  plano a drive 4); en zona lineal nunca se alcanza el umbral. Medido en A/B
+  (barrido 200–3000, envolvente AM y onset con estado virgen): 0 diferencia.
+  Se mantiene ALC, que sí actúa sobre PA real.
 10. Hilbert IIR TX mejorado solo con margen CPU; AM `sqrt` y FM `arctan`
     como opciones a evaluar.
 11. CW: sidetone por menú; verificar rampas en hardware.
@@ -83,3 +87,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-11 | 30078 / 1172 | — | — | — | F2.5 + F3.6 (+594 B). AB: atten mejora imagen −36,6→−39 dBc |
 | 2026-09-11 | 30188 / 1172 | — | — | — | F3.7 DIGI (+110 B). AB flat: voz +4,7dB, digi 0,5dB |
 | 2026-09-11 | 30326 / 1177 | — | — | — | F3.8 ALC (+138 B). AB tonos: usb −18dB sostenido |
+| 2026-09-11 | 30326 / 1177 | — | — | — | F3.9 CESSB revertido (0 efecto medido). Queda: comp/EQ si cabe |

@@ -32,7 +32,6 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 #define MULTI_ADC 1                     // multiple ADC conversions (+12dB mic gain)
 #define MORE_MIC_GAIN 1                 // extra mic gain for SSB quality
 
-#define CESSB_THRESH 200 // (reserved for deferred CESSB improvement)
 #define AM_BASE 32       // AM carrier bias
 #define AF_BIAS 32       // mic positive bias offset
 
