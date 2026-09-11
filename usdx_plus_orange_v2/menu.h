@@ -94,7 +94,7 @@ extern char              cw_msg[1][48];
 #endif
 
 #define N_MENU_ITEMS 32 // declared capacity; MENU_COUNT computed from table
-#define MENU_IDX_CWMSG 23 // index of the CQ Message entry (legacy CWMSG1)
+#define MENU_IDX_CWMSG 26 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
 // Forward declarations (table + eeprom helpers live in menu.cpp / .ino)

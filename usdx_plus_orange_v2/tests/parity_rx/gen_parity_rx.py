@@ -125,6 +125,16 @@ def collect(src):
         body[f] = extract_fn(src, f)
     for f in cic_fns:
         body[f] = extract_fn(src, f)
+    # F4+: statics/defines que acompañan a process_agc_fast (hang, floor, CW).
+    # Se extraen de la fuente (sin duplicar valores) o se vacían si no existen.
+    f4 = []
+    for ln in src.split('\n'):
+        s = ln.strip()
+        if re.match(r'static\s+uint16_t\s+agc_hang\b', s):
+            f4.append('static uint16_t agc_hang = 0;')
+        elif re.match(r'#define\s+AGC_(HANG_SSB|HANG_CW|FLOOR)\b', s):
+            f4.append(s)
+    body['f4'] = '\n'.join(f4)
     return body
 
 L = collect('\n'.join(LEG))
@@ -154,6 +164,7 @@ HDR = r'''
 #define LSB 0
 #define AM 3
 #define FM 4
+#define CW 2
 #define CW_MODE 2
 
 /* ---- AVR stubs ---- */
@@ -199,6 +210,7 @@ static int16_t ozi1, ozi2;
 static uint32_t amp32 = 0;
 static volatile uint32_t _amp32 = 0;
 static int16_t gain = 1024;
+static volatile uint8_t nb_enable = 0; // F4 NB (declarado aquí; slow_dsp lo usa)
 #define DECAY_FACTOR 400
 static int16_t centiGain = 128;
 static uint16_t decayCount = DECAY_FACTOR;
@@ -218,6 +230,8 @@ static int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
         if not b.startswith('static'):
             b = 'static ' + b
         txt += '\n' + b + '\n'
+    if body.get('f4'):
+        txt += '\n/* F4 context (auto-extraído de la fuente) */\n' + body['f4'] + '\n'
     add(body['process_agc_fast'])
     add(body['process_agc'])
     add(body['process_nr'])
@@ -260,6 +274,7 @@ void rx_cfg{s}(uint8_t _m,uint8_t _a,uint8_t _v,uint8_t _n,uint8_t _f,uint8_t _a
 void rx_init{s}(void){{ rx_init(); }}
 void rx_run{s}(int st){{ rx_run(st); }}
 int16_t rx_last_audio{s}(void){{ return rx_last_audio(); }}
+void rx_nb{s}(uint8_t v){{ nb_enable = v; }}
 '''
     return txt
 

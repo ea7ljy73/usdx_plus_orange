@@ -19,6 +19,8 @@ TX mixOFF         mic=   80 usb= 0.075 imd3= -10.3dBc crest=1.11
 TX mixComp        mic=   80 usb= 0.073 imd3= -12.6dBc crest=1.19
 == AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==
 RX piso=   0.0
+RX nb=0 tono800=   13.8 pico_max=   255
+RX burst gap1=   0.5 gap2=   0.5 overshoot= 4.07 steady=  47.9
 RX filt=0 pico= 1200Hz rms=  114.9 hd2= -65.2dBc hd3= -18.1dBc
 RX filt=1 pico= 1200Hz rms=  114.0 hd2= -45.7dBc hd3= -33.6dBc
 RX filt=2 pico= 2800Hz rms=  115.7 hd2= -47.6dBc hd3= -72.6dBc

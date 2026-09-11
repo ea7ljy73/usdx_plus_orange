@@ -100,7 +100,9 @@ inline int16_t process_agc(int16_t in) {
   return out;
 }
 
-// Fast AGC alternative (agc=1) - exact copy of usdx-legazy:2521
+// Fast AGC alternative (agc=1) - exact copy of usdx-legazy:2521.
+// NOTA F4: se evaluó hang timer (~77ms) + noise floor: SIN diferencia medible
+// (la dinámica lenta del AGC domina; ver tests/ab). Revertido: paridad exacta.
 static int16_t gain = 1024;
 inline int16_t process_agc_fast(int16_t in) {
   int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
@@ -156,6 +158,11 @@ inline int16_t slow_dsp(int16_t ac) {
   } else {
     ; // USB, LSB, CW
   }
+
+  // NOTA F4: se portó el noise blanker RX de v1-orange y se revirtió: un
+  // blanker tras el Hilbert no puede funcionar (el ringing de 14 taps lo
+  // puentea y el integrador de salida acumula el resto). Medido en A/B:
+  // 0 diferencia. Un blanker útil tendría que ir pre-Hilbert (62.5kHz).
 
   if(agc == 1) {
     ac = process_agc_fast(ac); // legacy default (no FAST_AGC): agc_fast
