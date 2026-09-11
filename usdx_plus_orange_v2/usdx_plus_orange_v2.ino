@@ -172,14 +172,23 @@ void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
 }
 
-// --- EEPROM helpers (stable slots) ---
+// --- EEPROM helpers (stable slots; stride x8 salvo texto 48B) ---
 volatile uint16_t eeprom_offs = 0x150;
 #define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
+#define EEPROM_TEXT_OFF 0x290 // CQ Message 48B (0x290..0x2BF; evita eslots 27..31)
 #define F_VER_ID 3             // bump when EEPROM layout/semantics change
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
+  if(eslot == 26) { // CQ Message: región propia 48B (no cabe en stride x8)
+    eeprom_read_block(ptr, (const void*)EEPROM_TEXT_OFF, size);
+    return;
+  }
   eeprom_read_block(ptr, (const void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size) {
+  if(eslot == 26) { // CQ Message: región propia 48B (evita pisar eslots 27..31)
+    eeprom_update_block(ptr, (void*)EEPROM_TEXT_OFF, size);
+    return;
+  }
   eeprom_update_block(ptr, (void*)(uint16_t)(eeprom_offs + eslot * 8), size);
 }
 
@@ -252,7 +261,7 @@ void menu_load_all() {
       MenuParam p;
       memcpy_P(&p, (PGM_P)&MENU[i], sizeof(MenuParam));
       if(p.eslot && p.value) {
-        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : 1;
+        uint8_t sz = (p.type == P_T16) ? 2 : (p.type == P_T32) ? 4 : (p.type == P_TEXT) ? 48 : 1;
         menu_eeprom_save(p.eslot, p.value, sz);
       }
     }
@@ -466,6 +475,7 @@ inline void do_tune() {
   int32_t d = encoder_val;
   if(d) {
     encoder_val = 0;
+    menu.note_dial_turn(); // cancel pending dial double-click (stepping intent)
     // note: stepsizes[10] (PROGMEM) matches the menu 0..9 range
     int32_t stepval = (stepsize < 10) ? (int32_t)pgm_read_dword(&stepsizes[stepsize]) : 1000;
     if(rit) { // RIT active: encoder tweaks the RIT offset (legacy 3849-3854)
@@ -637,12 +647,13 @@ void setup() {
   freq = vfo[vfosel % 2]; // restore last VFO state (legacy boot parity, 5101)
   mode = vfomode[vfosel % 2];
   bandval = (freq / 1000000UL > 32) ? 10 : (freq / 1000000UL > 26) ? 9 : (freq / 1000000UL > 22) ? 8 : (freq / 1000000UL > 20) ? 7 : (freq / 1000000UL > 16) ? 6 : (freq / 1000000UL > 12) ? 5 : (freq / 1000000UL > 8) ? 4 : (freq / 1000000UL > 6) ? 3 : (freq / 1000000UL > 4) ? 2 : (freq / 1000000UL > 2) ? 1 : 0; // align bandval with freq (legacy change block)
+  set_lpf(freq / 1000000UL); // warm LPF relays NOW (first call inits 16 latches, ~550ms; legacy does it in first loop before any dial touch)
   vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
   save_event_time = 0;      // no pending VFO persist at boot
   encoder_setup();
   perf_init(); // sonda PD5 solo con PERF_METER
-  vox = 0;                    // disable VOX at boot (legacy parity)
-  nr  = 0;                    // disable NR (legacy parity)
+  vox = 0; // disable VOX at boot (legacy parity + seguridad: nunca TX al arrancar)
+  // nr NO se fuerza: persiste el último valor guardado (divergencia intencional de legacy)
   loadWPM(keyer_speed);       // CW timing
   keyer_set_mode(keyer_mode); // initialize keyerControl (IAMBICA/B, SINGLE)
 

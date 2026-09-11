@@ -114,8 +114,10 @@ enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ =
 // Long-press threshold (ms). Legacy usaba 300; se sube a 500 porque con 300
 // el RIT (BR|PL) saltaba con pulsaciones normales de MODE.
 #define LONG_PRESS_MS 500
-// DC window (legacy 500ms): 2nd press upgrades optimistic BE|SC to band change
-#define DC_WINDOW_MS 500
+// DC window: 2nd press upgrades optimistic BE|SC to band change. 300ms
+// (legacy: 500): clics sucesivos de avance de paso (>300ms) no deben saltar
+// de banda; el doble-clic deliberado (<300ms) sigue funcionando.
+#define DC_WINDOW_MS 300
 
 // ---------------------------------------------------------------------------
 // Menu machine
@@ -127,6 +129,11 @@ public:
   uint8_t text_pos = 0; // string edit cursor position (legacy 'pos')
   uint8_t text_len = 0; // string edit max length
   uint8_t saved_flag = 0; // after EDIT->save, next SELECT click exits to main
+  bool    dc_cancel  = false; // dial turned: cancel pending dial double-click
+
+  // Called from do_tune() on real tuning movement: turning between dial clicks
+  // proves stepping intent, so a later click must step, not change band.
+  void note_dial_turn() { dc_cancel = true; }
 
   void begin() {
     state = MENU_MAIN;
@@ -367,8 +374,11 @@ inline void Menu::process() {
   // tracked even while the encoder turns. BL/BR fire on release (SC/PL); the
   // dial (BE) adds double-click (DC -> band) and hold+turn (PT -> volume). ---
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
-  if(b_state == B_IDLE) {
-    if(b_dc_armed && (int32_t)(millis() - b_dc_deadline) >= 0)
+  if(b_state == 0) {
+    if(dc_cancel) { // dial turned since click: stepping intent, no band jump
+      dc_cancel  = false;
+      b_dc_armed = 0;
+    } else if(b_dc_armed && (int32_t)(millis() - b_dc_deadline) >= 0)
       b_dc_armed = 0; // DC window expired (optimistic SC already applied)
     if(pressed) {
       b_state = B_HOLD;
