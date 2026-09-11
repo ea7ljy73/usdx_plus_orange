@@ -101,8 +101,13 @@ static void Command_GetMD() {
   cat_print_u8(mode + 1);
   cat_print(';');
 }
-static void Command_SetMD() { // legacy 4589-4596: no range check
-  mode = CATcmd[2] - '1';
+static void Command_SetMD() { // legacy 4589-4596 (legacy: no range check)
+  int8_t m = CATcmd[2] - '1';
+  if(m < 0)
+    m = 0; // clamp: MD0/MD6+ would corrupt mode (wild PROGMEM read on display)
+  if(m > 4)
+    m = 4; // LSB/USB/CW/FM/AM only
+  mode = (uint8_t)m;
   vfomode[vfosel % 2] = mode; // legacy 4593
   si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
   vfo_apply();
