@@ -391,13 +391,13 @@ const MenuParam MENU[] PROGMEM = {
     // TX Drive (DRIVE legacy 0x33)
     {20, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
     // Mic Atten (F3.6: runtime MIC_ATTEN, 6dB/step)
-    {21, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
+    {28, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
     // DIGI Mode (F3.7: flat TX path for digital modes)
-    {22, (void*)&dig_mode, P_ENUM, 0, 1, offon_label, 23, NULL},
+    {29, (void*)&dig_mode, P_ENUM, 0, 1, offon_label, 23, NULL},
     // TX Comp (F3.9b: voice compressor 2:1)
-    {23, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 24, NULL},
+    {30, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 24, NULL},
     // TX LoCut (F3.9c: HPF micro; eslot 32 = banco extra)
-    {24, (void*)&tx_lowcut, P_T8, 0, 3, NULL, 32, NULL},
+    {31, (void*)&tx_lowcut, P_T8, 0, 3, NULL, 32, NULL},
     // CQ Interval / CQ Message (CWINTERVAL/CWMSG1 legacy 0x41/0x42)
     {21, (void*)&cw_msg_interval, P_T8, 0, 60, NULL, 25, NULL},
     {22, (void*)cw_msg[0], P_TEXT, 0, 0, NULL, 26, NULL},
