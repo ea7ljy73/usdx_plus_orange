@@ -552,6 +552,10 @@ void display_tick() {
   } else if(!(semi_qsk_timeout) && (!vox_tx)) {
     smeter();
   }
+  if(menu.state == MENU_MAIN) { // smeter() apaga el cursor: reponerlo (display_vfo parity)
+    lcd.setCursor(stepsize + 1, 1);
+    lcd.cursor();
+  }
 }
 
 void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW offset
