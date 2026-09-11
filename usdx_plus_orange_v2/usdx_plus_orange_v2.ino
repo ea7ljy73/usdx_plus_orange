@@ -62,6 +62,7 @@ volatile int32_t  freq             = 14000000; // legacy initializer (3549)
 volatile uint8_t  stepsize         = 5; // STEP_1k (legacy default; indices = step_t)
 const int32_t     step_mult[]      = {10, 100, 1000, 10000};
 volatile uint32_t semi_qsk_timeout = 0;
+volatile int32_t  last_full_freq   = 0; // base del último programado SI5351 completo (fast-tune)
 
 // --- Labels (enum arrays) - strings in FLASH (PROGMEM), pointer array
 // in PROGMEM. Read with pgm_read_ptr -> print via __FlashStringHelper*
@@ -472,9 +473,11 @@ void stepsize_change(int8_t val) {
 inline void do_tune() {
   if(tx || vox_tx)
     return; // no tuning while transmitting (legacy parity)
-  int32_t d = encoder_val;
+  noInterrupts();
+  int32_t d   = encoder_val; // atomic read+clear: no perder pasos del ISR
+  encoder_val = 0;
+  interrupts();
   if(d) {
-    encoder_val = 0;
     menu.note_dial_turn(); // cancel pending dial double-click (stepping intent)
     // note: stepsizes[10] (PROGMEM) matches the menu 0..9 range
     int32_t stepval = (stepsize < 10) ? (int32_t)pgm_read_dword(&stepsizes[stepsize]) : 1000;
@@ -575,6 +578,7 @@ void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW
     si5351.freq(f, rx_ph_q, 0); // RX in LSB
   else
     si5351.freq(f, 0, rx_ph_q); // RX in USB, ...
+  last_full_freq = f; // base for fast-tune deltas (do_tune)
 }
 
 void setup() {

@@ -418,9 +418,12 @@ inline void Menu::process() {
       }
     } else if((millis() - b_t0) > LONG_PRESS_MS && type == BE_) {
       // dial held long + turning -> PT: volume adjust while held (legacy 5472)
-      if(encoder_val) {
-        int32_t nv = volume + encoder_val;
-        encoder_val = 0;
+      noInterrupts();
+      int32_t pt_enc = encoder_val; // atomic read+clear
+      encoder_val    = 0;
+      interrupts();
+      if(pt_enc) {
+        int32_t nv = volume + pt_enc;
         if(nv < -1)
           nv = 16;
         if(nv > 16)
@@ -445,18 +448,25 @@ inline void Menu::process() {
     }
   }
 
-  // --- encoder: menu navigation (PT already consumed it for volume if held) ---
-  int32_t enc = encoder_val;
-  if(enc) {
+  // --- encoder: consumed here ONLY outside MAIN. In MAIN, do_tune() in loop()
+  // owns the dial; clearing here would eat steps arriving during tune
+  // processing (2-3 detents -> 1 step). While a button is held, do_tune() is
+  // skipped and the PT branches above already consumed their turns. ---
+  if(state != MENU_MAIN) {
+    noInterrupts();
+    int32_t enc = encoder_val; // atomic read+clear
     encoder_val = 0;
-    if(state == MENU_SELECT)
-      move(enc);
-    else if(state == MENU_EDIT)
-      edit_value(enc);
-    else if(state == MENU_EDIT_TEXT)
-      edit_text(enc);
-    if(state != MENU_MAIN)
+    interrupts();
+    if(enc) {
+      encoder_val = 0;
+      if(state == MENU_SELECT)
+        move(enc);
+      else if(state == MENU_EDIT)
+        edit_value(enc);
+      else if(state == MENU_EDIT_TEXT)
+        edit_text(enc);
       render();
+    }
   }
 }
 
@@ -612,7 +622,9 @@ inline void Menu::handle_event(uint8_t ev) {
         stepsize = STEP_10; // for CW BW 50 -> step = 10 Hz
       if(mode != CW && filt > 3)
         filt = 0;
-      encoder_val = 0;
+      noInterrupts();
+      encoder_val = 0; // atomic clear (legacy parity)
+      interrupts();
       save_menu_eslot(3); // FILTER
       { // show new filter briefly (legacy UPDATE + 1500ms)
         MenuParam fp;
