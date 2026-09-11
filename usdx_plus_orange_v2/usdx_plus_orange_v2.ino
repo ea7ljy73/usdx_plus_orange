@@ -446,8 +446,9 @@ static int16_t smeter(int16_t ref = 0) {
       int16_t t = sm_log20_16(M) + (int16_t)pgm_read_word(&SM_ATT[a]) - SM_C;
       dbm       = ((t >= 0) ? ((t + 8) >> 4) : -((8 - t) >> 4)) - ref;
     }
-    { // draw every call using cached dbm
-      lcd.noCursor();
+    { // draw every call using cached dbm (NO noCursor here: legacy re-enables
+      // it via stepsize_showcursor in the same call; blinking on/off at tick
+      // rate would be visible. Cursor is managed by display_vfo()/tick tail.
       if(smode == 1) { // dBm meter
         lcd.setCursor(9, 0);
         lcd.print((int16_t)dbm);
