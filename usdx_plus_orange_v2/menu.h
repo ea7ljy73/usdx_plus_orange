@@ -111,6 +111,11 @@ void menu_eeprom_save(uint8_t eslot, const void* ptr, uint8_t size);
 
 // button events (legacy 5294): BL/BR/BE x SC/DC/PL/PT
 enum event_t { BL_ = 0x10, BR_ = 0x20, BE_ = 0x30, SC_ = 0x01, DC_ = 0x02, PL_ = 0x04, PT_ = 0x0C };
+// Long-press threshold (ms). Legacy usaba 300; se sube a 500 porque con 300
+// el RIT (BR|PL) saltaba con pulsaciones normales de MODE.
+#define LONG_PRESS_MS 500
+// DC window (legacy 500ms): 2nd press upgrades optimistic BE|SC to band change
+#define DC_WINDOW_MS 500
 
 // ---------------------------------------------------------------------------
 // Menu machine
@@ -344,15 +349,17 @@ inline void Menu::edit_value(int32_t delta) {
 }
 
 inline void Menu::process() {
-  // --- button: NON-BLOCKING state machine. BL/BR fire instantly on release
-  // (SC/PL). The DIAL (BE) additionally detects double-click (DC -> band
-  // change, legacy 5463) and hold+turn (PT -> volume, legacy 5472). ---
-  enum btn_st_t { B_IDLE = 0, B_HOLD = 1, B_DCWAIT = 2 };
+  // --- button: NON-BLOCKING state machine. BL/BR fire on release (SC/PL).
+  // The DIAL (BE) fires SC *optimistically* on short release (instant cursor
+  // feedback); a 2nd press within 500ms upgrades to DC (band change, which
+  // forces STEP_1k anyway, so end-states match legacy exactly). Hold+turn is
+  // PT (volume, legacy 5472). ---
+  enum btn_st_t { B_IDLE = 0, B_HOLD = 1 };
   static uint8_t  b_state      = B_IDLE;
   static uint32_t b_t0         = 0;
   static uint16_t b_v          = 0;
-  static uint8_t  b_pending    = 0; // BE single click waiting in DC window
   static uint32_t b_dc_deadline = 0;
+  static uint8_t  b_dc_armed   = 0; // optimistic BE|SC fired; 2nd press = DC
   static uint8_t  b_is_dc      = 0;
   static uint8_t  b_pt_done    = 0; // dial hold+turn adjusted volume this hold
 
@@ -361,11 +368,14 @@ inline void Menu::process() {
   // dial (BE) adds double-click (DC -> band) and hold+turn (PT -> volume). ---
   uint8_t pressed = inv ^ digitalRead(BUTTONS); // inv=0 => pressed=HIGH
   if(b_state == B_IDLE) {
+    if(b_dc_armed && (int32_t)(millis() - b_dc_deadline) >= 0)
+      b_dc_armed = 0; // DC window expired (optimistic SC already applied)
     if(pressed) {
       b_state = B_HOLD;
       b_t0    = millis();
       b_v     = analogSafeRead(BUTTONS_ADC);
-      b_is_dc = 0;
+      b_is_dc = b_dc_armed; // 2nd press inside window -> DC (any button, legacy)
+      b_dc_armed = 0;
       b_pt_done = 0;
     }
   } else if(b_state == B_HOLD) {
@@ -374,27 +384,29 @@ inline void Menu::process() {
       uint32_t dur = millis() - b_t0;
       b_state      = B_IDLE;
       if(b_is_dc) {
-        handle_event(BE_ | DC_); // dial 2nd click -> band change
+        handle_event(BE_ | DC_); // 2nd click -> band change (legacy 5463)
       } else if(b_pt_done) {
         if(state == MENU_MAIN)
           display_vfo(); // PT volume done: back to main screen (legacy change=true)
         ; // else PT quick-menu consumed this hold: nothing else on release
-      } else if(type == BE_ && dur > 300) {
-        handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
+      } else if(type == BE_ && dur <= LONG_PRESS_MS) {
+        handle_event(BE_ | SC_); // optimistic: instant cursor step...
+        b_dc_armed    = 1;       // ...a 2nd press within DC_WINDOW_MS upgrades to DC
+        b_dc_deadline = millis() + DC_WINDOW_MS;
       } else if(type == BE_) {
-        b_pending      = BE_ | SC_;
-        b_dc_deadline  = millis() + 500; // look for 2nd click (legacy 500ms window)
-        b_state        = B_DCWAIT;
+        handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
       } else {
-        handle_event(((dur > 300) ? PL_ : SC_) | type); // BL/BR instant (legacy 300ms PL)
+        handle_event(((dur > LONG_PRESS_MS) ? PL_ : SC_) | type); // BL/BR (PL threshold raised vs legacy 300ms)
       }
-    } else if((millis() - b_t0) > 300 && type == BL_ && !b_pt_done) {
+    } else if(b_is_dc) {
+      ; // 2nd-click hold: ignore turns until release (legacy DC waits release)
+    } else if((millis() - b_t0) > LONG_PRESS_MS && type == BL_ && !b_pt_done) {
       // left held + turning -> PT: quick-menu entry (legacy BL|PT, 5329)
       if(encoder_val) {
         b_pt_done = 1;
         handle_event(BL_ | PT_);
       }
-    } else if((millis() - b_t0) > 300 && type == BE_) {
+    } else if((millis() - b_t0) > LONG_PRESS_MS && type == BE_) {
       // dial held long + turning -> PT: volume adjust while held (legacy 5472)
       if(encoder_val) {
         int32_t nv = volume + encoder_val;
@@ -420,16 +432,6 @@ inline void Menu::process() {
         }
         save_menu_eslot(1);
       }
-    }
-  } else if(b_state == B_DCWAIT) {
-    if(pressed) { // 2nd click -> will fire DC on release
-      b_state = B_HOLD;
-      b_t0    = millis();
-      b_v     = analogSafeRead(BUTTONS_ADC);
-      b_is_dc = 1;
-    } else if(millis() > b_dc_deadline) {
-      b_state = B_IDLE;
-      handle_event(b_pending); // single dial click -> stepsize_change(+1)
     }
   }
 
