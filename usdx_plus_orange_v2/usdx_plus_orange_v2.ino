@@ -436,11 +436,11 @@ static int16_t sm_log20_16(uint32_t M) {
 }
 
 // S-meter as legacy (usdx-legazy:3565-3614); draws dBm (smode 1) or S (smode 2).
-// Legacy cadence: peak tracked always, recompute+draw+decay every ~2s
-// (%2048 loops). Ours: same structure with time-based ticks (20x100ms).
+// Legacy cadence: peak tracked always, recompute+draw+decay every ~1-2s
+// (%2048 loops). Ours: same structure with time-based ticks (10x100ms).
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
-  if(smode && (++smeter_cnt % 20) == 0) { // slowed down display slightly
+  if(smode && (++smeter_cnt % 10) == 0) { // slowed down display slightly
     { // recompute dBm: integer log10 (~100 ciclos), sin el float de legacy
       uint32_t M = max_absavg256;
       if(M == 0)
