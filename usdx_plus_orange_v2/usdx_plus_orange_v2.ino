@@ -63,6 +63,7 @@ volatile uint8_t  stepsize         = 5; // STEP_1k (legacy default; indices = st
 const int32_t     step_mult[]      = {10, 100, 1000, 10000};
 volatile uint32_t semi_qsk_timeout = 0;
 volatile int32_t  last_full_freq   = 0; // base del último programado SI5351 completo (fast-tune)
+volatile int8_t   last_tune_dir    = 1; // último sentido del dial (+1/-1, GW8RDI banda direccional)
 
 // --- Labels (enum arrays) - strings in FLASH (PROGMEM), pointer array
 // in PROGMEM. Read with pgm_read_ptr -> print via __FlashStringHelper*
@@ -167,7 +168,8 @@ static const char menu_label_24[] PROGMEM = "PA Bias max";
 static const char menu_label_25[] PROGMEM = "Ref freq";
 static const char menu_label_26[] PROGMEM = "IQ Phase";
 static const char menu_label_27[] PROGMEM = "Backlight";
-const char* const MENU_LABELS[28] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27};
+static const char menu_label_28[] PROGMEM = "Mic Atten";
+const char* const MENU_LABELS[29] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -376,6 +378,8 @@ const MenuParam MENU[] PROGMEM = {
     {19, (void*)&vox_thresh, P_T8, 0, 255, NULL, 19, NULL},
     // TX Drive (DRIVE legacy 0x33)
     {20, (void*)&drive, P_T8, 0, 8, NULL, 20, NULL},
+    // Mic Atten (F3.6: runtime MIC_ATTEN, 6dB/step)
+    {21, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
     // CQ Interval / CQ Message (CWINTERVAL/CWMSG1 legacy 0x41/0x42)
     {21, (void*)&cw_msg_interval, P_T8, 0, 60, NULL, 25, NULL},
     {22, (void*)cw_msg[0], P_TEXT, 0, 0, NULL, 26, NULL},
@@ -389,7 +393,7 @@ const MenuParam MENU[] PROGMEM = {
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
 
-const int8_t MENU_COUNT = 28; // number of entries above
+const int8_t MENU_COUNT = 29; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
@@ -480,6 +484,7 @@ inline void do_tune() {
   interrupts();
   if(d) {
     menu.note_dial_turn(); // cancel pending dial double-click (stepping intent)
+    last_tune_dir = (d > 0) ? 1 : -1; // F2.5: sentido para cambio de banda
     // note: stepsizes[10] (PROGMEM) matches the menu 0..9 range
     int32_t stepval = (stepsize < 10) ? (int32_t)pgm_read_dword(&stepsizes[stepsize]) : 1000;
     if(rit) { // RIT active: encoder tweaks the RIT offset (legacy 3849-3854)
@@ -745,7 +750,7 @@ void loop() {
       static uint8_t  vox_sample;
       static uint16_t vox_adc;
       if(vox_sample++ == 16) {
-        ssb(((int16_t)(vox_adc / 16) - (512 - AF_BIAS)) >> MIC_ATTEN);
+        ssb(((int16_t)(vox_adc / 16) - (512 - AF_BIAS)) >> mic_atten);
         vox_sample = 0;
         vox_adc    = 0;
       } else {

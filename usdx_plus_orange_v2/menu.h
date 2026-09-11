@@ -94,7 +94,7 @@ extern char              cw_msg[1][48];
 #endif
 
 #define N_MENU_ITEMS 32 // declared capacity; MENU_COUNT computed from table
-#define MENU_IDX_CWMSG 22 // index of the CQ Message entry (legacy CWMSG1)
+#define MENU_IDX_CWMSG 23 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
 // Forward declarations (table + eeprom helpers live in menu.cpp / .ino)
@@ -600,9 +600,18 @@ inline void Menu::handle_event(uint8_t ev) {
       }
       break;
     case BE_ | DC_: // dial double-click -> band change (legacy 5463-5470)
-      bandval++;
-      if(bandval >= (N_BANDS - 1))
-        bandval = 1; // excludes 6m, 160m
+      // F2.5 direccional (GW8RDI 4.00d): según último sentido del dial
+      extern volatile int8_t last_tune_dir;
+      if(last_tune_dir < 0) {
+        if(bandval <= 1)
+          bandval = N_BANDS - 2; // wrap a 10m (excluye 6m, 160m)
+        else
+          bandval--;
+      } else {
+        bandval++;
+        if(bandval >= (N_BANDS - 1))
+          bandval = 1; // excludes 6m, 160m
+      }
       stepsize = STEP_1k;
       on_band(); // freq = band memory/default + set_lpf + vfo_apply
       vfo[vfosel % 2] = freq; // VFO follows band change (legacy change block)

@@ -209,6 +209,8 @@ int main(void) {
   }
   tx_imd("bajo", 60.0);
   tx_imd("alto", 300.0);
+  tx_imd("att1", 75.0); // equivale a mic_atten=1 con mic=150 (6dB)
+  tx_imd("att2", 37.5); // equivale a mic_atten=2 con mic=150 (12dB)
 
   printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
   isolate(m_rx_floor);
