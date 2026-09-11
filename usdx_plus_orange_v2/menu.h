@@ -495,6 +495,7 @@ inline void Menu::handle_event(uint8_t ev) {
         if(rit) {
           rit      = 0;
           stepsize = prev_stepsize[mode == CW];
+          display_vfo(); // RIT off: refresh screen immediately (legacy change=true)
           break;
         }
         mode += 1;

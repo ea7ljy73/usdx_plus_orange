@@ -542,6 +542,18 @@ void display_vfo() {
   }
 }
 
+// Light periodic refresh (legacy per-loop smeter parity, 5197): ONLY the
+// meter/decoder digits on line 0 — never a full rewrite while tuning, so dial
+// steps are never stalled by the display (each nibble masks the encoder ISR).
+void display_tick() {
+  if(mode == CW && cwdec && cw_event && !tx) {
+    lcd.setCursor(8, 0);
+    lcd.print(cw_line + 8);
+  } else if(!(semi_qsk_timeout) && (!vox_tx)) {
+    smeter();
+  }
+}
+
 void vfo_hw_apply(int32_t f) { // legacy 5704-5710: mode-dependent IQ phase + CW offset
   if(mode == CW)
     si5351.freq(f + cw_offset, rx_ph_q, 0); // RX in CW-R (=LSB), correct for CW-tone offset
@@ -704,7 +716,7 @@ void loop() {
   static uint32_t last_display = 0; // throttled periodic refresh (single-shot)
   if(menu.state == MENU_MAIN && !tx && !vox_tx && (int32_t)(millis() - last_display) >= 500) {
     last_display = millis();
-    display_vfo(); // refresh S-meter/decoder (legacy: skip while TX to avoid I2C conflict)
+    display_tick(); // light meter-only refresh (legacy: skip while TX to avoid I2C conflict)
   }
 
   // --- VOX based RX/TX (SSB only, legacy 5144) ---
