@@ -1,14 +1,14 @@
 == AB TX (dos tonos 700+1100, SSB reconstruida) ==
-TX drive=2        mic=  150 usb= 0.634 img= -36.4dBc imd3=  -8.0dBc car= -64.2dBc
-TX drive=4        mic=  150 usb= 0.636 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
-TX drive=6        mic=  150 usb= 0.636 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
-TX bajo           mic=   60 usb= 0.637 img= -42.4dBc imd3=  -8.1dBc car= -91.1dBc
-TX alto           mic=  300 usb= 0.636 img= -31.9dBc imd3=  -7.7dBc car= -71.5dBc
-TX att1           mic=   75 usb= 0.637 img= -38.4dBc imd3=  -8.0dBc car= -91.1dBc
-TX att2           mic=   38 usb= 0.637 img= -39.1dBc imd3=  -8.1dBc car=-259.8dBc
-TX flat voz  400= 0.477 2000= 0.815 diff=  4.7dB
-TX flat digi 400= 0.646 2000= 0.687 diff=  0.5dB
-TX digi700+1100   mic=  150 usb= 0.636 img= -32.0dBc imd3=  -8.4dBc car= -89.6dBc
+TX drive=2        mic=  150 usb= 0.132 img= -36.4dBc imd3=  -7.9dBc car= -50.1dBc
+TX drive=4        mic=  150 usb= 0.077 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX drive=6        mic=  150 usb= 0.077 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX bajo           mic=   60 usb= 0.077 img= -42.4dBc imd3=  -8.1dBc car= -91.1dBc
+TX alto           mic=  300 usb= 0.077 img= -31.9dBc imd3=  -7.7dBc car= -71.5dBc
+TX att1           mic=   75 usb= 0.077 img= -38.4dBc imd3=  -8.0dBc car= -91.1dBc
+TX att2           mic=   38 usb= 0.077 img= -39.1dBc imd3=  -8.1dBc car=-259.6dBc
+TX flat voz  400= 0.058 2000= 0.099 diff=  4.7dB
+TX flat digi 400= 0.078 2000= 0.084 diff=  0.5dB
+TX digi700+1100   mic=  150 usb= 0.077 img= -32.4dBc imd3=  -8.3dBc car= -89.6dBc
 == AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==
 RX piso=   0.0
 RX filt=0 pico= 1200Hz rms=  114.9 hd2= -65.2dBc hd3= -18.1dBc
