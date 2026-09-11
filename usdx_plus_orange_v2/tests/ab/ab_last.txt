@@ -9,6 +9,7 @@ TX att2           mic=   38 usb= 0.077 img= -39.1dBc imd3=  -8.1dBc car=-259.6dB
 TX flat voz  400= 0.058 2000= 0.099 diff=  4.7dB
 TX flat digi 400= 0.078 2000= 0.084 diff=  0.5dB
 TX digi700+1100   mic=  150 usb= 0.077 img= -32.4dBc imd3=  -8.3dBc car= -89.6dBc
+TX env150         mic=  150 usb= 0.077 imd3=  -7.7dBc crest=1.00
 == AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==
 RX piso=   0.0
 RX filt=0 pico= 1200Hz rms=  114.9 hd2= -65.2dBc hd3= -18.1dBc

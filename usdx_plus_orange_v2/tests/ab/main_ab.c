@@ -175,7 +175,9 @@ static double rx_goertzel(double f, double fs, int n0, int n1) {
 // Medida RX aislada: tono +800 con envolvente (como parity), estado virgen.
 // Barrrido espectral 200..3200 para hallar el pico (sin asumir tasa exacta),
 // RMS, y armónicos 2º/3º del pico = limpieza de demodulación.
-static int   m_filt;
+static void tx_run_env(double amp);
+static void tx_env_crest(const char* tag, double amp);
+static int  m_filt;
 static void  m_rx_tone(void) {
   rx_fill(800.0, 1100.0, 0.0);
   rx_run(1, 0, 12, 0, m_filt, 2);
@@ -231,6 +233,12 @@ int main(void) {
   tx_imd("digi700+1100", 150.0);
   ab_dig_mode(0);
 
+
+  // F3.9 CESSB con envolvente tipo voz (AM 5Hz sobre dos tonos): crest factor
+  // + IMD. Con tonos constantes el ALC lo enmascara todo.
+  drive = 4;
+  tx_env_crest("env150", 150.0); // testigo ALC con envolvente tipo voz
+
   printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
   isolate(m_rx_floor);
   for(int f = 0; f <= 3; f++) {
@@ -238,4 +246,40 @@ int main(void) {
     isolate(m_rx_tone);
   }
   return 0;
+}
+
+// Envolvente: captura amp + df con AM lenta; crest = peak/rms envolvente
+static uint8_t tx_env[TXN];
+static void    tx_run_env(double amp) {
+  double phase = 0;
+  for(int n = 0; n < TXN; n++) {
+    double env = 1.0 + 0.6 * sin(2 * M_PI * 5.0 * n / 4800.0);
+    double m   = env * amp * (sin(2 * M_PI * 700.0 * n / 4800.0) + sin(2 * M_PI * 1100.0 * n / 4800.0));
+    ab_ssb((int16_t)m);
+    double dp = (double)ab_df_out / 8.0;
+    phase += dp * (2.0 * M_PI / 600.0);
+    double a = (double)ab_amp_out / 255.0;
+    tx_re[n]  = a * cos(phase);
+    tx_im[n]  = a * sin(phase);
+    tx_env[n] = ab_amp_out;
+  }
+}
+static void tx_env_crest(const char* tag, double amp) {  tx_run_env(amp);
+  int    skip = 480;
+  double c1   = cgoertzel(700.0, skip, TXN);
+  double c2   = cgoertzel(1100.0, skip, TXN);
+  double im   = cgoertzel(300.0, skip, TXN) > cgoertzel(1500.0, skip, TXN)
+                    ? cgoertzel(300.0, skip, TXN)
+                    : cgoertzel(1500.0, skip, TXN);
+  double carr = (c1 + c2) / 2.0;
+  double mean = 0;
+  for(int n = skip; n < TXN; n++)
+    mean += tx_env[n];
+  mean /= (TXN - skip);
+  double peak = 0;
+  for(int n = skip; n < TXN; n++)
+    if(tx_env[n] > peak)
+      peak = tx_env[n];
+  printf("TX %-14s mic=%5.0f usb=%6.3f imd3=%6.1fdBc crest=%4.2f\n", tag, amp,
+         carr, 20 * log10(im / (carr + 1e-12)), peak / (mean + 1e-9));
 }
