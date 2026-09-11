@@ -37,6 +37,10 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 
 volatile uint8_t mic_atten = 0; // F3.6: mic attenuation 0..4 in 6dB steps (menu)
 
+volatile bool     comp_enable = false; // F3.9b: voice compressor 2:1 (menu)
+#define COMP_TH 128                    // threshold on |ac| (post 6dB gain scale)
+static int16_t comp_env = 0;           // envelope follower state
+
 // ---------------------------------------------------------------------------
 // External references (defined in other modules)
 // ---------------------------------------------------------------------------
@@ -122,6 +126,18 @@ inline int16_t ssb(int16_t in) {
   ac = in * 2;                    // 6dB gain
   ac         = ac + z1;                   // lpf
   z1         = (in - (8) * z1) / (8 + 1); // lpf
+
+  // F3.9b voice compressor 2:1 above COMP_TH (soft knee via instant attack +
+  // slow release envelope; gain computed with one 32-bit div when compressing)
+  if(comp_enable && !dig_mode) {
+    int16_t aa = (ac >= 0) ? ac : -ac;
+    if(aa > comp_env)
+      comp_env = aa; // attack: instant
+    else
+      comp_env -= (comp_env - aa) >> 8; // release: ~53ms
+    if(comp_env > COMP_TH)
+      ac = (int16_t)((int32_t)ac * (COMP_TH + ((comp_env - COMP_TH) >> 1)) / comp_env);
+  }
 
   // smooth clipping limiter
   if(ac > 250) {

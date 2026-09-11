@@ -170,7 +170,8 @@ static const char menu_label_26[] PROGMEM = "IQ Phase";
 static const char menu_label_27[] PROGMEM = "Backlight";
 static const char menu_label_28[] PROGMEM = "Mic Atten";
 static const char menu_label_29[] PROGMEM = "DIGI Mode";
-const char* const MENU_LABELS[30] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29};
+static const char menu_label_30[] PROGMEM = "TX Comp";
+const char* const MENU_LABELS[31] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -383,6 +384,8 @@ const MenuParam MENU[] PROGMEM = {
     {21, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
     // DIGI Mode (F3.7: flat TX path for digital modes)
     {22, (void*)&dig_mode, P_ENUM, 0, 1, offon_label, 23, NULL},
+    // TX Comp (F3.9b: voice compressor 2:1)
+    {23, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 24, NULL},
     // CQ Interval / CQ Message (CWINTERVAL/CWMSG1 legacy 0x41/0x42)
     {21, (void*)&cw_msg_interval, P_T8, 0, 60, NULL, 25, NULL},
     {22, (void*)cw_msg[0], P_TEXT, 0, 0, NULL, 26, NULL},
@@ -396,7 +399,7 @@ const MenuParam MENU[] PROGMEM = {
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
 };
 
-const int8_t MENU_COUNT = 30; // number of entries above
+const int8_t MENU_COUNT = 31; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)

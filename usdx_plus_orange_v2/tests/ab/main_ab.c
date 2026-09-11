@@ -19,6 +19,7 @@
 extern void    ab_tx_init(void);
 extern void    ab_ssb(int16_t in);
 extern void    ab_dig_mode(uint8_t v);
+extern void    ab_comp(uint8_t v);
 extern int16_t ab_df_out;
 extern uint8_t ab_amp_out;
 extern volatile uint8_t drive;
@@ -238,6 +239,17 @@ int main(void) {
   // + IMD. Con tonos constantes el ALC lo enmascara todo.
   drive = 4;
   tx_env_crest("env150", 150.0); // testigo ALC con envolvente tipo voz
+  // F3.9b compresor: misma envolvente con comp on/off (debe bajar crest)
+  ab_comp(1);
+  tx_env_crest("compON", 150.0);
+  ab_comp(0);
+  // zona mixta (drive 2, mic 80): compresor visible sin ALC total
+  drive = 2;
+  tx_env_crest("mixOFF", 80.0);
+  ab_comp(1);
+  tx_env_crest("mixComp", 80.0);
+  ab_comp(0);
+  drive = 4;
 
   printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
   isolate(m_rx_floor);
