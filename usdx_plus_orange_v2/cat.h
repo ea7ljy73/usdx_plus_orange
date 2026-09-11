@@ -83,7 +83,7 @@ static void Command_SETFreqA() { // legacy 4512-4520: no range check
     save_event_time = millis() + 1000; // persist when idle (legacy 5684)
     uint8_t f = freq / 1000000UL;
     set_lpf(f); // switch LPF band (legacy 5701)
-    bandval = (f > 32) ? 10 : (f > 26) ? 9 : (f > 22) ? 8 : (f > 20) ? 7 : (f > 16) ? 6 : (f > 12) ? 5 : (f > 8) ? 4 : (f > 6) ? 3 : (f > 4) ? 2 : (f > 2) ? 1 : 0;
+    bandval_align();
     if(menu.state == MENU_MAIN)
       display_vfo(); // refresh + cursor (legacy change block)
   }

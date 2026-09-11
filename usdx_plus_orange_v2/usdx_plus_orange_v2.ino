@@ -330,6 +330,7 @@ void    on_vfosel() { // legacy 5585-5592
     nr   = 0;
   } else
     filt = 0;
+  bandval_align(); // VFO may be on another band (legacy change block)
   save_event_time = millis() + 1000; // persist swapped VFO when idle (legacy change block)
   vfo_apply();
 }
@@ -519,7 +520,7 @@ inline void do_tune() {
       vfo_apply();
       uint8_t f = freq / 1000000UL;
       set_lpf(f); // switch LPF band (legacy 5701)
-      bandval = (f > 32) ? 10 : (f > 26) ? 9 : (f > 22) ? 8 : (f > 20) ? 7 : (f > 16) ? 6 : (f > 12) ? 5 : (f > 8) ? 4 : (f > 6) ? 3 : (f > 4) ? 2 : (f > 2) ? 1 : 0; // align bandval (legacy 5702)
+      bandval_align(); // align bandval with freq (legacy 5702)
     }
 #ifdef RIT_ENABLE
     if(rit) { // apply RIT offset in real time (legacy 5712)
@@ -674,7 +675,7 @@ void setup() {
   on_pwm(); // build lut with LOADED pwm_min/max (legacy: build_lut after LOAD, 5105)
   freq = vfo[vfosel % 2]; // restore last VFO state (legacy boot parity, 5101)
   mode = vfomode[vfosel % 2];
-  bandval = (freq / 1000000UL > 32) ? 10 : (freq / 1000000UL > 26) ? 9 : (freq / 1000000UL > 22) ? 8 : (freq / 1000000UL > 20) ? 7 : (freq / 1000000UL > 16) ? 6 : (freq / 1000000UL > 12) ? 5 : (freq / 1000000UL > 8) ? 4 : (freq / 1000000UL > 6) ? 3 : (freq / 1000000UL > 4) ? 2 : (freq / 1000000UL > 2) ? 1 : 0; // align bandval with freq (legacy change block)
+  bandval_align(); // align bandval with freq (legacy change block)
   set_lpf(freq / 1000000UL); // warm LPF relays NOW (first call inits 16 latches, ~550ms; legacy does it in first loop before any dial touch)
   vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
   save_event_time = 0;      // no pending VFO persist at boot
