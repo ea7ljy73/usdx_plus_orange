@@ -47,6 +47,7 @@ PREAMBLE = """#include <stdint.h>
 #define MAX_DP ((filt == 0) ? _UA : (filt == 3) ? _UA / 4 : _UA / 2)
 volatile uint8_t mode = USB, filt = 0, drive = 2, tx = 1, vox_thresh = 4, amp = 0;
 volatile uint8_t vox = 0, quad = 0;
+volatile uint8_t dig_mode = 0; // F3.7: expuesto para A/B (bool en fw, truthiness igual)
 static int16_t OCR1BL, OCR1AL;
 static uint8_t lut[256];
 #define abs(x) ((x) < 0 ? -(x) : (x))
@@ -72,5 +73,6 @@ open('ab_tx.c', 'w').write(
 int16_t ab_df_out;
 uint8_t ab_amp_out;
 void ab_ssb(int16_t in){ ab_df_out = ssb(in); ab_amp_out = amp; }
+void ab_dig_mode(uint8_t v){ dig_mode = v; }
 """)
 print("ab_tx.c generado (tx=1, LUT lineal)")

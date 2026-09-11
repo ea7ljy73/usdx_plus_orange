@@ -49,7 +49,9 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 - [x] 6. Mic gain/atten por menú: atten runtime 0–4 (6 dB/paso, eslot 22).
   AB: con menos nivel mejora imagen (−36,6→−39 dBc). Mic gain on/off
   (cambio de algoritmo) diferido a lote compresor/EQ.
-- [ ] 7. Perfil DIGI/FT8 (HPF <100 Hz plano + preset VOX/USB/BW).
+- [x] 7. Perfil DIGI/FT8: DIGI Mode por menú (eslot 23) con path TX plano
+  (fórmula legacy DIG_MODE). AB: voz +4,7 dB @2000 vs 400; digi 0,5 dB.
+  Sin preset auto (el usuario pone USB/VOX/BW).
 8. Hard-clipper/ALC + indicador overload (evita sobremodulación, +2–3 dB).
 9. CESSB, compresor, EQ, low-cut, pre-énfasis una a una, conmutadas y medidas.
 10. Hilbert IIR TX mejorado solo con margen CPU; AM `sqrt` y FM `arctan`
@@ -76,3 +78,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-10 | — | — | — | — | AB base TX: img −36dBc, imd3 −8dBc, car −60…−90dBc (drive 2–6, mic 60–300); RX: piso 0, pico/hd2/hd3 por filtro (ver tests/ab/ab_last.txt) |
 | 2026-09-10 | 29484 / 1166 | — | — | — | fin Fase 1 (−336 B netos). AB idéntico al base (F1 sin cambio DSP). PENDIENTE HW: TX ok + duty PD5 (F1.2/F1.3) |
 | 2026-09-11 | 30078 / 1172 | — | — | — | F2.5 + F3.6 (+594 B). AB: atten mejora imagen −36,6→−39 dBc |
+| 2026-09-11 | 30188 / 1172 | — | — | — | F3.7 DIGI (+110 B). AB flat: voz +4,7dB, digi 0,5dB |

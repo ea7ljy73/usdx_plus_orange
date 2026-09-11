@@ -69,7 +69,7 @@ const uint32_t   tones[]  = {F_MCU * 700ULL / 20000000, F_MCU * 600ULL / 2000000
 
 volatile uint32_t cw_offset = 0; // CW TX/RX offset from dial (legacy 2174, set in setup)
 
-volatile bool dig_mode = false; // (reserved, always false: legacy parity)
+volatile bool dig_mode = false; // F3.7: flat TX path for digital modes (menu)
 volatile int8_t mox = 0; // legacy parity (never set without MOX_ENABLE)
 
 // ---------------------------------------------------------------------------
@@ -114,7 +114,13 @@ inline int16_t ssb(int16_t in) {
   for(j = 0; j != 15; j++)
     v[j] = v[j + 1];
 #ifdef MORE_MIC_GAIN
-  int16_t ac = in * 2;                    // 6dB gain
+  int16_t ac;
+  if(dig_mode) { // F3.7 flat path for digital modes (legacy DIG_MODE formula)
+    ac    = in;
+    dc    = (ac + (7) * dc) / (7 + 1); // slow DC average (HPF ~100Hz)
+    v[15] = (ac - dc) / 2;             // -6dB (no LPF emphasis, no clipper)
+  } else {
+  ac = in * 2;                    // 6dB gain
   ac         = ac + z1;                   // lpf
   z1         = (in - (8) * z1) / (8 + 1); // lpf
 
@@ -127,6 +133,7 @@ inline int16_t ssb(int16_t in) {
 
   dc    = (ac + (2) * dc) / (2 + 1);
   v[15] = (ac - dc);
+  }
 #else
   dc         = (in + dc) / 2; // average
   int16_t ac = (in - dc);     // DC decoupling
