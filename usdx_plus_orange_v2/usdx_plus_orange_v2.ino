@@ -290,7 +290,10 @@ void    on_mode() { // legacy 5572-5580: MENU edit of Mode -> hard reset + vfomo
   vfo_apply();
 }
 void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band memory or default
-  vfo_recall_band(bandval); // freq/mode from band memory (or default band freq)
+  if(bandval >= 1 && bandval <= BANDCOUNT)
+    vfo_recall_band(bandval); // freq/mode from band memory (or default band freq)
+  else
+    freq = (int32_t)pgm_read_dword(&band[bandval]); // 160m/6m: band default (legacy)
   set_lpf(freq / 1000000UL);
   vfo_apply();
 }
@@ -638,7 +641,7 @@ void setup() {
         menu_eeprom_save(p.eslot, p.value, sz);
       }
     }
-    for(uint8_t b = 0; b < BANDCOUNT; b++) { freq_last[b] = 0; mode_last[b] = 0; } // band defaults
+    for(uint8_t b = 0; b < BANDCOUNT; b++) { freq_last[b] = 0; mode_last[b] = 0xFF; } // band defaults (0xFF mode = unset)
     // vfo[]/vfomode[] still hold compiled defaults (no load happened)
     vfo_eeprom_save();
     eeprom_write_byte((uint8_t*)EEPROM_MAGIC_OFF, F_VER_ID);
