@@ -148,9 +148,32 @@ inline int16_t ssb(int16_t in) {
 
   _vox(_amp > vox_thresh);
 
-  _amp = _amp << (drive);
-  _amp = ((_amp > 255) || (drive == 8)) ? 255 : _amp;
-  amp  = (tx) ? lut[_amp] : 0;
+  // F3.8 ALC: si la envolvente satura de forma sostenida, baja drive efectivo
+  // (hasta -18dB); si no, lo recupera lento. Excluye drive=8 (amplitud
+  // constante por diseño) y dig_mode (tonos constantes FT8).
+  static uint8_t  alc_att = 0; // 0..3 pasos de 6dB
+  static uint16_t alc_t   = 0;
+  uint16_t        a       = _amp << (drive);
+  if(a > 255 && drive != 8 && !dig_mode) {
+    a = 255;
+    if(++alc_t >= 480 && alc_att < 3) { // ~100ms saturado
+      alc_att++;
+      alc_t = 0;
+    }
+  } else {
+    if(a > 255)
+      a = 255;
+    if(alc_t > 0) {
+      alc_t--;
+    } else if(alc_att > 0) {
+      static uint16_t alc_rel = 0;
+      if(++alc_rel >= 4800) { // ~1s limpio por paso
+        alc_att--;
+        alc_rel = 0;
+      }
+    }
+  }
+  amp = (tx) ? lut[a >> alc_att] : 0;
 
   static int16_t prev_phase;
   int16_t        phase = arctan3(q, i);

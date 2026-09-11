@@ -52,7 +52,10 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 - [x] 7. Perfil DIGI/FT8: DIGI Mode por menú (eslot 23) con path TX plano
   (fórmula legacy DIG_MODE). AB: voz +4,7 dB @2000 vs 400; digi 0,5 dB.
   Sin preset auto (el usuario pone USB/VOX/BW).
-8. Hard-clipper/ALC + indicador overload (evita sobremodulación, +2–3 dB).
+- [x] 8. Hard-clipper/ALC: ALC en `ssb()` (ataque 100 ms, release 1 s/paso,
+  máx −18 dB; excluye drive=8 y dig_mode). Sin display ni menú (+138 B).
+  AB tonos: usb −18 dB ante saturación sostenida (esperado); IMD de fase sin
+  cambio (−8 dBc). PENDIENTE HW voz real.
 9. CESSB, compresor, EQ, low-cut, pre-énfasis una a una, conmutadas y medidas.
 10. Hilbert IIR TX mejorado solo con margen CPU; AM `sqrt` y FM `arctan`
     como opciones a evaluar.
@@ -79,3 +82,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-10 | 29484 / 1166 | — | — | — | fin Fase 1 (−336 B netos). AB idéntico al base (F1 sin cambio DSP). PENDIENTE HW: TX ok + duty PD5 (F1.2/F1.3) |
 | 2026-09-11 | 30078 / 1172 | — | — | — | F2.5 + F3.6 (+594 B). AB: atten mejora imagen −36,6→−39 dBc |
 | 2026-09-11 | 30188 / 1172 | — | — | — | F3.7 DIGI (+110 B). AB flat: voz +4,7dB, digi 0,5dB |
+| 2026-09-11 | 30326 / 1177 | — | — | — | F3.8 ALC (+138 B). AB tonos: usb −18dB sostenido |
