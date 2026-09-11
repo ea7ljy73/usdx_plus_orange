@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "menu.h" // menu object + display_vfo/vfo_save_current/set_lpf decls
 #include "si5351.h"
 #include "usdx_settings.h"
 #include <Arduino.h>
@@ -25,6 +26,9 @@ extern uint8_t          vfomode[2];
 extern volatile uint32_t semi_qsk_timeout;
 extern volatile uint8_t  smode;
 extern volatile uint32_t rxend_event;
+extern volatile uint8_t bandval;
+extern int32_t vfo[2];
+extern volatile uint32_t save_event_time; // deferred VFO persist (main .ino)
 extern void             switch_rxtx(uint8_t tx_enable);
 extern void             vfo_apply(void);
 
@@ -75,6 +79,13 @@ static void Command_SETFreqA() { // legacy 4512-4520: no range check
   if(CATcmd[2] != ';') { // 'FAxxxx...;'
     freq = (uint32_t)atol(CATcmd + 2);
     vfo_apply(); // mode-dependent IQ phase + CW offset (legacy change handler)
+    vfo[vfosel % 2] = freq; // VFO follows (legacy change block)
+    save_event_time = millis() + 1000; // persist when idle (legacy 5684)
+    uint8_t f = freq / 1000000UL;
+    set_lpf(f); // switch LPF band (legacy 5701)
+    bandval = (f > 32) ? 10 : (f > 26) ? 9 : (f > 22) ? 8 : (f > 20) ? 7 : (f > 16) ? 6 : (f > 12) ? 5 : (f > 8) ? 4 : (f > 6) ? 3 : (f > 4) ? 2 : (f > 2) ? 1 : 0;
+    if(menu.state == MENU_MAIN)
+      display_vfo(); // refresh + cursor (legacy change block)
   }
 }
 static void Command_AI() { Serial.print("AI0;"); }
@@ -111,6 +122,9 @@ static void Command_SetMD() { // legacy 4589-4596 (legacy: no range check)
   vfomode[vfosel % 2] = mode; // legacy 4593
   si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
   vfo_apply();
+  vfo_save_current(); // persist vfomode (legacy change block)
+  if(menu.state == MENU_MAIN)
+    display_vfo_line1(); // immediate mode label (GW8RDI 4.00a)
 }
 static void Command_RX() {
   switch_rxtx(0);
