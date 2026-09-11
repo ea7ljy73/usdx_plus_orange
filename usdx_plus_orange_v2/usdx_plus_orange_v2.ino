@@ -448,14 +448,14 @@ static int16_t smeter(int16_t ref = 0) {
 }
 
 volatile uint32_t save_event_time = 0; // deferred VFO persist (legacy 5684/5717: save 1s after last tune, never while tuning)
-// legacy stepsize_change (3865-3870): indices = step_t, skip .5M/10k
+// legacy stepsize_change: dial range 1..8 (never 1Hz idx 9, never 10M idx 0)
 void stepsize_change(int8_t val) {
   stepsize += val;
   if(stepsize < 1)
-    stepsize = 9; // STEP_1..STEP_10M
-  if(stepsize > 9)
-    stepsize = 1;
-  if(stepsize == 2 || stepsize == 4) // STEP_500k / STEP_10k
+    stepsize = 8; // STEP_10
+  if(stepsize > 8)
+    stepsize = 1; // STEP_1M
+  if(stepsize == 2 || stepsize == 4) // STEP_500k / STEP_10k (comma columns)
     stepsize += val;
   lcd.setCursor(stepsize + 1, 1); // cursor only (legacy stepsize_showcursor, no full redraw)
   lcd.cursor();
