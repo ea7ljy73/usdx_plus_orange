@@ -356,11 +356,12 @@ inline void Menu::edit_value(int32_t delta) {
 }
 
 inline void Menu::process() {
-  // --- button: NON-BLOCKING state machine. BL/BR fire on release (SC/PL).
-  // The DIAL (BE) fires SC *optimistically* on short release (instant cursor
-  // feedback); a 2nd press within 500ms upgrades to DC (band change, which
-  // forces STEP_1k anyway, so end-states match legacy exactly). Hold+turn is
-  // PT (volume, legacy 5472). ---
+  // --- button: NON-BLOCKING state machine. BL/BR fire on release (SC/PL,
+  // LONG_PRESS_MS threshold). The DIAL (BE) fires SC *optimistically* on short
+  // release (instant cursor feedback); a 2nd press within DC_WINDOW_MS upgrades
+  // to DC (band change, which forces STEP_1k anyway, so end-states converge).
+  // Dial turns between clicks cancel the DC window (stepping intent).
+  // Hold+turn is PT (volume, legacy 5472). ---
   enum btn_st_t { B_IDLE = 0, B_HOLD = 1 };
   static uint8_t  b_state      = B_IDLE;
   static uint32_t b_t0         = 0;
@@ -575,6 +576,7 @@ inline void Menu::handle_event(uint8_t ev) {
         } else
           filt = 0;
       }
+      bandval_align(); // VFO may be on another band (legacy change block)
       vfo_apply();
       save_event_time = millis() + 1000; // persist RIT/VFO state when idle
       display_vfo_line1();

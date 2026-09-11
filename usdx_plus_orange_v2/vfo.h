@@ -26,6 +26,23 @@ extern volatile uint8_t bandval;
 extern volatile uint8_t stepsize;
 extern int32_t vfo[2];     // VFO A/B freq (owned by main .ino, legacy parity)
 extern uint8_t vfomode[2]; // VFO A/B mode (owned by main .ino, legacy parity)
+
+// align bandval with freq (legacy change block 5702). Call after every freq
+// change from VFO swap / CAT / boot so LPF + band display stay coherent.
+inline void bandval_align() {
+  uint8_t f = freq / 1000000UL;
+  bandval   = (f > 32) ? 10
+              : (f > 26) ? 9
+              : (f > 22) ? 8
+              : (f > 20) ? 7
+              : (f > 16) ? 6
+              : (f > 12) ? 5
+              : (f > 8)  ? 4
+              : (f > 6)  ? 3
+              : (f > 4)  ? 2
+              : (f > 2)  ? 1
+                         : 0;
+}
 extern void (*vfo_apply_freq)(int32_t); // hook to si5351.freq (set in .ino)
 extern int32_t vfo_cache_freq;          // last applied freq
 

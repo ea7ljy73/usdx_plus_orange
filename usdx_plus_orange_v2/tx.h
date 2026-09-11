@@ -108,9 +108,10 @@ inline int16_t arctan3(int16_t q, int16_t i) {
 #define magn(i, q) (abs(i) > abs(q) ? abs(i) + (abs(q) >> 2) : abs(q) + (abs(i) >> 2))
 
 // ---------------------------------------------------------------------------
-// ssb() - polar SSB modulator
-// EXACT COPY of usdx-legazy:2031 (strict parity; improvements are deferred
-// and will be reintroduced later as optional, verified by parity tests).
+// ssb() - polar SSB modulator. Base EXACTA de usdx-legazy:2031 (paridad TX
+// verificada con todo off) + mejoras conmutadas Fase 3, cada una medida en
+// A/B: DIGI flat path (F3.7), compresor voz (F3.9b), low-cut HPF (F3.9c),
+// ALC (F3.8). Con todo off, bit-exacto con legacy.
 // ---------------------------------------------------------------------------
 inline int16_t ssb(int16_t in) {
   static int16_t dc, z1;
