@@ -416,6 +416,7 @@ const int8_t MENU_COUNT = 32; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
+int16_t  smeter_cnt    = 0;
 int16_t  dbm           = 0;
 
 // 20*log10 LUTs (Fase 1: S-meter sin float; maxerr 0.61dB vs exacto, verificado
@@ -434,11 +435,13 @@ static int16_t sm_log20_16(uint32_t M) {
   return (int16_t)(pgm_read_word(&SM_EXP[e]) + pgm_read_byte(&SM_FRAC[j]));
 }
 
-// S-meter as legacy (usdx-legazy:3565-3614); draws dBm (smode 1) or S (smode 2)
+// S-meter as legacy (usdx-legazy:3565-3614); draws dBm (smode 1) or S (smode 2).
+// Legacy cadence: peak tracked always, recompute+draw+decay every ~2s
+// (%2048 loops). Ours: same structure with time-based ticks (20x100ms).
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
-  if(smode) {
-    { // recompute dBm every tick: integer log10 (~100 ciclos), sin el float de legacy
+  if(smode && (++smeter_cnt % 20) == 0) { // slowed down display slightly
+    { // recompute dBm: integer log10 (~100 ciclos), sin el float de legacy
       uint32_t M = max_absavg256;
       if(M == 0)
         M = 1;
