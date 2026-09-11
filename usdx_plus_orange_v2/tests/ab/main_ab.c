@@ -18,6 +18,7 @@
 // --- TU TX polar (ab_tx.c generado por gen_ab.py: tx=1, LUT lineal) ---
 extern void    ab_tx_init(void);
 extern void    ab_ssb(int16_t in);
+extern void    ab_dig_mode(uint8_t v);
 extern int16_t ab_df_out;
 extern uint8_t ab_amp_out;
 extern volatile uint8_t drive;
@@ -54,11 +55,11 @@ static double goertzel(double f, double fs, double (*gen)(int), int n0, int n1) 
 #define TXN 4800 // 1 s @ 4800 SPS; todo Hz entero es coherente
 static double tx_re[TXN], tx_im[TXN];
 
-static void tx_run(double a1, double a2) {
+static void tx_run2(double a1, double f1, double a2, double f2) {
   double phase = 0;
   for(int n = 0; n < TXN; n++) {
-    double m = a1 * sin(2 * M_PI * 700.0 * n / 4800.0) +
-               a2 * sin(2 * M_PI * 1100.0 * n / 4800.0);
+    double m = a1 * sin(2 * M_PI * f1 * n / 4800.0) +
+               a2 * sin(2 * M_PI * f2 * n / 4800.0);
     ab_ssb((int16_t)m);
     double dp = (double)ab_df_out / 8.0; // pasos _UA
     phase += dp * (2.0 * M_PI / 600.0);
@@ -67,6 +68,7 @@ static void tx_run(double a1, double a2) {
     tx_im[n] = a * sin(phase);
   }
 }
+static void tx_run(double a1, double a2) { tx_run2(a1, 700.0, a2, 1100.0); }
 // Goertzel complejo en f (signo incluido: f<0 = banda imagen).
 // X = u[N-1] - e^{-jw} u[N-2] con u compleja (recurrencia separada re/im).
 static double cgoertzel(double f, int n0, int n1) {
@@ -211,6 +213,23 @@ int main(void) {
   tx_imd("alto", 300.0);
   tx_imd("att1", 75.0); // equivale a mic_atten=1 con mic=150 (6dB)
   tx_imd("att2", 37.5); // equivale a mic_atten=2 con mic=150 (12dB)
+
+  // F3.7 planitud: dos tonos 400+2000 en el MISMO run (respuesta en frecuencia)
+  ab_dig_mode(0);
+  tx_run2(150.0, 400.0, 150.0, 2000.0);
+  double v400 = cgoertzel(400.0, 480, TXN), v2000 = cgoertzel(2000.0, 480, TXN);
+  ab_dig_mode(1);
+  tx_run2(150.0, 400.0, 150.0, 2000.0);
+  double d400 = cgoertzel(400.0, 480, TXN), d2000 = cgoertzel(2000.0, 480, TXN);
+  ab_dig_mode(0);
+  printf("TX flat voz  400=%6.3f 2000=%6.3f diff=%5.1fdB\n", v400, v2000,
+         20 * log10(v2000 / (v400 + 1e-12)));
+  printf("TX flat digi 400=%6.3f 2000=%6.3f diff=%5.1fdB\n", d400, d2000,
+         20 * log10(d2000 / (d400 + 1e-12)));
+  tx_run(150.0, 150.0); // re-sincroniza estado ssb tras pruebas digi
+  ab_dig_mode(1);
+  tx_imd("digi700+1100", 150.0);
+  ab_dig_mode(0);
 
   printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
   isolate(m_rx_floor);
