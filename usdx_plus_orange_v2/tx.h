@@ -36,7 +36,7 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 #define AM_BASE 32       // AM carrier bias
 #define AF_BIAS 32       // mic positive bias offset
 
-#define MIC_ATTEN 0 // 0*6dB attenuation
+volatile uint8_t mic_atten = 0; // F3.6: mic attenuation 0..4 in 6dB steps (menu)
 
 // ---------------------------------------------------------------------------
 // External references (defined in other modules)
@@ -184,7 +184,7 @@ inline void    dsp_tx() { // jitter dependent things first
   OCR1BL = amp;                 // submit amplitude to PWM
   adc += ADC;
   ADCSRA |= (1 << ADSC); // causes RFI on QCX-SSB (use direct biasing!)
-  int16_t df = ssb(_adc >> MIC_ATTEN);
+  int16_t df = ssb(_adc >> mic_atten);
   adc += ADC;
   ADCSRA |= (1 << ADSC);
   si5351.freq_calc_fast(df);
@@ -196,7 +196,7 @@ inline void    dsp_tx() { // jitter dependent things first
   si5351.SendPLLRegisterBulk();
   OCR1BL      = amp;
   int16_t adc = ADC - 512;
-  int16_t df  = ssb(adc >> MIC_ATTEN);
+  int16_t df  = ssb(adc >> mic_atten);
   si5351.freq_calc_fast(df);
 #endif
 
@@ -247,7 +247,7 @@ void dsp_tx_am() {
   ADCSRA |= (1 << ADSC);
   OCR1BL      = amp;
   int16_t adc = ADC - 512;
-  int16_t in  = (adc >> MIC_ATTEN);
+  int16_t in  = (adc >> mic_atten);
   in          = in << (drive - 4);
   in          = max(0, min(255, (in + AM_BASE)));
   amp         = in;
@@ -258,7 +258,7 @@ void dsp_tx_fm() {
   OCR1BL = lut[255];
   si5351.SendPLLRegisterBulk();
   int16_t adc = ADC - 512;
-  int16_t in  = (adc >> MIC_ATTEN);
+  int16_t in  = (adc >> mic_atten);
   in          = in << (drive);
   int16_t df  = in;
   si5351.freq_calc_fast(df);
