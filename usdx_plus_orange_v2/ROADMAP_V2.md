@@ -77,14 +77,56 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 - [x] 13. NR 2-polos en cascada (12dB/oct, cortes ~3000..850Hz, +~110 B).
   AB: tono intacto en todos los niveles, ruido 53,7→35,3 monótono.
   Divergencia intencional legacy en nr>=2 (paridad TX exacta, RX resto 0 %).
+- [x] 16. AGC arranque rápido (F4.16, menú "AGC Start" OFF/ON, eslot 33 banco
+  extra; OFF = legacy exacto). Legacy arranca gain x1 y tarda ~7 s en cargar
+  con banda floja (medido host); ON precarga x8 (8192): audible al instante,
+  t90 7,1→5,3 s en ruido débil, sin overflow int16 (pico 16000 con in=2000) y
+  asentamiento <=0,33 s en señal fuerte. Algoritmo/equilibrio intactos (solo
+  condición inicial al arrancar): paridad RX 0 mismatches con flag OFF.
+  (+52 B flash, +1 B RAM). PENDIENTE validar en HW.
 - [ ] 14. LMS notch solo CW / 15. Goertzel (aparcados: flash al 95 %).
 14. LMS notch solo en path CW (en voz interfería).
 15. S-meter calibrado real tras punto fijo; Goertzel CW como experimento.
 
 ## Fase 5 — Robustez/UX
 
-16. SWR foldback (si hay puente), CAT_TX status, DIAG ligero, guía de
+17. SWR foldback (si hay puente), CAT_TX status, DIAG ligero, guía de
     perfiles (voz/DX/digital/CW).
+
+## Backlog RX investigado (2026-09-14; QMX, Flex, Yaesu, Icom, WDSP/Thetis,
+GW8RDI, F5NPV — SIN implementar; ordenado por valor/coste para AVR)
+
+Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
+"EVALUADO Y REVERTIDO" con motivo, y no se reintenta por esa vía.
+
+- [ ] B1. AGC con umbral/congelación anti-bombeo (QMX "Threshold S", Flex AGC-T):
+  no subir `gain` si el pico < umbral (menú). Cierra el bombeo de soplo en
+  pausas; sinergia con F4.16. Coste ~1 comparación + menú. A/B: envolvente con
+  ráfagas+pausas.
+- [ ] B2. Blanker de impulsos pre-Hilbert (QMX "Noise filter", Flex WNB, WDSP
+  preemptivo): en `sdr_rx_common_i/q` a 62,5 kHz, si |muestra| > k×media,
+  sostener N muestras; no debe arrancar AGC/hang. Único punto viable (post-
+  Hilbert revertido en F4). Coste ~10-20 ciclos/muestra. A/B: estática real +
+  falsos del decoder CW.
+- [ ] B3. Exponer `agc=2` M0PUB (GW8RDI `FAST_AGC`, "good for CW"): `process_agc`
+  ya portado; abrir menú AGC 0..2. ~30 B. A/B host + oreja en CW.
+- [ ] B4. Bloqueador DC pre-AGC (todos): HPF 1-polo ~100 Hz; el DC de desbalance
+  IQ/deriva ADC bombea el AGC. ~15 ciclos @7812 Hz. A/B: inyectar DC, ganancia
+  estable.
+- [ ] B5. Detector AGC post-filtro anti-desense (slices Flex/Yaesu): medir nivel
+  tras `filt_var()` para que un adyacente fuerte no hunda la señal útil. Medio.
+  A/B con interferente adyacente simulado.
+- [ ] B6. Trim balance IQ en amplitud (mcHF 60 dB mirror, QMX image sweep): hoy
+  solo fase (`rx_ph_q`); 1 mult int16 @7812 Hz + menú. Lo caro es la metodología
+  HW (anular imagen inyectada). Alternativa HW F5NPV (cargar FST3253 10-50 Ω).
+- [ ] B7. Squelch con histéresis (todos; útil FM) + B8. Volumen sidetone CW por
+  menú (GW8RDI `CW_VOLUME`, F5NPV). Decenas de bytes c/u.
+- [ ] B9. ATT automático (filosofía QMX RF-gain + docs uSDX 80/40 m): seguir
+  estado AGC con histéresis (sin clicar relés). Medio; gran valor portable.
+- Parked: ANF LMS notch (Flex ANF/Yaesu DNF/Icom auto-notch; sin flash),
+  `NR_FIR` GW8RDI (nuestro 2-polos ya mide bien), NR espectral/RNNoise +
+  waterfall (imposibles en AVR), Goertzel decoder (QMX lo usa; aparcado),
+  Twin-PBT/sharp-soft (Icom), APF CW (cubierto por filtros 500/200/100/50).
 
 ## Log de medidas (Fase 0 en adelante)
 
@@ -100,3 +142,4 @@ Margen: ~2,4 KB flash, ~890 B RAM.
 | 2026-09-11 | 30476 / 1180 | — | — | — | F3.9b comp voz 2:1 (+150 B, menú+eslot 24). AB mixto: IMD −10,3→−12,6dBc |
 | 2026-09-11 | 30598 / 1183 | — | — | — | F3.9c LoCut (+122 B, menú+eslot 32 banco extra). AB: −3,6/−9/−19dB@100Hz |
 | 2026-09-11 | 30724 / 1185 | — | — | — | F4 NR 2-polos (+126 B). AB: tono intacto, ruido 53,7→35,3 |
+| 2026-09-14 | 30456 / 1184 | — | — | — | F4.16 AGC arranque rápido (+52 B/+1 B, menú+eslot 33). AB host: t_aud 1,46→0 s, t90 7,1→5,3 s (ruido débil); paridad RX 0 mismatches (flag OFF). PENDIENTE HW |

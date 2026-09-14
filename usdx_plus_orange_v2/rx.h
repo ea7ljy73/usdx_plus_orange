@@ -101,6 +101,14 @@ inline int16_t process_agc(int16_t in) {
 // NOTA F4: se evaluó hang timer (~77ms) + noise floor: SIN diferencia medible
 // (la dinámica lenta del AGC domina; ver tests/ab). Revertido: paridad exacta.
 static int16_t gain = 1024;
+// F4.16 AGC fast start (menu "AGC Start", OFF = legacy exacto): precarga de
+// ganancia al arrancar. Legacy arranca en x1 y tarda ~7s en cargar con banda
+// floja (medido en host); pre-cargar x8 hace audible la RX al instante sin
+// tocar el régimen permanente (el algoritmo/equilibrio no cambian, solo la
+// condición inicial; el ataque rápido asienta señales fuertes en ms).
+#define AGC_PRECHARGE 8192 // x8 (pico 16000 con in=2000: sin overflow int16)
+volatile uint8_t agc_start = 0; // 0=legacy (gain x1), 1=precarga x8 al arrancar
+inline void      agc_precharge() { gain = AGC_PRECHARGE; }
 inline int16_t process_agc_fast(int16_t in) {
   int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
   int16_t accum = (1 - abs(out >> 10));
