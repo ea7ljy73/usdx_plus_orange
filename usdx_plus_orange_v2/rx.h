@@ -195,7 +195,10 @@ inline int16_t slow_dsp(int16_t ac) {
   // puentea y el integrador de salida acumula el resto). Medido en A/B:
   // 0 diferencia. Un blanker útil tendría que ir pre-Hilbert (62.5kHz).
 
-  if(agc == 1) {
+  if(agc == 2) {
+    ac = process_agc(ac); // B3 FAST_AGC legacy path (M0PUB: fast attack, slow
+    ac = ac >> (16 - volume); // decay; bueno para CW). Solo si el usuario lo
+  } else if(agc == 1) {       // elige 2; default 1 = legacy exacto.
     ac = process_agc_fast(ac); // legacy default (no FAST_AGC): agc_fast
     ac = ac >> (16 - volume);
   } else { // agc==0: no AGC, only volume (legacy parity w/o FAST_AGC)

@@ -72,6 +72,13 @@ static const char offon_label_0[] PROGMEM = "OFF";
 static const char offon_label_1[] PROGMEM = "ON";
 const char* const offon_label[2] PROGMEM = {offon_label_0, offon_label_1};
 
+// B3 FAST_AGC legacy labels (usdx-legazy:4124 con FAST_AGC): 0=OFF, 1=Fast
+// (agc_fast), 2=Slow/M0PUB. Default v2 = 1 (legacy sin FAST_AGC exacto).
+static const char agc_label_0[] PROGMEM = "OFF";
+static const char agc_label_1[] PROGMEM = "Fast";
+static const char agc_label_2[] PROGMEM = "Slow";
+const char* const agc_label[3] PROGMEM = {agc_label_0, agc_label_1, agc_label_2};
+
 static const char mode_label_0[] PROGMEM = "LSB";
 static const char mode_label_1[] PROGMEM = "USB";
 static const char mode_label_2[] PROGMEM = "CW ";
@@ -373,7 +380,7 @@ const MenuParam MENU[] PROGMEM = {
     {4, (void*)&stepsize, P_ENUM, 0, 9, stepsize_label, 5, NULL},
     {5, (void*)&vfosel, P_ENUM, 0, 1, vfosel_label, 6, on_vfosel},
     {6, (void*)&rit, P_ENUM, 0, 1, offon_label, 7, on_rit}, // legacy RIT toggle (rit!=0 = active)
-    {7, (void*)&agc, P_ENUM, 0, 1, offon_label, 8, NULL}, // legacy w/o FAST_AGC: offon 0..1
+    {7, (void*)&agc, P_ENUM, 0, 2, agc_label, 8, NULL}, // B3: 0=OFF,1=Fast,2=Slow/M0PUB (default 1 legacy)
     {8, (void*)&nr, P_T8, 0, 8, NULL, 9, NULL},
     {9, (void*)&att, P_ENUM, 0, 7, att_label, 10, on_att},
     {10, (void*)&att2, P_T8, 0, 16, NULL, 11, NULL},

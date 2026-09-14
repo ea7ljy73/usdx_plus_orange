@@ -111,8 +111,11 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
   sostener N muestras; no debe arrancar AGC/hang. Único punto viable (post-
   Hilbert revertido en F4). Coste ~10-20 ciclos/muestra. A/B: estática real +
   falsos del decoder CW.
-- [ ] B3. Exponer `agc=2` M0PUB (GW8RDI `FAST_AGC`, "good for CW"): `process_agc`
-  ya portado; abrir menú AGC 0..2. ~30 B. A/B host + oreja en CW.
+- [x] B3/F4.18. AGC Slow/M0PUB opcional (legacy `FAST_AGC`: menú AGC 0..2
+  OFF/Fast/Slow, default 1 intacto; `process_agc` ya estaba portado, ahora
+  enlazado). A/B host dits CW: nivel ON var 97,9→1,4 (70x más estable),
+  overshoot 191→118 sin clipa. (+286 B flash: cuerpo M0PUB, +2 B RAM).
+  PENDIENTE HW.
 - [ ] B4. Bloqueador DC pre-AGC (todos): HPF 1-polo ~100 Hz; el DC de desbalance
   IQ/deriva ADC bombea el AGC. ~15 ciclos @7812 Hz. A/B: inyectar DC, ganancia
   estable.
@@ -147,3 +150,4 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 | 2026-09-11 | 30724 / 1185 | — | — | — | F4 NR 2-polos (+126 B). AB: tono intacto, ruido 53,7→35,3 |
 | 2026-09-14 | 30456 / 1184 | — | — | — | F4.16 AGC arranque rápido (+52 B/+1 B, menú+eslot 33). AB host: t_aud 1,46→0 s, t90 7,1→5,3 s (ruido débil); paridad RX 0 mismatches (flag OFF). PENDIENTE HW |
 | 2026-09-14 | 30518 / 1187 | — | — | — | F4.17 AGC Rec (+62 B/+2 B, menú+eslot 34). AB ráfagas: var soplo 18,3→2,5, overshoot 625→250; knee EVALUADO Y REVERTIDO (soplo 4x/var 15x/clip). Paridad 0 (rec=1). PENDIENTE HW |
+| 2026-09-14 | 30804 / 1189 | — | — | — | F4.18 AGC Slow M0PUB (+286 B/+2 B, menú AGC 0..2 default 1). AB dits: var nivel 97,9→1,4. Paridad 0 (agc 0/1). PENDIENTE HW |
