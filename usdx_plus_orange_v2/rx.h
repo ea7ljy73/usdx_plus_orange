@@ -117,15 +117,15 @@ inline void      agc_precharge() { gain = AGC_PRECHARGE; }
 // bajo umbral, QMX Threshold) se EVALUÓ Y REVIRTIÓ: A/B host mostró soplo 4x,
 // varianza 15x y clipping en flancos — no reintentar por esa vía.
 volatile uint8_t agc_rec = 1; // divisor de recovery (1=legacy, mayor=más lento)
+static uint8_t agc_rec_cnt = 0; // fase del divisor (file-scope: testeable en host)
 inline int16_t   process_agc_fast(int16_t in) {
   int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
   int16_t accum = (1 - abs(out >> 10));
   if(accum > 0) { // solo se ralentiza la subida; el ataque es legacy intacto
-    static uint8_t rec_cnt;
-    if(++rec_cnt < agc_rec)
+    if(++agc_rec_cnt < agc_rec)
       accum = 0; // aún no toca subir en este ciclo
     else
-      rec_cnt = 0;
+      agc_rec_cnt = 0;
   }
   if((INT16_MAX - gain) > accum)
     gain = gain + accum;

@@ -218,6 +218,7 @@ static int16_t ozi1, ozi2;
 static uint32_t amp32 = 0;
 static volatile uint32_t _amp32 = 0;
 static int16_t gain = 1024;
+static uint8_t agc_rec_cnt = 0; /* F4.17 (solo cuerpo v2 lo usa) */
 static volatile uint8_t nb_enable = 0; // F4 NB (declarado aquí; slow_dsp lo usa)
 #define DECAY_FACTOR 400
 static int16_t centiGain = 128;
@@ -285,6 +286,17 @@ void rx_init{s}(void){{ rx_init(); }}
 void rx_run{s}(int st){{ rx_run(st); }}
 int16_t rx_last_audio{s}(void){{ return rx_last_audio(); }}
 void rx_nb{s}(uint8_t v){{ nb_enable = v; }}
+/* F4.18: test funcion del M0PUB (cuerpo extraido de cada fuente) */
+void wrap_agc{s}_reset(void){{ centiGain=128; decayCount=400; }}
+int16_t wrap_agc{s}(int16_t x){{ return process_agc(x); }}
+/* F4.16/17: test A/B del agc_fast v2 (solo TU V los usa) */
+int16_t wrap_agcfast{s}(int16_t x){{ return process_agc_fast(x); }}
+'''
+    if tag == 'V':
+        txt += '''
+/* tests/ab_agc: control estado AGC v2 */
+void rx_agc_v2_set(int16_t g, uint8_t rec){ gain=g; agc_rec=rec; agc_rec_cnt=0; }
+int16_t rx_gain_v2(void){ return gain; }
 '''
     return txt
 
