@@ -55,6 +55,17 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm
 | RX filt=1/2/3 (SSB) | **0 mismatches** |
 | RX filt=4..7 (CW) | **0 mismatches** |
 | RX agc=1 (AGC ON) | **0 mismatches** |
+| M0PUB body legacy vs v2 (F4.18, funcion suelta) | **0 mismatches** (2852 pasos) |
+
+### A/B AGC (F4.16/F4.17, divergencias intencionales, con asserts)
+
+```bash
+cd usdx_plus_orange_v2/tests/ab_agc
+./run_ab_agc.sh   # cuerpo REAL de process_agc_fast; exit 0 = PASS, 1 = FAIL
+```
+
+Valida con asserts: T1 precarga x8 audible en muestra 0 y t90 menor;
+T2 rec=4 varianza soplo <1/4, overshoot menor y sin clipping.
 
 ## Divergencias CORREGIDAS (2026-09-03) — paridad total alcanzada
 

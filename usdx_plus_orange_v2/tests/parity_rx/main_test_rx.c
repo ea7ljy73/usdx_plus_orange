@@ -28,6 +28,41 @@ extern void rx_cfg_v2(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint
 extern void rx_run_v2(int);
 extern int16_t rx_last_audio_v2(void);
 
+// F4.18: wrappers funcion M0PUB (cuerpo extraido de cada fuente, estado propio)
+extern void    wrap_agc_legacy_reset(void);
+extern int16_t wrap_agc_legacy(int16_t x);
+extern void    wrap_agc_v2_reset(void);
+extern int16_t wrap_agc_v2(int16_t x);
+
+// F4.18: paridad del cuerpo process_agc (M0PUB) legacy vs v2, muestra a
+// muestra, mismo estimulo desde estado virgen (el slow_dsp legacy no tiene
+// rama agc==2, asi que aqui se compara la funcion, no la cadena).
+static int test_m0pub(void) {
+  int mism = 0, total = 0;
+  unsigned seed = 1234;
+  wrap_agc_legacy_reset();
+  wrap_agc_v2_reset();
+#define C(x) do { int16_t a = wrap_agc_legacy(x), b = wrap_agc_v2(x); total++; \
+    if(a != b) { mism++; if(mism < 6) printf("   n=%d in=%d L=%d V=%d\n", total, (x), a, b); } } while(0)
+  for(int i = 0; i <= 4000; i += 100) C(i);       // rampa subida
+  for(int i = 4000; i >= -4000; i -= 100) C(i);   // rampa bajada (cruza 0)
+  for(int i = 0; i < 20; i++) { C(3000); C(-3000); C(500); C(-500); } // escalones
+  for(int i = 0; i < 50; i++) { C(2000); C(0); }  // rafagas on/off (hang/decay)
+  for(int i = 0; i < 2000; i++) {                 // ruido debil
+    seed = seed * 1103515245 + 12345;
+    C((int16_t)((seed >> 9) % 81) - 40);
+  }
+  for(int i = 0; i < 50; i++) C(8000);            // blast (exposicion overflow)
+  for(int i = 0; i < 500; i++) {                  // recupera tras blast
+    seed = seed * 1103515245 + 12345;
+    C((int16_t)(300 + ((seed >> 9) % 101) - 50));
+  }
+#undef C
+  printf("M0PUB body legacy vs v2              steps=%d  mismatch=%d %s\n",
+         total, mism, mism ? "FAIL" : "OK");
+  return mism > 0;
+}
+
 #define N 30000
 
 static void fill_signal(double f) {
@@ -95,6 +130,8 @@ int main(void) {
   fail += compare("CW  agc=0 filt=7 (CW 18)",     CW_MODE, 0, 12, 0, 7, 2, 1) > 0;
   printf("\n-- AGC (known divergence: legacy=agc_fast, v2=M0PUB agc) --\n");
   fail += compare("USB agc=1 filt=0 (AGC ON)",    USB, 1, 12, 0, 0, 2, 1) > 0;
+  printf("\n-- M0PUB body port (F4.18 agc==2, funcion suelta) --\n");
+  fail += test_m0pub() > 0;
   printf("\n");
   printf("NOTE: rows with 0.00%% match EXACTLY; rows above 0%% are the known\n");
   printf("      intentional filter-gain / AGC-algorithm divergences.\n");
