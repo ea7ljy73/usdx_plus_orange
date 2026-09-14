@@ -99,10 +99,13 @@ GW8RDI, F5NPV — SIN implementar; ordenado por valor/coste para AVR)
 Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 "EVALUADO Y REVERTIDO" con motivo, y no se reintenta por esa vía.
 
-- [ ] B1. AGC con umbral/congelación anti-bombeo (QMX "Threshold S", Flex AGC-T):
-  no subir `gain` si el pico < umbral (menú). Cierra el bombeo de soplo en
-  pausas; sinergia con F4.16. Coste ~1 comparación + menú. A/B: envolvente con
-  ráfagas+pausas.
+- [x] B1. AGC anti-bombeo como F4.17 "AGC Rec" (divisor recovery 1..8, 1=legacy;
+  eslot 34 banco extra). Solo ralentiza la SUBIDA (+1 cada N muestras); ataque
+  intacto, mismo equilibrio. A/B host ráfagas: varianza soplo 18,3→2,5 (rec=4),
+  overshoot flanco 625→250 (ya no clipa), rampa débil ×N (cubierta por F4.16).
+  (+62 B flash, +2 B RAM). Knee bajo umbral (QMX Threshold, retorno rápido a
+  máx): EVALUADO Y REVERTIDO — A/B mostró soplo 4x, varianza 15x y clipping en
+  flancos; no reintentar por esa vía. PENDIENTE HW (recomendado rec=4).
 - [ ] B2. Blanker de impulsos pre-Hilbert (QMX "Noise filter", Flex WNB, WDSP
   preemptivo): en `sdr_rx_common_i/q` a 62,5 kHz, si |muestra| > k×media,
   sostener N muestras; no debe arrancar AGC/hang. Único punto viable (post-
@@ -143,3 +146,4 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 | 2026-09-11 | 30598 / 1183 | — | — | — | F3.9c LoCut (+122 B, menú+eslot 32 banco extra). AB: −3,6/−9/−19dB@100Hz |
 | 2026-09-11 | 30724 / 1185 | — | — | — | F4 NR 2-polos (+126 B). AB: tono intacto, ruido 53,7→35,3 |
 | 2026-09-14 | 30456 / 1184 | — | — | — | F4.16 AGC arranque rápido (+52 B/+1 B, menú+eslot 33). AB host: t_aud 1,46→0 s, t90 7,1→5,3 s (ruido débil); paridad RX 0 mismatches (flag OFF). PENDIENTE HW |
+| 2026-09-14 | 30518 / 1187 | — | — | — | F4.17 AGC Rec (+62 B/+2 B, menú+eslot 34). AB ráfagas: var soplo 18,3→2,5, overshoot 625→250; knee EVALUADO Y REVERTIDO (soplo 4x/var 15x/clip). Paridad 0 (rec=1). PENDIENTE HW |

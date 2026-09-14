@@ -93,7 +93,7 @@ extern volatile uint8_t  cw_msg_id;
 extern char              cw_msg[1][48];
 #endif
 
-#define N_MENU_ITEMS 33 // declared capacity; MENU_COUNT computed from table
+#define N_MENU_ITEMS 34 // declared capacity; MENU_COUNT computed from table
 #define MENU_IDX_CWMSG 26 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
