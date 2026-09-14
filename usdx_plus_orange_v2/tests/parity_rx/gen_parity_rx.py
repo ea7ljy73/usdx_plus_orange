@@ -198,6 +198,7 @@ static volatile uint8_t nr;
 static volatile uint8_t filt;
 static volatile uint8_t att2;
 static volatile uint8_t cw_tone;
+static volatile uint8_t agc_rec = 1; /* F4.17 recovery (1 = legacy exacto) */
 '''
 
 SUF = {'L': '_legacy', 'V': '_v2'}

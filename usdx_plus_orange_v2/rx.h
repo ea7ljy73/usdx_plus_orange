@@ -109,9 +109,24 @@ static int16_t gain = 1024;
 #define AGC_PRECHARGE 8192 // x8 (pico 16000 con in=2000: sin overflow int16)
 volatile uint8_t agc_start = 0; // 0=legacy (gain x1), 1=precarga x8 al arrancar
 inline void      agc_precharge() { gain = AGC_PRECHARGE; }
-inline int16_t process_agc_fast(int16_t in) {
+// F4.17 AGC recovery anti-bombeo (menu "AGC Rec" 1..8, 1 = legacy exacto;
+// estilo QMX "Recovery dB/s"): la subida de ganancia (+1) se aplica 1 de cada
+// N muestras; el ataque rápido NO se toca. Con N>1 la ganancia apenas se mueve
+// entre palabras (no respira) pero sigue rampando en señales débiles
+// permanentes y a plena sensibilidad con F4.16. El knee (volver rápido a máx
+// bajo umbral, QMX Threshold) se EVALUÓ Y REVIRTIÓ: A/B host mostró soplo 4x,
+// varianza 15x y clipping en flancos — no reintentar por esa vía.
+volatile uint8_t agc_rec = 1; // divisor de recovery (1=legacy, mayor=más lento)
+inline int16_t   process_agc_fast(int16_t in) {
   int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
   int16_t accum = (1 - abs(out >> 10));
+  if(accum > 0) { // solo se ralentiza la subida; el ataque es legacy intacto
+    static uint8_t rec_cnt;
+    if(++rec_cnt < agc_rec)
+      accum = 0; // aún no toca subir en este ciclo
+    else
+      rec_cnt = 0;
+  }
   if((INT16_MAX - gain) > accum)
     gain = gain + accum;
   if(gain < 1)
