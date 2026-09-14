@@ -172,7 +172,8 @@ static const char menu_label_28[] PROGMEM = "Mic Atten";
 static const char menu_label_29[] PROGMEM = "DIGI Mode";
 static const char menu_label_30[] PROGMEM = "TX Comp";
 static const char menu_label_31[] PROGMEM = "TX LoCut";
-const char* const MENU_LABELS[32] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31};
+static const char menu_label_32[] PROGMEM = "AGC Start";
+const char* const MENU_LABELS[33] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -410,9 +411,11 @@ const MenuParam MENU[] PROGMEM = {
     {26, (void*)&rx_ph_q, P_T8, 0, 180, NULL, 30, on_iq},
     // Backlight (BACKL legacy 0xA1)
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
+    // AGC Start (F4.16: precarga x8 al arrancar; eslot 33 = banco extra 0x2C1)
+    {32, (void*)&agc_start, P_ENUM, 0, 1, offon_label, 33, NULL},
 };
 
-const int8_t MENU_COUNT = 32; // number of entries above
+const int8_t MENU_COUNT = 33; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
@@ -680,7 +683,14 @@ void setup() {
   freq = vfo[vfosel % 2]; // restore last VFO state (legacy boot parity, 5101)
   mode = vfomode[vfosel % 2];
   bandval_align(); // align bandval with freq (legacy change block)
-  set_lpf(freq / 1000000UL); // warm LPF relays NOW (first call inits 16 latches, ~550ms; legacy does it in first loop before any dial touch)
+  // Legacy order parity (usdx-legazy:5110): start RX FIRST, program RF after.
+  // set_lpf() warms ~17 latches (~1s) and vfo_apply() bit-bangs the SI5351;
+  // doing it before start_rx kept the receiver silent that whole time, while
+  // legacy already runs the RX ISR (dark SI5351 = noise, same as here).
+  if(agc_start)
+    agc_precharge(); // F4.16: gain x8 desde la primera muestra (OFF = x1 legacy)
+  start_rx(); // arm RX DSP (ADC I/Q/mic + timers + func_ptr) as legacy
+  set_lpf(freq / 1000000UL); // warm LPF relays (first call inits 16 latches, ~550ms+; RX already running like legacy)
   vfo_apply();              // hw freq with loaded rx_ph_q / cw_offset
   save_event_time = 0;      // no pending VFO persist at boot
   encoder_setup();
@@ -690,7 +700,6 @@ void setup() {
   loadWPM(keyer_speed);       // CW timing
   keyer_set_mode(keyer_mode); // initialize keyerControl (IAMBICA/B, SINGLE)
 
-  start_rx(); // arm RX DSP (ADC I/Q/mic + timers + func_ptr) as legacy
   display_vfo();
 
 #if KEYER
