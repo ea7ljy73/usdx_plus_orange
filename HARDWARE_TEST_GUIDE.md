@@ -1,6 +1,6 @@
-# Guía de Prueba en Hardware — uSDX Plus Orange v2
+# Guía de Prueba en Hardware — uSDX Plus Orange
 
-Firmware modular `usdx_plus_orange_v2/` (rama `refactor-v2`). Esta guía cubre
+Firmware modular en la raíz del proyecto. Esta guía cubre
 el flasheo, las verificaciones paso a paso de RX/TX/CW/menú/CAT, y qué esperar
 en cada prueba. Incluye un apartado de resolución de problemas.
 
@@ -13,7 +13,7 @@ en cada prueba. Incluye un apartado de resolución de problemas.
 | Placa | uSDX WHITE_BUTTONS (ATMEGA328P @20MHz, cristal SI5351 27MHz) |
 | Programador | USBasp en ISP (recomendado) o Arduino-ISP |
 | Constantes | `F_MCU 20MHz`, `F_XTAL 27MHz`, `WHITE_BUTTONS=1` (ya en `usdx_settings.h`) |
-| Build actual | 19852B flash (61%), 1425B RAM (69%) |
+| Build actual | 30804B flash (95%), 1189B RAM (58%) |
 
 > **IMPORTANTE — antes de grabar:** el firmware **no tiene fuses automáticos**.
 > Verifica que el MCU esté a 20MHz externo (CKSEL=1111, CKDIV8=0) como el v1.
@@ -23,12 +23,11 @@ en cada prueba. Incluye un apartado de resolución de problemas.
 
 ## 2. Flasheo
 
-### Compilar
+### Compilar (desde la raíz del proyecto)
 ```bash
-cd usdx_plus_orange_v2
 arduino-cli compile --fqbn arduino:avr:uno .
 ```
-Resultado esperado: `19852 bytes (61%)`, RAM `1425 (69%)`. Sin errores.
+Resultado esperado: `30804 bytes (95%)`, RAM `1189 (58%)`. Sin errores.
 
 ### Grabar con USBasp (recomendado)
 ```bash
@@ -36,7 +35,7 @@ arduino-cli upload -b arduino:avr:uno -p usbasp -P usbasp .
 ```
 o manual:
 ```bash
-avrdude -c usbasp -p m328p -U flash:w:build/arduino.avr.uno/usdx_plus_orange_v2.ino.hex:i
+avrdude -c usbasp -p m328p -U flash:w:build/arduino.avr.uno/usdx_plus_orange.ino.hex:i
 ```
 
 ### Verificar fuses (20MHz)
