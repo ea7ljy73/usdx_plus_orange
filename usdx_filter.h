@@ -7,6 +7,10 @@
 
 #include <stdint.h>
 
+// External references owned by tx.h / main
+extern volatile uint8_t filt;
+extern volatile uint8_t cw_tone;
+
 #define N_FILT 7
 
 /* basicdsp filter simulation:
@@ -43,6 +47,8 @@
   out=zc0/8
 */
 
+#pragma GCC push_options
+#pragma GCC optimize("Ofast") // filter runs inside the RX ISR (legacy 2794+2639)
 inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
 {
   static int16_t za1, za2;
@@ -86,11 +92,11 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((18 * zc1 + 11 * zc2) >> 4);
       break; // 0-2900Hz filter, second biquad section
     case 2:
-      zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((4 * zc1 + 8 * zc2) >> 4);
-      break; // 0-2400Hz filter, second biquad section [v5.10: >>1 to match filt1 gain]
+      zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - ((4 * zc1 + 8 * zc2) >> 4);
+      break; // 0-2400Hz filter, second biquad section (legacy 80)
     case 3:
-      zc0 = ((zb0 + 2 * zb1 + zb2) >> 1) - ((0 * zc1 + 4 * zc2) >> 4);
-      break; // 0-1800Hz elliptic [v5.10: >>1 to match filt1 gain]
+      zc0 = ((zb0 + 2 * zb1 + zb2) >> 2) - ((0 * zc1 + 4 * zc2) >> 4);
+      break; // 0-1800Hz elliptic (legacy 82)
     }
     zc2 = zc1;
     zc1 = zc0;
@@ -173,16 +179,16 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
           // //600Hz+-25Hz
 
         case 4:
-          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (114L * zb1 - 57L * zb2) / 64;
+          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + ((114L * zb1 - 57L * zb2) >> 6);
           break; // 600Hz+-250Hz
         case 5:
-          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (113L * zb1 - 60L * zb2) / 64;
+          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + ((113L * zb1 - 60L * zb2) >> 6);
           break; // 600Hz+-100Hz
         case 6:
-          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (110L * zb1 - 62L * zb2) / 64;
+          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + ((110L * zb1 - 62L * zb2) >> 6);
           break; // 600Hz+-50Hz
         case 7:
-          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + (110L * zb1 - 61L * zb2) / 64;
+          zb0 = (0 * za0 + 1 * za1 + 0 * za2) + ((110L * zb1 - 61L * zb2) >> 6);
           break; // 600Hz+-18Hz
         }
 
@@ -195,16 +201,16 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
           // //600Hz+-25Hz
 
         case 4:
-          zc0 = (zb0 - 2 * zb1 + zb2) / 1 + (95L * zc1 - 52L * zc2) / 64;
+          zc0 = (zb0 - 2 * zb1 + zb2) / 1 + ((95L * zc1 - 52L * zc2) >> 6);
           break; // 600Hz+-250Hz
         case 5:
-          zc0 = (zb0 - 2 * zb1 + zb2) / 4 + (106L * zc1 - 59L * zc2) / 64;
+          zc0 = ((zb0 - 2 * zb1 + zb2) >> 2) + ((106L * zc1 - 59L * zc2) >> 6);
           break; // 600Hz+-100Hz
         case 6:
-          zc0 = (zb0 - 2 * zb1 + zb2) / 16 + (113L * zc1 - 62L * zc2) / 64;
+          zc0 = ((zb0 - 2 * zb1 + zb2) >> 4) + ((113L * zc1 - 62L * zc2) >> 6);
           break; // 600Hz+-50Hz
         case 7:
-          zc0 = (zb0 - 2 * zb1 + zb2) / 32 + (112L * zc1 - 62L * zc2) / 64;
+          zc0 = ((zb0 - 2 * zb1 + zb2) >> 5) + ((112L * zc1 - 62L * zc2) >> 6);
           break; // 600Hz+-18Hz
         }
       }
@@ -218,6 +224,8 @@ inline int16_t filt_var(int16_t za0) // filters build with www.micromodeler.com
       za1 = za0;
 
       // return zc0 / 64; // compensate the 64x front-end gain
-      return zc0 / 8; // compensate the front-end gain
+      // legacy parity: /8 (zc0>>3) - same gain as usdx-legazy:183
+return (zc0 >> 3);
     }
   }
+#pragma GCC pop_options

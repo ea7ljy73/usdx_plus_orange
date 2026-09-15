@@ -1,0 +1,415 @@
+// rx.h - uSDX Plus Orange (producción)
+// Receive DSP: exact parity with usdx-legazy.ino (the firmware verified working
+// on this hardware). Architecture: 1-arg slow_dsp(int16_t ac) with Hilbert in
+// process(), global i/q/qh/ocomb. AGC keeps the hang-time + noise-floor fix.
+
+#pragma once
+
+#include <Arduino.h>
+#include <stdint.h>
+
+#include "tx.h" // magn, mode (mode_t), filt, volume
+#include "usdx_filter.h"
+#include "usdx_settings.h"
+
+// ---------------------------------------------------------------------------
+// RX sample rate / decimation
+// ---------------------------------------------------------------------------
+#define F_SAMP_PWM (78125 / 1)
+#define F_SAMP_RX 62500
+#define F_ADC_CONV                                                                                                     \
+  (192307 / 2) // RX I/Q ADC rate (v1: slower than 192307 ->
+               // avoids audio clicks)
+#define R 4    // CIC decimation 62500/2 -> 7812.5 SPS
+
+// Audio output stage ON (usdx-legazy:2826). WITHOUT this the OCR1AL audio
+// write is compiled out entirely -> no RX audio.
+#define AF_OUT 1
+#define OUTLET 1
+
+#define HI(x) ((x) >> 8)
+#define LO(x) ((x) & 0xFF)
+
+#define EA(y, x, one_over_alpha) (y) = (y) + ((x) - (y)) / (one_over_alpha);
+
+// ---------------------------------------------------------------------------
+// Globals (shared with UI / CAT / legacy parity)
+// ---------------------------------------------------------------------------
+volatile uint8_t nr        = 0; // noise reduction level (legacy default 0)
+volatile uint8_t att       = 0; // analog attenuator
+volatile uint8_t att2      = 2; // digital attenuator (CIC stage)
+
+extern volatile uint8_t agc; // agc select (1/2; from main)
+
+// legacy-parity globals for the demod path:
+volatile uint8_t  rx_state   = 0;
+volatile uint8_t  _init      = 0; // first-sample accumulators reset (legacy 2514)
+static uint32_t   absavg256  = 0;
+volatile uint32_t _absavg256 = 0;
+volatile int16_t  i, q;  // demodulated I/Q (global, used by slow_dsp)
+volatile int16_t  ocomb; // audio out comb (shared)
+volatile int16_t  qh;    // Hilbert Q (global)
+
+// CW decoder audio-amplitude feed (legacy 2303-2304, 2723-2725)
+static uint32_t   amp32 = 0;
+volatile uint32_t _amp32 = 0;
+
+// AGC state backup/restore across TX/RX (legacy 3640/3671/3693)
+volatile int16_t _centiGain = 0;
+
+// ---------------------------------------------------------------------------
+// AGC (M0PUB) - EXACT copy of usdx-legazy:2521-2578 (paridad exacta; un hang
+// timer evaluado en F4 no mostró diferencia medible y se revirtió).
+// ---------------------------------------------------------------------------
+#pragma GCC push_options
+#pragma GCC optimize("Ofast") // RX DSP compiled Ofast like usdx-legazy:2794-2795
+
+static int16_t   centiGain = 128;
+#define DECAY_FACTOR 400 // AGC decay <DECAY_FACTOR> slower than attack
+static uint16_t decayCount = DECAY_FACTOR;
+
+inline int16_t process_agc(int16_t in) {
+  static bool small = true;
+  int16_t     out;
+
+  if(centiGain >= 128)
+    out = (centiGain >> 5) * in; // net gain >= 1
+  else
+    out = (centiGain >> 2) * (in >> 3); // net gain < 1
+  out >>= 2;
+
+  if(HI(abs(out)) > HI(1536)) {
+    centiGain -= (centiGain >> 4); // fast attack
+  } else {
+    if(HI(abs(out)) > HI(1024))
+      small = false;
+    if(--decayCount == 0) { // slow ramp up when signal disappears
+      if(small) {
+        if(centiGain < (INT16_MAX - (INT16_MAX >> 4)))
+          centiGain += (centiGain >> 4);
+        else
+          centiGain = INT16_MAX;
+      }
+      decayCount = DECAY_FACTOR;
+      small      = true;
+    }
+  }
+  return out;
+}
+
+// Fast AGC alternative (agc=1) - exact copy of usdx-legazy:2521.
+// NOTA F4: se evaluó hang timer (~77ms) + noise floor: SIN diferencia medible
+// (la dinámica lenta del AGC domina; ver tests/ab). Revertido: paridad exacta.
+static int16_t gain = 1024;
+// F4.16 AGC fast start (menu "AGC Start", OFF = legacy exacto): precarga de
+// ganancia al arrancar. Legacy arranca en x1 y tarda ~7s en cargar con banda
+// floja (medido en host); pre-cargar x8 hace audible la RX al instante sin
+// tocar el régimen permanente (el algoritmo/equilibrio no cambian, solo la
+// condición inicial; el ataque rápido asienta señales fuertes en ms).
+#define AGC_PRECHARGE 8192 // x8 (pico 16000 con in=2000: sin overflow int16)
+volatile uint8_t agc_start = 0; // 0=legacy (gain x1), 1=precarga x8 al arrancar
+inline void      agc_precharge() { gain = AGC_PRECHARGE; }
+// F4.17 AGC recovery anti-bombeo (menu "AGC Rec" 1..8, 1 = legacy exacto;
+// estilo QMX "Recovery dB/s"): la subida de ganancia (+1) se aplica 1 de cada
+// N muestras; el ataque rápido NO se toca. Con N>1 la ganancia apenas se mueve
+// entre palabras (no respira) pero sigue rampando en señales débiles
+// permanentes y a plena sensibilidad con F4.16. El knee (volver rápido a máx
+// bajo umbral, QMX Threshold) se EVALUÓ Y REVIRTIÓ: A/B host mostró soplo 4x,
+// varianza 15x y clipping en flancos — no reintentar por esa vía.
+volatile uint8_t agc_rec = 1; // divisor de recovery (1=legacy, mayor=más lento)
+static uint8_t agc_rec_cnt = 0; // fase del divisor (file-scope: testeable en host)
+inline int16_t   process_agc_fast(int16_t in) {
+  int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
+  int16_t accum = (1 - abs(out >> 10));
+  if(accum > 0) { // solo se ralentiza la subida; el ataque es legacy intacto
+    if(++agc_rec_cnt < agc_rec)
+      accum = 0; // aún no toca subir en este ciclo
+    else
+      agc_rec_cnt = 0;
+  }
+  if((INT16_MAX - gain) > accum)
+    gain = gain + accum;
+  if(gain < 1)
+    gain = 1;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Noise reduction: 2-pole EA lowpass (12dB/oct). nr=1 passthrough (legacy),
+// nr 2..8 cortes ~3000..850Hz. El 1-polo legacy colapsaba a 10Hz en nr=8
+// (-40dB en 1kHz: mudo); este quita siseo sin cargarse la voz. ~40 ciclos,
+// 4B RAM, 7B tabla. Divergencia intencional legacy en nr>=2 (conmutada por
+// el propio nivel NR; nr 0/1 idénticos).
+// ---------------------------------------------------------------------------
+static const uint8_t NR_K[7] PROGMEM = {250, 240, 229, 211, 191, 167, 142};
+inline int16_t process_nr(int16_t in) {
+  static int16_t ea1, ea2;
+  if(nr <= 1) {
+    ea1 = ea2 = in;
+    return in; // bypass (estados siguen, sin thump al conmutar)
+  }
+  uint8_t k = pgm_read_byte(&NR_K[(nr <= 8) ? nr - 2 : 6]);
+  ea1 += (int16_t)(((int32_t)k * (in - ea1)) >> 8);
+  ea2 += (int16_t)(((int32_t)k * (ea1 - ea2)) >> 8);
+  return ea2;
+}
+
+// ---------------------------------------------------------------------------
+// slow_dsp(int16_t ac) - demod + AGC + NR + filter (usdx-legazy parity)
+// Requires global i, q set by process() for AM/FM (Hilbert done in process()).
+// ---------------------------------------------------------------------------
+inline int16_t slow_dsp(int16_t ac) {
+  static uint8_t absavg256cnt;
+  if(!(absavg256cnt--)) {
+    _absavg256 = absavg256;
+    absavg256  = 0;
+  } else
+    absavg256 += abs(ac);
+
+  if(mode == AM) {
+    ac                    = magn(i, q);
+    static int32_t dc_avg = 0;
+    dc_avg                = (dc_avg * 63 + ac) / 64;
+    ac                    = ac - dc_avg;
+  } else if(mode == FM) {
+    static int16_t prev_i       = 0;
+    static int16_t prev_q       = 0;
+    int32_t        product      = (int32_t)i * prev_q - (int32_t)q * prev_i;
+    int32_t        magnitude_sq = (int32_t)i * i + (int32_t)q * q;
+    if(magnitude_sq > 1000) {
+      ac = (product << 4) / (magnitude_sq >> 3);
+    } else {
+      ac = 0;
+    }
+    prev_i                = i;
+    prev_q                = q;
+    static int16_t fm_lpf = 0;
+    fm_lpf                = (fm_lpf * 3 + ac) / 4; // alpha = 1/4 (~3-4kHz)
+    ac                    = fm_lpf;
+  } else {
+    ; // USB, LSB, CW
+  }
+
+  // NOTA F4: se portó el noise blanker RX de v1-orange y se revirtió: un
+  // blanker tras el Hilbert no puede funcionar (el ringing de 14 taps lo
+  // puentea y el integrador de salida acumula el resto). Medido en A/B:
+  // 0 diferencia. Un blanker útil tendría que ir pre-Hilbert (62.5kHz).
+
+  if(agc == 2) {
+    ac = process_agc(ac); // B3 FAST_AGC legacy path (M0PUB: fast attack, slow
+    ac = ac >> (16 - volume); // decay; bueno para CW). Solo si el usuario lo
+  } else if(agc == 1) {       // elige 2; default 1 = legacy exacto.
+    ac = process_agc_fast(ac); // legacy default (no FAST_AGC): agc_fast
+    ac = ac >> (16 - volume);
+  } else { // agc==0: no AGC, only volume (legacy parity w/o FAST_AGC)
+    if(volume <= 13)
+      ac = ac >> (13 - volume);
+    else
+      ac = ac << (volume - 13);
+  }
+
+  if(nr)
+    ac = process_nr(ac);
+
+  if(filt)
+    ac = filt_var(ac);
+
+#ifdef CW_DECODER
+  if(!(absavg256cnt % 64)) {
+    _amp32 = amp32;
+    amp32  = 0;
+  } else
+    amp32 += abs(ac); // CW decoder amplitude feed (legacy 2723-2725)
+#endif //CW_DECODER
+
+  ac = min(max(ac, -512), 511);
+  return ac;
+}
+
+// ---------------------------------------------------------------------------
+// process() - CIC output stage + Hilbert + slow_dsp (usdx-legazy parity)
+// ---------------------------------------------------------------------------
+static uint8_t tc = 0;
+
+void process(int16_t i_ac2, int16_t q_ac2) {
+  static int16_t ac3;
+#ifdef AF_OUT
+  static int16_t ozd1, ozd2; // Output stage
+  if(_init) {
+    ac3   = 0;
+    ozd1  = 0;
+    ozd2  = 0;
+    _init = 0;
+  } // first-sample reset
+  int16_t od1 = ac3 - ozd1; // Comb section
+  ocomb       = od1 - ozd2;
+#endif
+#ifdef OUTLET
+  if(tc++ == 0) // prevent recursion
+#endif
+    interrupts(); // allow subsequent interrupts for further rx sampling while processing
+#ifdef AF_OUT
+  ozd2 = od1;
+  ozd1 = ac3;
+#endif
+  {
+    q_ac2 >>= att2;       // digital gain control
+    static int16_t v[14]; // Process Q (down-sampled) samples
+    qh = ((v[0] - q_ac2) + (v[2] - v[12]) * 4) / 64 + ((v[4] - v[10]) + (v[6] - v[8])) / 8 +
+         ((v[4] - v[10]) * 5 - (v[6] - v[8])) / 128 + (v[6] - v[8]) / 2; // Hilbert
+    v[0]  = v[1];
+    v[1]  = v[2];
+    v[2]  = v[3];
+    v[3]  = v[4];
+    v[4]  = v[5];
+    v[5]  = v[6];
+    v[6]  = v[7];
+    v[7]  = v[8];
+    v[8]  = v[9];
+    v[9]  = v[10];
+    v[10] = v[11];
+    v[11] = v[12];
+    v[12] = v[13];
+    v[13] = q_ac2;
+  }
+  i_ac2 >>= att2; // digital gain control
+  i = i_ac2;
+  q = q_ac2;
+  static int16_t v[7];     // Delay I to match Hilbert on Q (legacy parity)
+  int16_t        i = v[0]; // local shadow: DELAYED I (legacy usdx-legazy:2865)
+  v[0]             = v[1];
+  v[1]             = v[2];
+  v[2]             = v[3];
+  v[3]             = v[4];
+  v[4]             = v[5];
+  v[5]             = v[6];
+  v[6]             = i_ac2;
+  ac3              = slow_dsp(-i - qh); // inverting I and Q dampens PWM-out/ADC feedback loop
+#ifdef OUTLET
+  tc--;
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// CIC decimator (sdr_rx_00..07) - direct I/Q ADC sampling (usdx-legazy parity)
+// ---------------------------------------------------------------------------
+volatile uint8_t admux[3]; // ADC channel selectors (I/Q/mic); set in setup
+
+static int16_t i_s0za1, i_s0zb0, i_s0zb1, i_s1za1, i_s1zb0, i_s1zb1;
+static int16_t q_s0za1, q_s0zb0, q_s0zb1, q_s1za1, q_s1zb0, q_s1zb1, q_ac2;
+
+#define M_SR 1 // CIC N=3
+
+// func_ptr owns the next phase; definition in hw.h
+typedef void (*func_t)(void);
+extern volatile func_t func_ptr;
+
+// forward declarations (defined below)
+inline int16_t sdr_rx_common_q();
+inline int16_t sdr_rx_common_i();
+void           sdr_rx_01();
+void           sdr_rx_02();
+void           sdr_rx_03();
+void           sdr_rx_04();
+void           sdr_rx_05();
+void           sdr_rx_06();
+void           sdr_rx_07();
+
+void sdr_rx_00() {
+  int16_t ac      = sdr_rx_common_i();
+  func_ptr        = sdr_rx_01;
+  int16_t i_s1za0 = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
+  i_s0za1         = ac;
+  int16_t ac2     = (i_s1za0 + (i_s1za1 + i_s1zb0) * 3 + i_s1zb1);
+  i_s1za1         = i_s1za0;
+  process(ac2, q_ac2); // note: uses q_ac2 computed in sdr_rx_07 (global)
+}
+void sdr_rx_02() {
+  int16_t ac = sdr_rx_common_i();
+  func_ptr   = sdr_rx_03;
+  i_s0zb1    = i_s0zb0;
+  i_s0zb0    = ac;
+}
+void sdr_rx_04() {
+  int16_t ac = sdr_rx_common_i();
+  func_ptr   = sdr_rx_05;
+  i_s1zb1    = i_s1zb0;
+  i_s1zb0    = (ac + (i_s0za1 + i_s0zb0) * 3 + i_s0zb1) >> M_SR;
+  i_s0za1    = ac;
+}
+void sdr_rx_06() {
+  int16_t ac = sdr_rx_common_i();
+  func_ptr   = sdr_rx_07;
+  i_s0zb1    = i_s0zb0;
+  i_s0zb0    = ac;
+}
+void sdr_rx_01() {
+  int16_t ac = sdr_rx_common_q();
+  func_ptr   = sdr_rx_02;
+  q_s0zb1    = q_s0zb0;
+  q_s0zb0    = ac;
+}
+void sdr_rx_03() {
+  int16_t ac = sdr_rx_common_q();
+  func_ptr   = sdr_rx_04;
+  q_s1zb1    = q_s1zb0;
+  q_s1zb0    = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
+  q_s0za1    = ac;
+}
+void sdr_rx_05() {
+  int16_t ac = sdr_rx_common_q();
+  func_ptr   = sdr_rx_06;
+  q_s0zb1    = q_s0zb0;
+  q_s0zb0    = ac;
+}
+void sdr_rx_07() {
+  int16_t ac      = sdr_rx_common_q();
+  func_ptr        = sdr_rx_00;
+  int16_t q_s1za0 = (ac + (q_s0za1 + q_s0zb0) * 3 + q_s0zb1) >> M_SR;
+  q_s0za1         = ac;
+  q_ac2           = (q_s1za0 + (q_s1za1 + q_s1zb0) * 3 + q_s1zb1);
+  q_s1za1         = q_s1za0;
+}
+
+// ---------------------------------------------------------------------------
+// Audio output PWM (AF_OUT): comb in process(), integrator here (parity)
+// ---------------------------------------------------------------------------
+static int16_t ozi1, ozi2;
+
+// NOTA B2: se implemento un blanker pre-Hilbert (sample-and-hold, media lenta
+// U32, suelo 150) y se REVIRTIO tras A/B host (tests/ab_nb, eliminado): en
+// este tap (tras el LPF analogico 1.5kHz) un crash real (<=512, ADC pegado) y
+// un tono fuerte (400) son indistinguibles por amplitud — solo servia en banda
+// quieta — y costaba ~430B (flash al 99%). Ademas el A/B cazo un bug real de
+// la implementacion (underflow unsigned en el EA de la media) y un bug del
+// driver (runs sin fork contaminan estado DSP): leccion anotada. Slew-rate
+// como alternativa: descartado sobre el papel (el LPF difumina crashes a
+// ~85/muestra frente a ~154 legitimo en 3.4kHz full-scale: sin margen).
+// No reintentar blanker de amplitud en este tap.
+
+inline int16_t sdr_rx_common_q() {
+  ADMUX = admux[0];
+  ADCSRA |= (1 << ADSC);
+  return ADC - 511;
+}
+inline int16_t sdr_rx_common_i() {
+  ADMUX = admux[1];
+  ADCSRA |= (1 << ADSC);
+  int16_t        adc = ADC - 511;
+  static int16_t prev_adc;
+  int16_t        ac = (prev_adc + adc) / 2;
+  prev_adc          = adc;
+#ifdef AF_OUT
+  if(_init) {
+    ocomb = 0;
+    ozi1  = 0;
+    ozi2  = 0;
+  } // first-sample hack
+  ozi2   = ozi1 + ozi2; // Integrator section
+  ozi1   = ocomb + ozi1;
+  OCR1AL = min(max((ozi2 >> 5) + 128, 0), 255); // PWM audio out
+#endif
+  return ac;
+}
+
+#pragma GCC pop_options

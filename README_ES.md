@@ -1,166 +1,155 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
-**Versión:** 6.00 — AM/FM Desbloqueados y Banda de 11m
+**Firmware:** release de producción `v2.0.0`, modular (un único sketch en la raíz del proyecto) — paridad estricta con la referencia `usdx-legazy/` (ver `AGENTS.md`).
 
-**uSDX Plus Orange** es un fork refactorizado y mejorado del firmware uSDX, basado en usdxWHITEBUTTONS v4.00d de GW8RDI y el proyecto original uSDX de PE1NNZ. Incluye mejoras significativas en calidad de TX, corrección de errores y funciones de protección, manteniendo compatibilidad total con ATMEGA328P (2KB RAM, 32KB flash).
+**uSDX Plus Orange** es una reconstrucción modular del firmware uSDX (original de PE1NNZ, linaje WhiteButtons de GW8RDI), mantenido por **EA7LJY**. Transceptor QRP SSB/CW/AM/FM sobre ATMEGA328P (2KB RAM, 32KB flash) con etapa TX clase-E EER (~5W PEP) y receptor SDR (detector Tayloe + transformada de Hilbert).
 
 > **⚠️ Después de flashear:** Apaga la radio, vuelve a encender mientras mantienes pulsado el **botón del encoder (menú)** para resetear la EEPROM a valores de fábrica. Esto asegura que todos los ajustes se inicialicen correctamente.
 
-## Guía de configuración recomendada
+## Estructura del firmware (la raíz es el sketch Arduino)
 
-### Para TX óptima (voz SSB)
-| Ajuste | Valor | Beneficio |
-|--------|-------|-----------|
-| 3.6 TX Comp | ON | Añade ~3dB de potencia media; soft knee evita recorte |
-| 3.8 EQ Bass | +2 a +4 | Restaura cuerpo/grueso que el PA clase-E atenúa |
-| 3.9 EQ Treble | +1 a +3 | Añade presencia/articulación sin sibilancias |
-| 3.10 TX LoCut | 200Hz | Elimina sub-audibles; reduce IMD, ahorra potencia |
-| 3.3 TX Drive | 4-6 | Ajusta para ~5W PEP; empieza bajo y sube viendo SWR |
-| 8.1 PA bias min | Calibrar | PWM mínimo donde empieza la salida RF |
-| 8.2 PA max | Calibrar | PWM máximo para la potencia deseada |
+El nombre de la carpeta debe coincidir con el fichero principal (`usdx_plus_orange/` → `usdx_plus_orange.ino`).
 
-### Para RX óptima
-| Ajuste | Valor | Beneficio |
-|--------|-------|-----------|
-| 1.8 AGC | ON | Evita saturación en señales fuertes |
-| 1.14 AGC Dcy | 8 (SSB) / 2 (CW) | Hang natural en SSB; recuperación rápida en CW |
-| 1.9 NR | 1-2 (SSB) / 3-5 (CW) | Filtro EA suave para voz; FIR más agresivo para CW |
-| 1.10 ATT | 0 (inicio) | Subir solo si señales fuertes saturan RX |
-| 1.11 ATT2 | 2 (defecto) | Atenuación digital; subir si ADC recorta |
-| 1.15 Noise Blk | ON (bandas ruidosas) | Suprime ruido impulsivo de red/encendido |
-| 1.12 S-Meter | S o dBm | Indicador visual de intensidad de señal |
+| Fichero | Contenido |
+|---------|-----------|
+| `usdx_plus_orange.ino` | setup()/loop(), motor de menú, UI |
+| `usdx_settings.h` | Solo configuración (modelo WHITE_BUTTONS + features) |
+| `hw.h` | Pines, ADC, timers, ISRs, conmutación RX/TX |
+| `rx.h` | Cadena DSP de RX (CIC, Hilbert, demod, AGC, NR, filtros) |
+| `tx.h` | Modulador TX `ssb()`, CW, LUT, VOX |
+| `cw.h` / `cat.h` / `vfo.h` / `menu.h` | Keyer + decodificador, CAT TS-480, VFO A/B + RIT/Split, menú declarativo |
+| `display.h` / `i2c.h` / `si5351.h` / `lpf.h` / `perf.h` | LCD + encoder, I2C bit-bang, SI5351, placa LPF, medidor CPU |
+| `usdx_filter.h` | Filtros IIR SSB/CW |
+| `tests/` | Harnesses de paridad en host (sin hardware) |
+| `tools/` | Seguimiento de flash/RAM por build |
+| `usdx-legazy/` | Firmware de referencia de solo lectura (fuente de verdad de paridad, no se modifica) |
+| `usdx-lab/` | Firmware de laboratorio: copia + instrumentación ADC/audio, sin CAT (ver `usdx-lab/README_LAB.md`) |
 
-### Consejos de grabación de voz
-- **Micrófono**: Cápsula electret con polarización ~2V (diseño uSDX estándar). Mantener 15-30cm de distancia.
-- **Pre-énfasis**: 3.7 TX Emph = 0 (plano). Activar solo si usas micrófono dinámico o audio oscuro.
-- **Compresor**: 3.6 TX Comp = ON (siempre). El soft knee lo hace transparente.
-- **VOX**: 3.1 VOX = ON, 3.2 Noise Gate = 20-40. Ajustar según ruido ambiente.
-- **Monitor**: 3.5 MOX = ON para oírte. Si suena distorsionado, reduce TX Drive.
+Docs: `AGENTS.md` (contrato de paridad, build, tests), `ROADMAP.md` (plan de mejoras), `HARDWARE_TEST_GUIDE.md` (flasheo + pruebas hardware).
 
----
+### Compilación
 
-## Mejoras específicas del fork:
+```bash
+arduino-cli compile --fqbn arduino:avr:uno .
+# Sketch usa 30804 bytes (95%) de flash, 1189 bytes (58%) de RAM, 0 warnings
+```
 
-### v6.00 — AM/FM Desbloqueados y Banda de 11m:
-- **Modos AM y FM completamente habilitados** — el botón de modo ahora cicla los 5 modos (LSB, USB, CW, FM, AM); el código de demodulación (RX) y modulación (TX) existente ya era correcto, simplemente desbloqueado
-- **Banda de 11m (27.0 MHz)** — añadida como banda separada entre 12m y 10m, compartiendo el mismo relé de LPF; la detección automática divide en 28 MHz
-- **VOX extendido** — la transmisión operada por voz ahora funciona también en AM y FM
-- **Layout EEPROM actualizado** — se añadió BAND_DATA9 para persistencia de la banda de 10m; v6.00 resetea la EEPROM en el primer arranque
-- **Modo FT8 VOX** (Menú 3.11): Perfil FT8 con un toque y auto-restauración — fuerza USB, VOX ON, ancho de banda completo, desactiva todo procesamiento de audio para formas de onda digitales limpias
+### Tests de paridad (host, sin hardware)
 
-### Mejoras en TX:
-- **Coeficiente de filtro de audio GW8RDI** (K=2) — restaura el cuerpo/calidez en las frecuencias bajas del audio SSB transmitido
-- **LUT de linealización de PA no lineal** — curva de ley de potencia para mejorar la linealidad SSB
-- **Rampa de inicio suave de envolvente TX** — rampa de ~1.7ms elimina los clics de PTT
-- **Limitador suave MAX_DP** — compresión 4:1 en lugar de recorte brusco para mejor pureza espectral
-- **SWR foldback** — reducción automática de drive cuando SWR>2.5; apagado de TX cuando SWR>4.0
-- **Predistorsión AM-PM (64 entradas)** — expandida de 16 a 64 entradas, compensación 4x más fina del desplazamiento de fase del PA clase-E
-- **Desvanecimiento de portadora** — transición suave a ~18% antes de desactivar CLK, eliminando el corte abrupto de portadora
-- **CESSB envelope clipper** — limitación de magnitud del vector I/Q para eliminar overshoots SSB, ~2-3dB más potencia efectiva sin ensanchar BW
-- **Phase unwrapping** — cálculo de diferencia de fase por camino más corto, reduce espurios espectrales en tonos de audio asimétricos
-- **TX Low-Cut HPF** — filtro paso alto ajustable 100/200/400Hz elimina sub-audibles del micrófono; reduce potencia desperdiciada e IMD (estilo Yaesu/Icom, menú 3.10)
+```bash
+cd tests/parity_tx
+python3 gen_parity_tx.py
+gcc -O0 -o parity_tx main_test_tx.c tx_legacy.c tx_v2.c -lm && ./parity_tx
+cd ../parity_rx
+python3 gen_parity_rx.py
+gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm && ./parity_rx
+cd ../ab_agc && ./run_ab_agc.sh
+```
 
-### Mejoras en RX:
-- **AGC hang timer (~77ms)** — mantiene la ganancia AGC durante pausas entre palabras SSB, evita bombeo de ruido entre sílabas
-- **Decay AGC rápido en CW** — 200 muestras (vs 800 en SSB) para operación CW cómoda
-- **LMS auto-notch adaptativo (2 taps)** — cancela heterodinos y birdies adaptativamente (eliminado del path NR en v5.18, interfería con la voz)
-- **S-meter sin float** — tabla de lookup para dBm/S-meter, eliminado log10() de coma flotante
-- **Medidor SWR mejorado** — cálculo fixed-point con precisión de 3 dígitos (ej. 1.05:1)
-- **Noise Blanker (1.15)** — eliminador de ruido impulsivo suprime picos de red/encendido antes del AGC
-
-### Optimizaciones de código:
-- **float eliminado del path principal** — `smeter()`, `readSWR()`, DIAG convertidos a fixed-point (~1252 bytes flash ahorrados)
-- **PROGMEM strings** — todas las tablas de etiquetas movidas a flash (~134 bytes RAM ahorrados)
-- **Código muerto eliminado** — BLIND, SIMPLE_RX, TESTBENCH NCO, `#ifdef x`, `ref_V`, y ~212 líneas de código legacy/comentado
-- **Bit shifts** — divisiones reemplazadas por shifts en toda la cadena DSP
-- **`cap_label` PROGMEM** — última tabla de strings que quedaba en RAM, movida a flash
-
-### Corrección de errores:
-- **Overflow AGC** — cast a `int32_t` evita overflow int16 en señales fuertes
-- **Demodulación FM corregida** — reemplazado `ac=((ac+i)*zi)` (algoritmo incorrecto, variable local sin inicializar) por discriminador de producto cruzado con normalización (mismo algoritmo probado del firmware legacy)
-- **Bloqueador DC AM corregido** — diferenciador int16_t propenso a overflow reemplazado por promedio DC int32_t con α=1/64
-- **`_arctan3` mejorado** — aproximación cuadrática en lugar de lineal (usado por `FM_ARCTAN`)
-- **Scope CESSB** — `#define` cambiado a `const uint16_t` local para evitar fuga de macro
-- **QUAD eliminado** — bloques `#ifdef QUAD` removidos (dañaban la calidad TX SSB según comentarios del propio autor); el phase unwrapping maneja transiciones de fase grandes correctamente
-- Compresor de voz desactivado por defecto (causaba mala calidad de audio SSB)
-- Acceso PROGMEM a la rampa de CW key-click corregido (dirección pgm_read_byte_near/off-by-one)
-- Etiquetas de case duplicadas en paramAction() eliminadas
-
-### Características adicionales:
-- Limitador de recorte suave, compresor de voz, EQ de micrófono, Pre-énfasis (todos configurables vía menú)
+TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatches (los niveles NR ≥2 difieren intencionadamente — mejora NR de 2 polos, ver `ROADMAP.md`).
 
 ---
 
-## Lista de características:
-- **Transceptor QRP SSB HF simple, divertido y versátil** con funciones **DSP y SDR** integradas
-- **Etapa de transmisión SSB clase-E EER**
-- Aproximadamente **5W PEP de salida SSB** desde alimentación de 13.8V
-- **Soporte multi-modo: USB, LSB, CW, AM, FM**
-- **Filtros DSP: 4000, 2500, 1700, 500, 200, 100, 50 Hz de ancho de banda**
-- **Funciones DSP: Control Automático de Ganancia (AGC), Reducción de Ruido (NR), Transmisión por Voz (VOX), Atenuadores de RX (ATT), Filtro de ruido de TX, Control de drive TX, Control de volumen, Medidor dBm/S.**
-- Supresión de banda lateral opuesta/portadora **TX: mejor que -45dBc, IMD3 (dos tonos) -33dBc, RX: mejor que -50dBc**
-- **Soporte multibanda**, sintonizable continuamente de **160m a 10m** (y de 20kHz..99MHz con pérdida de rendimiento) — incluyendo la banda CB de 11m
-- **Código abierto**, construido con Arduino IDE; permite experimentación, nuevas funciones y contribuciones vía Github
-- **VOX** software que puede usarse como **Break-In completo rápido** (operación QSK y semi-QSK)
-- **Diseño de hardware simple** con solo **4 CI, un microcontrolador y pocos transistores/pasivos**
-- **Diseño ligero y de bajo costo**: gracias a la etapa clase-E EER es **altamente eficiente** (sin disipadores voluminosos)
-- **Etapa de transmisión SSB completamente digital**: muestrea el micrófono y reconstruye una señal SSB controlando la fase del PLL SI5351 y la amplitud del PA mediante PWM
-- **Etapa de recepción SDR completamente digital**: muestrea señal I/Q del detector de muestreo en cuadratura y realiza un desfase de 90 grados matemáticamente (transformada de Hilbert)
-- Tres atenuadores de front-end analógico conmutables independientes (0dB, -13dB, -20dB, -33dB, -53dB, -60dB, -73dB)
-- **Decodificador CW**, keyer Straight/Iambic-A/B
-- **VFO A/B + RIT y Split**, con conmutación de filtros de banda por relé vía I2C
-- **Soporte CAT** (subconjunto TS480), posibilidad de transmitir audio, teclas y texto de pantalla por CAT
-- **Medición de SWR/Potencia** y control de eficiencia/sobrecarga del PA
-- **Indicador de voltaje de batería**
-- Probablemente el transceptor SDR/SSB autónomo más **económico** y **fácil** de construir
+## Ajustes recomendados
 
-## Historial de revisiones:
+### TX (voz SSB)
+
+| Menú | Valor | Beneficio |
+|------|-------|-----------|
+| 20 TX Drive | 4–6 | ~5W PEP; empezar bajo y subir viendo SWR |
+| 28 Mic Atten | 0 | Atenuador 6 dB/paso; subir solo si el micro recorta |
+| 30 TX Comp | ON | Compresor de voz 2:1, más potencia media |
+| 31 TX LoCut | 2 (200 Hz) | Elimina retumbe sub-audio; ahorra potencia e IMD |
+| 29 DIGI Mode | ON en digital | Path TX plano (USB + VOX + BW completo manual) |
+| 23/24 PA Bias | Calibrar | Rango PWM donde arranca el PA / potencia máx |
+
+### RX
+
+| Menú | Valor | Beneficio |
+|------|-------|-----------|
+| 7 AGC | Fast (SSB) / Slow (CW) | Fast = respuesta legacy; Slow = nivel CW estable |
+| 32 AGC Start | ON | Ganancia audible al instante (precarga x8) |
+| 33 AGC Rec | 4 | Recuperación lenta: menos bombeo entre palabras |
+| 8 NR | 1–2 (SSB) | Reducción de ruido 2 polos; más nivel en CW |
+| 9/10 ATT/ATT2 | 0 al inicio | Subir si señales fuertes saturan el frontal |
+| 11 S-meter | S o dBm | Indicador de señal |
+
+---
+
+## Menú (34 entradas)
+
+| Id | Entrada | Rango |
+|----|---------|-------|
+| 0 | Volume | -1–16 (girar a la izquierda en 0 = apagado/encendido) |
+| 1 | Mode | LSB, USB, CW, FM, AM |
+| 2 | Filter BW | Full, 3000, 2400, 1800, 500, 200, 100, 50 Hz |
+| 3 | Band | 160, 80, 60, 40, 30, 20, 17, 15, 12, 10, 6 m |
+| 4 | Tune Rate | 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 |
+| 5 | VFO Mode | A, B (+Split con pulsación larga) |
+| 6 | RIT | ON, OFF |
+| 7 | AGC | OFF, Fast, Slow |
+| 8 | NR | 0–8 |
+| 9 | ATT | 0, -13, -20, -33, -40, -53, -60, -73 dB |
+| 10 | ATT2 | 0–16 (digital, 6 dB/paso) |
+| 11 | S-meter | OFF, dBm, S, S-bar, wpm |
+| 12 | CW Decoder | ON, OFF |
+| 13 | Semi QSK | ON, OFF |
+| 14 | Keyer Speed | 1–60 WPM |
+| 15 | Keyer Mode | Iambic A, Iambic B, Straight |
+| 16 | Keyer Swap | ON, OFF |
+| 17 | Practice | ON, OFF (TX desactivado) |
+| 18 | VOX | ON, OFF |
+| 19 | Noise Gate | 0–255 |
+| 20 | TX Drive | 0–8 (8 = envolvente constante) |
+| 21 | CQ Interval | 0–60 s |
+| 22 | CQ Message | Texto (48 caracteres) |
+| 23 | PA Bias min | 0–254 |
+| 24 | PA Bias max | 1–255 |
+| 25 | Ref freq | 14–28 MHz (calibración del cristal) |
+| 26 | IQ Phase | 0–180° |
+| 27 | Backlight | ON, OFF |
+| 28 | Mic Atten | 0–4 (6 dB/paso) |
+| 29 | DIGI Mode | ON, OFF |
+| 30 | TX Comp | ON, OFF |
+| 31 | TX LoCut | OFF, 100, 200, 400 Hz |
+| 32 | AGC Start | ON, OFF |
+| 33 | AGC Rec | 1–8 (1 = legacy) |
+
+Atajos (L=izquierdo, E=encoder, R=derecho): **E+giro** volumen · **R** modo · **R doble** filtro · **E doble** banda · **E / E largo** paso · **2x R largo** VFO · **R largo** RIT · **L** menú · **L+giro** menú rápido · **R** atrás · **E largo al encender** reset de fábrica.
+
+Para voz SSB conecta un micro electret al jack de paddle (DOT = PTT, DASH = audio). Para modos digitales pon USB + VOX + ancho completo manualmente, audio por los jacks, y activa 29 DIGI Mode.
+
+---
+
+## Características de este firmware
+
+- Paridad bit-exacta con la referencia legacy verificada (ver tests arriba)
+- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, compresor de voz 2:1, low-cut TX, NR de 2 polos, AGC arranque rápido / recovery anti-bombeo / modo Slow (M0PUB)
+- Subconjunto CAT TS-480 completo, VFO A/B + RIT/Split, keyer Iambic-A/B/Straight + decodificador CW + mensajes CQ, menú procedimental con persistencia EEPROM
+
+Detalle y medidas: `ROADMAP.md`. Validación hardware: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
+
+---
+
+## Historial de revisiones
+
 | Rev. | Fecha | Características |
 |------|-------|-----------------|
-| [v6.00] | 2026-06-16 | Modos AM/FM desbloqueados, banda 11m, VOX extendido, 7 correcciones/optimizaciones, modo FT8 VOX (3.11). |
-| [v5.17+] | 2024 | Rama `dev` — Corrección de errores TX, coeficiente de filtro K=2, LUT de PA no lineal, rampa de envolvente TX, limitador suave MAX_DP, SWR foldback, predistorsión AM-PM, desvanecimiento de portadora |
-| [v5.16] | 2024 | Línea base TX legacy, corrección de menú |
-| [v5.15] | 2024 | Eliminación de DEBUG ifdef, corrección de navegación de menú |
+| v2.0.0 | 2026-09-15 | Release modular de producción en la raíz (paridad verificada); copia instrumentada `usdx-lab/` para pruebas hardware. |
 
-## Esquema:
+Linaje: uSDX original de PE1NNZ → WhiteButtons de GW8RDI → reconstrucción modular con paridad (este firmware).
+
+---
+
+## Esquema / Hardware
+
 ![esquema](usdx.png)
+![diagrama](block.png)
 
-## Hardware:
-Existen muchas construcciones de uSDX posibles. Algunas implementaciones comunes:
-- [uSDX Sandwich] de Manuel, DL2MAN
-- [uSDX Transceiver] de Barbaros Asuroglu, WB2CBA
-- Kits PCB parcialmente ensamblados de Sunil (VU3SUA), Ondra (OK1CDJ) y otros
+Variantes hardware uSDX (Sandwich de DL2MAN, transceptor WB2CBA y otras) en el [uSDX Forum]. Subida del firmware: compilar en Arduino IDE (placa `Arduino Uno`) o grabar por ISP; la radio corre la MCU a 20 MHz externo — ver `HARDWARE_TEST_GUIDE.md` para fuses y flasheo. **Pruebas de TX siempre contra carga ficticia de 50 Ω.**
 
-Este proyecto comenzó como una modificación del QCX:
-- [QCX Mini con placa hija uSDX] de DL2MAN
-- [Modificación QCX+] de Mike Dunstan, G8GYW
-- [Modificación QCX-SSB] para el QCX antiguo
+## Créditos
 
-## Operación:
-Consulte el README en inglés para la tabla completa de funciones del menú. Los botones principales:
-- **Encoder giratorio**: sintonización
-- **Botón izquierdo (L)**: menú
-- **Botón derecho (R)**: modo/atrás
-- **Pulsación larga/dual**: funciones adicionales
+Concepto, circuito y código originales del uSDX por _Guido (PE1NNZ)_; PCB sándwich y LPF clase-E por _Manuel (DL2MAN)_. Este firmware modular mantenido por **EA7LJY**.
 
-## Descripción técnica:
-El uSDX utiliza un detector de muestreo en cuadratura Tayloe para recepción SDR, alimentando directamente las entradas ADC del ATMEGA328P. El microcontrolador sobremuestrea a 62kHz, diezma, aplica la transformada de Hilbert y filtra paso bajo con AGC y reducción de ruido.
-
-Para transmisión SSB, el audio del micrófono se muestrea y se reconstruye una señal SSB controlando la fase del SI5351 (cambios de frecuencia a 4800 veces/segundo vía I2C) y la amplitud del PA (PWM a 32kHz). Esto genera una señal SSB clase-E altamente eficiente.
-
-## Resultados:
-- Productos de intermodulación IMD3: -33dBc
-- Rechazo de banda lateral opuesta: mejor que -45dBc
-- Rechazo de portadora: mejor que -45dBc
-- Ancho de banda a 3dB: 0..2400Hz
-
-## Créditos:
-El uSDX original fue diseñado por _Guido (PE1NNZ)_. La PCB sándwich y el diseño del LPF clase-E son obra de _Manuel (DL2MAN)_. **uSDX Plus Orange** es mantenido por **EA7LJY**, basándose en las mejoras de usdxWHITEBUTTONS v4.00d de GW8RDI.
-
-[//]: # (Enlaces)
-[uSDX]: https://github.com/threeme3/usdx
-[uSDX Sandwich]: https://dl2man.de/
-[uSDX Transceiver]: https://antrak.org.tr/author/barbarosasuroglu/
-[QCX Mini con placa hija uSDX]: https://dl2man.de/qcx-mini-usdx-mod/
-[Modificación QCX+]: https://groups.io/g/ucx/files/G8GYW/Modifying%20the%20QCX+%20for%20SSB%20v3.pdf
-[Modificación QCX-SSB]: https://github.com/threeme3/usdx/tree/4fc60f5c8d74ba7364cf891e008b920ab5e5c82d
+[uSDX Forum]: https://groups.io/g/ucx
