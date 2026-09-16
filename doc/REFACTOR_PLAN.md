@@ -1,10 +1,14 @@
 # uSDX Plus Orange — Plan de Refactorización Integral a Proyecto Limpio
 
+> **DOCUMENTO HISTÓRICO (solo consulta)**: el refactor se completó el
+> 2026-09-15 — firmware modular v2.0.0 en la raíz, paridad verificada.
+> El estado actual del proyecto está en `README.md`, `AGENTS.md` y `ROADMAP.md`.
+
 Documento de planificación para reconstruir el firmware `usdx_plus_orange` desde
 cero como un proyecto modular, corrigiendo bugs heredados y maximizando calidad
 RX/TX con la misma limitación de hardware (ATMEGA328P: 32KB flash / 2KB RAM).
 
-Estado: **EN EJECUCIÓN** (paso a paso, validando en cada paso).
+Estado: **COMPLETADO** (2026-09-15).
 
 ---
 
