@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de test hardware — uSDX Lab</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1a1a1a; --acc:#b35400; --ok:#1e7e34; --box:#fff; --line:#ddd; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); margin:0; line-height:1.5; }
+  header { background:#1a1a1a; color:#fff; padding:1.2rem 1.5rem; }
+  header h1 { margin:0; font-size:1.4rem; }
+  header p { margin:.3rem 0 0; color:#ccc; font-size:.9rem; }
+  main { max-width:820px; margin:0 auto; padding:1rem 1.2rem 3rem; }
+  section { background:var(--box); border:1px solid var(--line); border-radius:8px; padding:1rem 1.2rem; margin:1rem 0; }
+  h2 { margin:.2rem 0 .6rem; font-size:1.15rem; color:var(--acc); }
+  h2 .n { display:inline-block; background:var(--acc); color:#fff; width:1.6em; height:1.6em; line-height:1.6em; text-align:center; border-radius:50%; margin-right:.4em; font-size:.9em; }
+  ol,ul { margin:.4rem 0; padding-left:1.4rem; }
+  li { margin:.25rem 0; }
+  code { background:#f0f0f0; padding:.1em .35em; border-radius:4px; font-size:.9em; }
+  table { border-collapse:collapse; width:100%; margin:.5rem 0; font-size:.92rem; }
+  th,td { border:1px solid var(--line); padding:.35rem .5rem; text-align:left; }
+  th { background:#f3f3f3; }
+  .pass { display:flex; align-items:center; gap:.5em; background:#eaf7ee; border:1px solid #bfe3c9; border-radius:6px; padding:.5rem .7rem; margin-top:.6rem; font-weight:600; color:var(--ok); }
+  .pass input { width:1.2em; height:1.2em; }
+  .warn { background:#fff8e6; border:1px solid #f0d48a; border-radius:6px; padding:.5rem .7rem; margin-top:.6rem; }
+  .sheet td input, .sheet td { vertical-align:middle; }
+  input[type=text], input[type=number] { width:100%; border:1px solid var(--line); border-radius:4px; padding:.3rem .4rem; font:inherit; }
+  input[type=number].ok { border-color:var(--ok); background:#eaf7ee; }
+  input[type=number].bad { border-color:#c00; background:#fdecec; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:.5rem 1rem; }
+  label.f { display:block; font-size:.85rem; color:#555; margin:.3rem 0; }
+  .toolbar { position:sticky; top:0; background:var(--bg); padding:.5rem 0; display:flex; gap:.5rem; z-index:10; }
+  button { font:inherit; padding:.45rem .9rem; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button:hover { background:#f0f0f0; }
+  #progress { margin-left:auto; align-self:center; font-size:.9rem; color:#555; }
+  footer { text-align:center; color:#888; font-size:.8rem; padding:1rem; }
+  @media print {
+    .toolbar { display:none; }
+    body { background:#fff; }
+    section { break-inside:avoid; box-shadow:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Guía de test hardware — uSDX Lab</h1>
+  <p>Verificación paso a paso con el firmware <code>usdx-lab</code> (menú Engineer). La radio de producción NO se usa para probar.</p>
+</header>
+<main>
+<div class="toolbar">
+  <button onclick="window.print()">Imprimir / PDF</button>
+  <button onclick="localStorage.removeItem('usdxlab');location.reload()">Borrar marcas</button>
+  <span id="progress"></span>
+</div>
+
+<section>
+  <h2><span class="n">0</span>Requisitos</h2>
+  <ul class="check">
+    <li><label><input type="checkbox"> Firmware lab flasheado (<code>cd usdx-lab &amp;&amp; arduino-cli compile --fqbn arduino:avr:uno .</code>)</label></li>
+    <li><label><input type="checkbox"> Alimentación estable 13.8 V (anotar tensión real)</label></li>
+    <li><label><input type="checkbox"> <strong>TX solo contra carga ficticia de 50 Ω</strong> (nunca antena en pruebas)</label></li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">1</span>Arranque</h2>
+  <ol>
+    <li>Encender. Debe mostrar <code>v2.0.0-lab</code> en la línea 2.</li>
+    <li>Primera vez: resetea EEPROM solo (magia propia, no toca producción).</li>
+    <li>Menú (botón L) → última entrada <code>Engineer</code> → OFF/ADC/AUDIO con el encoder.</li>
+  </ol>
+  <div class="pass"><input type="checkbox"> PASS: arranca, versión lab visible, menú Engineer existe</div>
+</section>
+
+<section>
+  <h2><span class="n">2</span>ADC en vacío (Engineer → ADC, sin antena, RX)</h2>
+  <p>Pantalla: <code>ADC &lt;mean&gt; &lt;min&gt; &lt;max&gt;</code> / <code>RMS &lt;rms&gt; CL&lt;clips&gt; R&lt;rango&gt;</code>.</p>
+  <table>
+    <tr><th>Métrica</th><th>Esperado en vacío</th><th>Anotado (se verifica solo)</th></tr>
+    <tr><td>MEAN</td><td>~512 (±12)</td><td><input type="number" data-min="500" data-max="524"></td></tr>
+    <tr><td>RMS</td><td>piso de ruido, estable</td><td><input type="text" placeholder="anotar"></td></tr>
+    <tr><td>CLIP</td><td>0</td><td><input type="number" data-min="0" data-max="0"></td></tr>
+    <tr><td>Rango (R)</td><td>pequeño (&lt;100)</td><td><input type="number" data-min="0" data-max="99"></td></tr>
+  </table>
+  <div class="pass"><input type="checkbox"> PASS: MEAN centrado, CLIP 0, RMS estable</div>
+  <div class="warn">Si MEAN desviado &gt;±30 → revisar polarización 1.1 V / AREF.<br>Si CLIP &gt;0 en vacío → ruido excesivo; no seguir a TX.</div>
+</section>
+
+<section>
+  <h2><span class="n">3</span>ADC con señal (antena o generador, RX)</h2>
+  <ol>
+    <li>Sintonizar emisora fuerte (AM broadcast 40 m o FM).</li>
+    <li>Observar MIN/MAX: no deben pegarse a 0/1023 de forma continua.</li>
+  </ol>
+  <div class="pass"><input type="checkbox"> PASS: excursión amplia sin CLIP sostenido</div>
+  <div class="warn">Si CLIP continuo → subir ATT (menú 1.10) o ATT2 (1.11) y repetir.</div>
+</section>
+
+<section>
+  <h2><span class="n">4</span>Audio (Engineer → AUDIO, RX con voz/CW)</h2>
+  <p>Pantalla: <code>AU R&lt;rms&gt; P&lt;peak&gt;</code> / <code>DC&lt;±&gt; CR&lt;crest x10&gt; CL&lt;clips&gt;</code>.</p>
+  <table>
+    <tr><th>Métrica</th><th>Esperado</th><th>Anotado (se verifica solo)</th></tr>
+    <tr><td>RMS voz</td><td>20–150 según volumen</td><td><input type="text" placeholder="anotar"></td></tr>
+    <tr><td>PEAK</td><td>&lt;511, sin CLIP</td><td><input type="number" data-min="0" data-max="510"></td></tr>
+    <tr><td>DC</td><td>cercano a 0 (±10)</td><td><input type="number" data-min="-10" data-max="10"></td></tr>
+    <tr><td>CR (crest x10)</td><td>10–40 (1.0–4.0)</td><td><input type="number" data-min="10" data-max="40"></td></tr>
+  </table>
+  <div class="pass"><input type="checkbox"> PASS: audio presente, DC≈0, sin clipping con volumen medio</div>
+  <ul>
+    <li>Probar filtros (R doble): el RMS debe bajar al estrechar a CW.</li>
+    <li>Probar AGC ON/OFF (1.8): con AGC ON el RMS se estabiliza entre señales.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="n">5</span>TX a carga ficticia (SOLO 50 Ω, empezar drive bajo)</h2>
+  <ol>
+    <li>Engineer → OFF (pantalla normal).</li>
+    <li>Conectar carga 50 Ω. Modo USB, drive 2.</li>
+    <li>PTT + silbido suave: observar consumo y, si hay wattmeter, potencia.</li>
+    <li>Subir a drive 4 (valor producción) y repetir.</li>
+  </ol>
+  <div class="grid2">
+    <label class="f">Consumo RX (mA)<input type="text"></label>
+    <label class="f">Consumo TX drive 2 (mA)<input type="text"></label>
+    <label class="f">Consumo TX drive 4 (mA)<input type="text"></label>
+    <label class="f">Potencia (W)<input type="text"></label>
+  </div>
+  <div class="pass"><input type="checkbox"> PASS: hay salida RF, sin calentamiento anormal, vuelve a RX al soltar</div>
+  <div class="warn">Ante anomalía (sin salida, consumo disparado, no vuelve a RX): parar y revisar hardware.</div>
+</section>
+
+<section>
+  <h2><span class="n">6</span>Separación lab / producción</h2>
+  <ol>
+    <li>Flashear producción, comprobar que arranca con SUS ajustes (v2.0.0).</li>
+    <li>Volver a flashear lab, comprobar <code>v2.0.0-lab</code> y sus ajustes propios.</li>
+  </ol>
+  <div class="pass"><input type="checkbox"> PASS: cada firmware conserva sus ajustes (magias EEPROM distintas)</div>
+</section>
+
+<section>
+  <h2><span class="n">7</span>Hoja de medición</h2>
+  <table class="sheet">
+    <tr><td>Fecha</td><td><input type="text"></td><td>Commit lab</td><td><input type="text"></td></tr>
+    <tr><td>Alimentación (V)</td><td><input type="text"></td><td>Carga</td><td><input type="text" value="50 Ω"></td></tr>
+    <tr><td>ADC vacío MEAN/MIN/MAX</td><td><input type="text"></td><td>RMS / CLIP</td><td><input type="text"></td></tr>
+    <tr><td>ADC señal MIN/MAX/CLIP</td><td><input type="text"></td><td>ATT / ATT2</td><td><input type="text"></td></tr>
+    <tr><td>Audio RMS/PEAK/DC/CR/CL</td><td colspan="3"><input type="text"></td></tr>
+    <tr><td>TX I drive2 / drive4 / P</td><td colspan="3"><input type="text"></td></tr>
+    <tr><td>Notas</td><td colspan="3"><input type="text"></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="n">8</span>Fallos comunes</h2>
+  <table>
+    <tr><th>Síntoma</th><th>Mirar</th></tr>
+    <tr><td>LCD en blanco</td><td>alimentación, contraste, flasheo</td></tr>
+    <tr><td>MEAN ADC lejos de 512</td><td>AREF 1.1 V, soldaduras QSD/ADC</td></tr>
+    <tr><td>CLIP siempre &gt;0</td><td>ATT/ATT2, ganancia, oscilación</td></tr>
+    <tr><td>Sin audio</td><td>volumen, filtro, AGC, altavoz</td></tr>
+    <tr><td>No vuelve de TX</td><td>PTT/VOX, relés, timeout semi-QSK</td></tr>
+    <tr><td>Lab pisa ajustes de prod</td><td>F_VER_ID distintos (revisar)</td></tr>
+  </table>
+</section>
+</main>
+<footer>uSDX Lab — guía de test hardware · usdx-lab/</footer>
+<script>
+  const boxes = [...document.querySelectorAll('input[type=checkbox]')];
+  const texts = [...document.querySelectorAll('input[type=text], input[type=number]')];
+  const prog = document.getElementById('progress');
+  function verify(el) {
+    if (el.type !== 'number' || el.value === '' || el.dataset.min === undefined) return;
+    const v = parseFloat(el.value);
+    const ok = v >= parseFloat(el.dataset.min) && v <= parseFloat(el.dataset.max);
+    el.classList.toggle('ok', ok);
+    el.classList.toggle('bad', !ok);
+  }
+  function save() {
+    localStorage.setItem('usdxlab', JSON.stringify(boxes.map(b => b.checked)));
+    localStorage.setItem('usdxlab-v', JSON.stringify(texts.map(t => t.value)));
+    const done = boxes.filter(b => b.checked).length;
+    prog.textContent = done + ' / ' + boxes.length + ' checks';
+  }
+  try {
+    const s = JSON.parse(localStorage.getItem('usdxlab') || '[]');
+    boxes.forEach((b, i) => { b.checked = !!s[i]; });
+    const v = JSON.parse(localStorage.getItem('usdxlab-v') || '[]');
+    texts.forEach((t, i) => { if (v[i] !== undefined) t.value = v[i]; });
+  } catch (e) {}
+  boxes.forEach(b => b.addEventListener('change', save));
+  texts.forEach(t => {
+    verify(t);
+    t.addEventListener('input', () => { verify(t); save(); });
+  });
+  save();
+</script>
+</body>
+</html>
