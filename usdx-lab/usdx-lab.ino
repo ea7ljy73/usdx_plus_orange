@@ -1,7 +1,10 @@
-// usdx_plus_orange.ino - uSDX Plus Orange (firmware modular)
+// usdx-lab.ino - uSDX Lab (firmware de laboratorio, NO produccion)
+// Copia de usdx_plus_orange.ino (raiz) + instrumentacion (eng_lab.h).
+// Diferencias con produccion: SIN CAT (serie libre para laboratorio),
+// FIRMWARE_VERSION y F_VER_ID propios (no comparte EEPROM), menu Engineer.
+// Regla: al actualizar produccion, resincronizar esta copia (ver README_LAB).
 // Paso 6: menu declarativo integrado + UI + VOX.
 
-#include "cat.h"
 #include "cw.h"
 #include "display.h"
 #include "hw.h"
@@ -36,10 +39,11 @@ volatile uint8_t vox_tx   = 0; // VOX currently transmitting
 volatile uint8_t keyer_speed = 25; // wpm
 volatile uint8_t keyer_mode  = 2;  // 2=SINGLE (v1 default), 0=IambicA, 1=IambicB
 
-// --- CAT ---
+// --- LAB: sin CAT (display.h/hw.h usan cat_active: siempre 0 aqui) ---
+volatile uint8_t cat_active = 0;
 volatile uint8_t prev_mode      = 0;
 volatile uint8_t changedModeCAT = 0;
-volatile uint32_t rxend_event   = 0; // CAT: block LCD until this time (legacy 4438)
+volatile uint32_t rxend_event   = 0;
 
 // --- Params (menú) ---
 volatile uint8_t bandval   = 3;  // band index (0-based; 40m default)
@@ -78,6 +82,12 @@ static const char agc_label_0[] PROGMEM = "OFF";
 static const char agc_label_1[] PROGMEM = "Fast";
 static const char agc_label_2[] PROGMEM = "Slow";
 const char* const agc_label[3] PROGMEM = {agc_label_0, agc_label_1, agc_label_2};
+
+// LAB Engineer: 0=OFF, 1=ADC, 2=AUDIO (eslot 35)
+static const char eng_label_0[] PROGMEM = "OFF";
+static const char eng_label_1[] PROGMEM = "ADC";
+static const char eng_label_2[] PROGMEM = "AUDIO";
+const char* const eng_label[3] PROGMEM = {eng_label_0, eng_label_1, eng_label_2};
 
 static const char mode_label_0[] PROGMEM = "LSB";
 static const char mode_label_1[] PROGMEM = "USB";
@@ -181,7 +191,8 @@ static const char menu_label_30[] PROGMEM = "TX Comp";
 static const char menu_label_31[] PROGMEM = "TX LoCut";
 static const char menu_label_32[] PROGMEM = "AGC Start";
 static const char menu_label_33[] PROGMEM = "AGC Rec";
-const char* const MENU_LABELS[34] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33};
+static const char menu_label_34[] PROGMEM = "Engineer";
+const char* const MENU_LABELS[35] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33, menu_label_34};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -192,7 +203,7 @@ volatile uint16_t eeprom_offs = 0x150;
 #define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
 #define EEPROM_TEXT_OFF 0x290 // CQ Message 48B (0x290..0x2BF; evita eslots 27..31)
 #define EEPROM_XTRA_OFF 0x2C0 // eslots >= 32: 1B c/u (0x2C0+eslot-32; sin solape)
-#define F_VER_ID 3             // bump when EEPROM layout/semantics change
+#define F_VER_ID 0xB0         // LAB: magia propia, no comparte EEPROM con produccion
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   if(eslot == 26) { // CQ Message: región propia 48B (no cabe en stride x8)
     eeprom_read_block(ptr, (const void*)EEPROM_TEXT_OFF, size);
@@ -423,9 +434,11 @@ const MenuParam MENU[] PROGMEM = {
     {32, (void*)&agc_start, P_ENUM, 0, 1, offon_label, 33, NULL},
     // AGC Rec (F4.17: divisor de recovery 1..8, 1=legacy; eslot 34 = banco extra 0x2C2)
     {33, (void*)&agc_rec, P_T8, 1, 8, NULL, 34, NULL},
+    // LAB Engineer (monitor ADC/audio eng_lab.h; eslot 35 = banco extra 0x2C3)
+    {34, (void*)&eng_view, P_ENUM, 0, 2, eng_label, 35, NULL},
 };
 
-const int8_t MENU_COUNT = 34; // number of entries above
+const int8_t MENU_COUNT = 35; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
@@ -601,6 +614,10 @@ void display_vfo() {
 // meter/decoder digits on line 0 — never a full rewrite while tuning, so dial
 // steps are never stalled by the display (each nibble masks the encoder ISR).
 void display_tick() {
+  if(eng_view) {
+    eng_tick(); // LAB: la pantalla es del monitor (2 Hz)
+    return;
+  }
   if(mode == CW && cwdec && cw_event && !tx) {
     lcd.setCursor(8, 0);
     lcd.print(cw_line + 8);
@@ -810,5 +827,5 @@ void loop() {
   }
 }
 
-// Arduino serial event (CAT)
-void serialEvent() { cat_serial_event(); }
+// Arduino serial event (LAB: sin CAT; la serie queda libre para laboratorio)
+void serialEvent() {}

@@ -1,0 +1,401 @@
+// main_ab.c - Fase 0: métricas A/B (no paridad) para comparar mejoras.
+//  TX: dos tonos por ssb() -> IMD3 dBc, RMS/peak df, % clips.
+//  RX: tono USB 800 Hz -> respuesta; tono imagen -800 -> rechazo; silencio ->
+//      piso de ruido. Todo con la cadena v2 (tx_v2.c + rx_v2.c de parity).
+// Compilar vía run_ab.sh. Frecuencias coherentes con N (sin leakage).
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// --- TU TX polar (ab_tx.c generado por gen_ab.py: tx=1, LUT lineal) ---
+extern void    ab_tx_init(void);
+extern void    ab_ssb(int16_t in);
+extern void    ab_dig_mode(uint8_t v);
+extern void    ab_comp(uint8_t v);
+extern void    ab_lowcut(uint8_t v);
+extern int16_t ab_df_out;
+extern uint8_t ab_amp_out;
+extern volatile uint8_t drive;
+
+// --- TU RX (parity_rx/rx_v2.c) ---
+int16_t iq_i[40000];
+int16_t iq_q[40000];
+int     iq_i_idx = 0;
+int     iq_q_idx = 0;
+extern void    rx_init_v2(void);
+extern void    rx_cfg_v2(uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t);
+extern void    rx_run_v2(int);
+extern int16_t rx_last_audio_v2(void);
+
+// Goertzel en una frecuencia (Hz), fs dada, N muestras desde gen()
+static double goertzel(double f, double fs, double (*gen)(int), int n0, int n1) {
+  double w = 2.0 * M_PI * f / fs, c = cos(w), s = sin(w);
+  double u0 = 0, u1 = 0;
+  for(int n = n0; n < n1; n++) {
+    double x = gen(n);
+    double u = x + 2 * c * u0 - u1;
+    u1 = u0;
+    u0 = u;
+  }
+  double re = u0 - c * u1, im = s * u1;
+  return sqrt(re * re + im * im) / (n1 - n0);
+}
+
+// ---------------- TX: IMD dos tonos (SSB polar reconstruida) ----------------
+// df = dp*(Fs/UA) -> dp = df/8 (pasos de 1/600 de vuelta); envolvente = amp.
+// s[n] = amp * e^{j*phase} es la SSB en banda base (portadora en 0).
+// Métrica real de calidad TX: portadoras USB (+700/+1100), imagen (-700/-1100),
+// IMD3 (+300 = 2f1-f2, +1500 = 2f2-f1), fuga portadora (0). Todo dBc.
+#define TXN 4800 // 1 s @ 4800 SPS; todo Hz entero es coherente
+static double tx_re[TXN], tx_im[TXN];
+
+static void tx_run2(double a1, double f1, double a2, double f2) {
+  double phase = 0;
+  for(int n = 0; n < TXN; n++) {
+    double m = a1 * sin(2 * M_PI * f1 * n / 4800.0) +
+               a2 * sin(2 * M_PI * f2 * n / 4800.0);
+    ab_ssb((int16_t)m);
+    double dp = (double)ab_df_out / 8.0; // pasos _UA
+    phase += dp * (2.0 * M_PI / 600.0);
+    double a = (double)ab_amp_out / 255.0;
+    tx_re[n] = a * cos(phase);
+    tx_im[n] = a * sin(phase);
+  }
+}
+static void tx_run(double a1, double a2) { tx_run2(a1, 700.0, a2, 1100.0); }
+// Goertzel complejo en f (signo incluido: f<0 = banda imagen).
+// X = u[N-1] - e^{-jw} u[N-2] con u compleja (recurrencia separada re/im).
+static double cgoertzel(double f, int n0, int n1) {
+  double w = 2.0 * M_PI * f / 4800.0, c = cos(w), s = sin(w);
+  double u0r = 0, u1r = 0, u0i = 0, u1i = 0;
+  for(int n = n0; n < n1; n++) {
+    double ur = tx_re[n] + 2 * c * u0r - u1r;
+    u1r = u0r;
+    u0r = ur;
+    double ui = tx_im[n] + 2 * c * u0i - u1i;
+    u1i = u0i;
+    u0i = ui;
+  }
+  double re = u0r - c * u1r - s * u1i;
+  double im = u0i - c * u1i + s * u1r;
+  return sqrt(re * re + im * im) / (n1 - n0);
+}
+
+static void tx_imd(const char* tag, double amp) {
+  tx_run(amp, amp);
+  int    skip = 480;
+  double c1   = cgoertzel(700.0, skip, TXN);
+  double c2   = cgoertzel(1100.0, skip, TXN);
+  double img  = cgoertzel(-700.0, skip, TXN) > cgoertzel(-1100.0, skip, TXN)
+                    ? cgoertzel(-700.0, skip, TXN)
+                    : cgoertzel(-1100.0, skip, TXN);
+  double imd = cgoertzel(300.0, skip, TXN) > cgoertzel(1500.0, skip, TXN)
+                   ? cgoertzel(300.0, skip, TXN)
+                   : cgoertzel(1500.0, skip, TXN);
+  double car  = cgoertzel(0.0, skip, TXN);
+  double carr = (c1 + c2) / 2.0;
+  printf("TX %-14s mic=%5.0f usb=%6.3f img=%6.1fdBc imd3=%6.1fdBc car=%6.1fdBc\n",
+         tag, amp, carr, 20 * log10(img / (carr + 1e-12)),
+         20 * log10(imd / (carr + 1e-12)), 20 * log10(car / (carr + 1e-12)));
+}
+
+// ---------------- RX: respuesta / imagen / ruido ----------------
+#define RXN 30000
+static int16_t rx_audio[RXN];
+
+static void rx_fill(double f, double am, double nz) {
+  unsigned s = 12345;
+  for(int i = 0; i < RXN; i++) {
+    double t   = (double)i / 31250.0; // misma base que parity_rx
+    double env = 1.0 + 0.4 * sin(2 * M_PI * t * 1.3);
+    double nzv = 0;
+    if(nz > 0) { // LCG determinista
+      s        = s * 1103515245 + 12345;
+      nzv      = nz * ((int)(s >> 16) % 2000 - 1000) / 1000.0;
+    }
+    iq_i[i] = 511 + (int16_t)(am * env * sin(2 * M_PI * f * t) + nzv);
+    iq_q[i] = 511 + (int16_t)(am * env * cos(2 * M_PI * f * t) + nzv);
+  }
+}
+static void rx_run(int mode, int agc, int vol, int nr, int filt, int att2) {
+  rx_init_v2();
+  rx_cfg_v2(mode, agc, vol, nr, filt, att2, 1);
+  iq_i_idx = iq_q_idx = 0;
+  for(int i = 0; i < RXN; i++) {
+    rx_run_v2(1);
+    rx_audio[i] = rx_last_audio_v2();
+  }
+}
+// Cada medida RX corre en un fork (estado DSP virgen): el arrastre de estado
+// entre estímulos distintos falsea el piso/transitorios (ver Fase 0).
+static void isolate(void (*fn)(void)) {
+  fflush(stdout);
+  pid_t p = fork();
+  if(p == 0) {
+    fn();
+    fflush(stdout);
+    _exit(0);
+  }
+  int st;
+  waitpid(p, &st, 0);
+}
+
+static double rx_rms(int n0) { // RMS AC (sin DC del PWM centrado en 128)
+  double mean = 0;
+  for(int i = n0; i < RXN; i++)
+    mean += rx_audio[i];
+  mean /= (RXN - n0);
+  double s = 0;
+  for(int i = n0; i < RXN; i++) {
+    double d = rx_audio[i] - mean;
+    s += d * d;
+  }
+  return sqrt(s / (RXN - n0));
+}
+
+static double rx_gen_aud(int n) { return (double)rx_audio[n]; }
+// Goertzel real sobre el audio demodulado (fs = 1 muestra/rx_run).
+static double rx_goertzel(double f, double fs, int n0, int n1) {
+  double w = 2.0 * M_PI * f / fs, c = cos(w), s = sin(w);
+  double u0 = 0, u1 = 0;
+  for(int n = n0; n < n1; n++) {
+    double u = rx_gen_aud(n) + 2 * c * u0 - u1;
+    u1 = u0;
+    u0 = u;
+  }
+  double re = u0 - c * u1, im = s * u1;
+  return sqrt(re * re + im * im) / (n1 - n0);
+}
+// Medida RX aislada: tono +800 con envolvente (como parity), estado virgen.
+// Barrrido espectral 200..3200 para hallar el pico (sin asumir tasa exacta),
+// RMS, y armónicos 2º/3º del pico = limpieza de demodulación.
+static void tx_run_env(double amp);
+static void tx_env_crest(const char* tag, double amp);
+static int  m_filt;
+static void  m_rx_tone(void) {
+  rx_fill(800.0, 1100.0, 0.0);
+  rx_run(1, 0, 12, 0, m_filt, 2);
+  int    skip = 8000;
+  double rms  = rx_rms(skip);
+  double best = 0, bf = 0;
+  for(double f = 200; f <= 3200; f += 100) {
+    double m = rx_goertzel(f, 31250.0, skip, RXN);
+    if(m > best) {
+      best = m;
+      bf   = f;
+    }
+  }
+  double h2 = rx_goertzel(2 * bf, 31250.0, skip, RXN);
+  double h3 = rx_goertzel(3 * bf, 31250.0, skip, RXN);
+  printf("RX filt=%d pico=%5.0fHz rms=%7.1f hd2=%6.1fdBc hd3=%6.1fdBc\n", m_filt,
+         bf, rms, 20 * log10(h2 / (best + 1e-9)), 20 * log10(h3 / (best + 1e-9)));
+}
+static void m_rx_floor(void) {
+  rx_fill(0.0, 0.0, 0.0);
+  rx_run(1, 0, 12, 0, 0, 2);
+  printf("RX piso=%6.1f\n", rx_rms(8000));
+}
+// F4 AGC: ráfagas 800Hz (1200 on/1200 off) + ruido constante. Mide bombeo en
+// huecos, sobreoscilación de ataque y nivel de ráfaga.
+static void rx_fill_burst(void) {
+  unsigned s = 777;
+  for(int i = 0; i < RXN; i++) {
+    double t    = (double)i / 31250.0;
+    int    on   = ((i / 1200) % 2) == 0;
+    s           = s * 1103515245 + 12345;
+    double nzv  = 4.0 * ((int)(s >> 16) % 2000 - 1000) / 1000.0; // ruido bajo
+    double tone = on ? 150.0 * sin(2 * M_PI * 800.0 * t) : 0.0; // sin saturar
+    double tc   = on ? 150.0 * cos(2 * M_PI * 800.0 * t) : 0.0;
+    iq_i[i]     = 511 + (int16_t)(tone + nzv);
+    iq_q[i]     = 511 + (int16_t)(tc + nzv);
+  }
+}
+static double win_rms(int n0, int n1) { // RMS AC (sin DC)
+  double mean = 0;
+  for(int i = n0; i < n1; i++)
+    mean += rx_audio[i];
+  mean /= (n1 - n0);
+  double s = 0;
+  for(int i = n0; i < n1; i++) {
+    double d = rx_audio[i] - mean;
+    s += d * d;
+  }
+  return sqrt(s / (n1 - n0));
+}
+// F4 NR: por nivel 0..8, tono limpio 800 (nivel intacto?) + solo-ruido
+// (reducción?). agc=0 para medir NR puro. Estado virgen por fork.
+static int m_nr;
+static void m_rx_nr_tone(void) {
+  rx_fill(800.0, 300.0, 0.0);
+  rx_run(1, 0, 12, m_nr, 0, 2);
+  int    skip = 8000;
+  double tone = rx_goertzel(1200.0, 31250.0, skip, RXN);
+  printf("RX nr=%d tono800=%7.1f\n", m_nr, tone);
+}
+static void m_rx_nr_noise(void) {
+  rx_fill(800.0, 0.0, 120.0);
+  rx_run(1, 0, 12, m_nr, 0, 2);
+  printf("RX nr=%d ruido=%7.1f\n", m_nr, rx_rms(8000));
+}
+// Métrica: nivel del tono (no debe cambiar on/off = no perder recepción) y
+// energía residual de picos (debe caer con NB on).
+static int m_nb;
+static void rx_fill_impulse(void) {
+  for(int i = 0; i < RXN; i++) {
+    double t = (double)i / 31250.0;
+    int    sp = (i % 3000 < 4); // ráfaga RFI 4 muestras a rails
+    iq_i[i] = sp ? 1023 : 511 + (int16_t)(60.0 * sin(2 * M_PI * 800.0 * t));
+    iq_q[i] = sp ? 0 : 511 + (int16_t)(60.0 * cos(2 * M_PI * 800.0 * t));
+  }
+}
+static void m_rx_impulse(void) {
+  extern void rx_nb_v2(uint8_t);
+  rx_nb_v2((uint8_t)m_nb);
+  rx_fill_impulse();
+  rx_run(1, 0, 12, 0, 0, 2); // agc=0: mide NB puro sin AGC
+  int    skip = 8000;
+  double tone = rx_goertzel(1200.0, 31250.0, skip, RXN);
+  double pk = 0;
+  for(int i = skip; i < RXN; i++)
+    if(abs(rx_audio[i]) > pk)
+      pk = abs(rx_audio[i]);
+  printf("RX nb=%d tono800=%7.1f pico_max=%6.0f\n", m_nb, tone, (double)pk);
+}
+static void m_rx_burst(void) {  rx_fill_burst();
+  rx_run(1, 1, 12, 0, 0, 2); // agc=1
+  // hueco 2 (3600..4800): primera mitad (hang 600) vs segunda (libre)
+  double g1 = win_rms(3600, 4200), g2 = win_rms(4200, 4800);
+  // ataque 3. ráfaga (6000..7200): pico primeros 60 vs rms resto
+  double pk = 0;
+  for(int i = 6000; i < 6060; i++)
+    if(abs(rx_audio[i]) > pk)
+      pk = abs(rx_audio[i]);
+  double st = win_rms(6300, 7200);
+  printf("RX burst gap1=%6.1f gap2=%6.1f overshoot=%5.2f steady=%6.1f\n", g1, g2,
+         pk / (st + 1e-9), st);
+}
+
+int main(void) {
+  ab_tx_init();
+  printf("== AB TX (dos tonos 700+1100, SSB reconstruida) ==\n");
+  for(int d = 2; d <= 6; d += 2) {
+    char tag[16];
+    drive = (uint8_t)d;
+    snprintf(tag, sizeof(tag), "drive=%d", d);
+    tx_imd(tag, 150.0);
+  }
+  tx_imd("bajo", 60.0);
+  tx_imd("alto", 300.0);
+  tx_imd("att1", 75.0); // equivale a mic_atten=1 con mic=150 (6dB)
+  tx_imd("att2", 37.5); // equivale a mic_atten=2 con mic=150 (12dB)
+
+  // F3.7 planitud: dos tonos 400+2000 en el MISMO run (respuesta en frecuencia)
+  ab_dig_mode(0);
+  tx_run2(150.0, 400.0, 150.0, 2000.0);
+  double v400 = cgoertzel(400.0, 480, TXN), v2000 = cgoertzel(2000.0, 480, TXN);
+  ab_dig_mode(1);
+  tx_run2(150.0, 400.0, 150.0, 2000.0);
+  double d400 = cgoertzel(400.0, 480, TXN), d2000 = cgoertzel(2000.0, 480, TXN);
+  ab_dig_mode(0);
+  printf("TX flat voz  400=%6.3f 2000=%6.3f diff=%5.1fdB\n", v400, v2000,
+         20 * log10(v2000 / (v400 + 1e-12)));
+  printf("TX flat digi 400=%6.3f 2000=%6.3f diff=%5.1fdB\n", d400, d2000,
+         20 * log10(d2000 / (d400 + 1e-12)));
+  tx_run(150.0, 150.0); // re-sincroniza estado ssb tras pruebas digi
+  ab_dig_mode(1);
+  tx_imd("digi700+1100", 150.0);
+  ab_dig_mode(0);
+
+
+  // F3.9 CESSB con envolvente tipo voz (AM 5Hz sobre dos tonos): crest factor
+  // + IMD. Con tonos constantes el ALC lo enmascara todo.
+  drive = 4;
+  tx_env_crest("env150", 150.0); // testigo ALC con envolvente tipo voz
+  // F3.9c lowcut: respuesta a 100Hz vs 1000Hz en zona lineal (drive 0)
+  drive = 0;
+  for(int lc = 0; lc <= 3; lc++) {
+    char tag[16];
+    ab_lowcut((uint8_t)lc);
+    tx_run2(100.0, 100.0, 0.0, 100.0);
+    double r100 = cgoertzel(100.0, 480, TXN);
+    tx_run2(100.0, 1000.0, 0.0, 1000.0);
+    double r1000 = cgoertzel(1000.0, 480, TXN);
+    snprintf(tag, sizeof(tag), "locut%d", lc);
+    printf("TX %-14s 100Hz=%6.3f 1000Hz=%6.3f rej=%5.1fdB\n", tag, r100, r1000,
+           20 * log10(r100 / (r1000 + 1e-12)));
+  }
+  ab_lowcut(0);
+  drive = 4;
+  // F3.9b compresor: misma envolvente con comp on/off (debe bajar crest)
+  ab_comp(1);
+  tx_env_crest("compON", 150.0);
+  ab_comp(0);
+  // zona mixta (drive 2, mic 80): compresor visible sin ALC total
+  drive = 2;
+  tx_env_crest("mixOFF", 80.0);
+  ab_comp(1);
+  tx_env_crest("mixComp", 80.0);
+  ab_comp(0);
+  drive = 4;
+
+  printf("== AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==\n");
+  isolate(m_rx_floor);
+  m_nb = 0;
+  isolate(m_rx_impulse); // testigo RFI (NB revertido: documenta robustez base)
+  isolate(m_rx_burst); // F4 baseline bombeo AGC
+  for(int f = 0; f <= 3; f++) {
+    m_filt = f;
+    isolate(m_rx_tone);
+  }
+  printf("== AB RX NR (agc=0, tono 800 limpio + solo-ruido por nivel) ==\n");
+  for(int n = 0; n <= 8; n++) {
+    m_nr = n;
+    isolate(m_rx_nr_tone);
+    isolate(m_rx_nr_noise);
+  }
+  return 0;
+}
+
+// Envolvente: captura amp + df con AM lenta; crest = peak/rms envolvente
+static uint8_t tx_env[TXN];
+static void    tx_run_env(double amp) {
+  double phase = 0;
+  for(int n = 0; n < TXN; n++) {
+    double env = 1.0 + 0.6 * sin(2 * M_PI * 5.0 * n / 4800.0);
+    double m   = env * amp * (sin(2 * M_PI * 700.0 * n / 4800.0) + sin(2 * M_PI * 1100.0 * n / 4800.0));
+    ab_ssb((int16_t)m);
+    double dp = (double)ab_df_out / 8.0;
+    phase += dp * (2.0 * M_PI / 600.0);
+    double a = (double)ab_amp_out / 255.0;
+    tx_re[n]  = a * cos(phase);
+    tx_im[n]  = a * sin(phase);
+    tx_env[n] = ab_amp_out;
+  }
+}
+static void tx_env_crest(const char* tag, double amp) {  tx_run_env(amp);
+  int    skip = 480;
+  double c1   = cgoertzel(700.0, skip, TXN);
+  double c2   = cgoertzel(1100.0, skip, TXN);
+  double im   = cgoertzel(300.0, skip, TXN) > cgoertzel(1500.0, skip, TXN)
+                    ? cgoertzel(300.0, skip, TXN)
+                    : cgoertzel(1500.0, skip, TXN);
+  double carr = (c1 + c2) / 2.0;
+  double mean = 0;
+  for(int n = skip; n < TXN; n++)
+    mean += tx_env[n];
+  mean /= (TXN - skip);
+  double peak = 0;
+  for(int n = skip; n < TXN; n++)
+    if(tx_env[n] > peak)
+      peak = tx_env[n];
+  printf("TX %-14s mic=%5.0f usb=%6.3f imd3=%6.1fdBc crest=%4.2f\n", tag, amp,
+         carr, 20 * log10(im / (carr + 1e-12)), peak / (mean + 1e-9));
+}

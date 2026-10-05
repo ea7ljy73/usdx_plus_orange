@@ -1,0 +1,11 @@
+== AB AGC v2 (F4.16/F4.17) ==
+T1 rampa debil: x1 t_aud=0.53s t90=3.58s | x8 t_aud=0.00s t90=2.66s
+  [PASS] F4.16 audible al instante con x8
+  [PASS] F4.16 sin x8 tarda (el problema existe)
+  [PASS] F4.16 t90 x8 < x1 (converge antes)
+T2 rec=1: var_soplo=18.42 overshoot=624
+T2 rec=4: var_soplo=2.51 overshoot=249
+  [PASS] F4.17 var soplo rec=4 < 1/4 que rec=1
+  [PASS] F4.17 overshoot rec=4 <= rec=1
+  [PASS] F4.17 sin clipping con rec=4
+=> AB_AGC PASS
