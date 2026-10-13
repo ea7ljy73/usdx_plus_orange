@@ -46,7 +46,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm && ./parity_rx
 cd ../ab_agc && ./run_ab_agc.sh
 ```
 
-TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches (NR levels ≥2 differ intentionally — 2-pole NR improvement, see `ROADMAP.md`).
+TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches (NR levels ≥2 differ intentionally — noise-gate NR improvement, see `ROADMAP.md`).
 
 ---
 
@@ -70,7 +70,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 7 AGC | Fast (SSB) / Slow (CW) | Fast = legacy response; Slow = stable CW level |
 | 32 AGC Start | ON | Instant audible gain on band start (x8 preload) |
 | 33 AGC Rec | 4 | Slower recovery: less breathing between words |
-| 8 NR | 1–2 (SSB) | 2-pole noise reduction; stronger settings for CW |
+| 8 NR | 2–3 (SSB) | Noise gate: mutes background in pauses, voice passes bit-exact; low levels for weak DX |
 | 9/10 ATT/ATT2 | 0 to start | Raise if strong signals overload the front end |
 | 11 S-meter | S or dBm | Signal indicator |
 
@@ -124,7 +124,7 @@ For SSB voice connect an electret mic to the paddle jack (DOT = PTT, DASH = audi
 ## Features in this firmware
 
 - Bit-exact parity with the verified legacy reference (see tests above)
-- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, 2:1 voice compressor, TX low-cut, 2-pole NR, AGC fast-start / anti-pumping recovery / Slow (M0PUB) mode
+- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, 2:1 voice compressor, TX low-cut, NR noise gate, AGC fast-start / anti-pumping recovery / Slow (M0PUB) mode
 - Full CAT TS-480 subset, VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
 
 Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.

@@ -1,0 +1,481 @@
+// usdx_avr_sim.cpp - simulador de la radio completa: ATmega328P (simavr)
+// ejecutando el .elf REAL del firmware a 20 MHz, con los perifericos del uSDX
+// modelados alrededor:
+//   * SI5351: decodifica el I2C por bit-bang (PC4/PC5 en colector abierto) y
+//     mantiene sus registros; de ellos sale la frecuencia de cada instante.
+//   * PCA9555 (banco de reles LPF): mismas lineas I2C, direccion 0x20.
+//   * LCD HD44780 (PD0-3, EN=PD4, RS=PC4): se reconstruye la pantalla.
+//   * Microfono en ADC2, I/Q en ADC0/ADC1, PTT en PB5 (DIT), botones PC3.
+//   * PA: envolvente = PWM de OC1B (OCR1BL/ICR1) mientras CLK2 esta activo.
+// Mide la duracion de CADA interrupcion TIMER2_COMPA (RX y TX) con precision
+// de ciclo y reconstruye la senal RF transmitida para sacar su espectro.
+#include <algorithm>
+#include <complex>
+#include <initializer_list>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
+#include <string.h>
+#include <vector>
+extern "C" {
+#include "avr_adc.h"
+#include "avr_ioport.h"
+#include "sim_avr.h"
+#include "sim_elf.h"
+}
+
+#define F_XTAL_MCU 20000000.0 // cristal real del uSDX+
+#define F_XTAL_SI 27000000.0
+static avr_t* avr;
+static double now_s() { return avr->cycle / F_XTAL_MCU; }
+
+// ------------------------------------------------------------------ opciones
+static double opt_boot = 6.0, opt_tx = 2.4, opt_tail = 0.4;
+static double opt_a1 = 32, opt_f1 = 700, opt_a2 = 32, opt_f2 = 1100;
+static int    opt_voice = 0, opt_quiet = 0, opt_study = 0;
+static double opt_expect = 0; // --expect-imd3: IMD3 maxima admitida con el RC del esquema
+static double opt_rc_us = 100.0; // celula RC del conformador: 10 kohm x 10 nF (esquema usdx.png), dos en cascada
+
+// ------------------------------------------------------------------ SI5351 + PCA9555 por I2C bit-bang
+static uint8_t si[256], siptr;
+static uint16_t ioexp_out;
+static uint8_t  ioexp_ptr;
+struct Ev { uint64_t cyc; uint8_t kind, reg, val; }; // kind 0 = registro SI5351, 1 = OCR1BL, 2 = TCCR1A
+static std::vector<Ev> evs;
+static long i2c_bytes, i2c_xfers, si_writes, lpf_writes;
+static struct { int in, nbit, nbyte; uint8_t sh, addr; } bus;
+static char lpf_log[256];
+
+static void i2c_byte(uint8_t b) {
+  i2c_bytes++;
+  if(bus.nbyte == 0) { bus.addr = b; }
+  else if(bus.addr == 0xC0) { // SI5351 (0x60, escritura)
+    if(bus.nbyte == 1) siptr = b;
+    else { si[siptr] = b; evs.push_back({avr->cycle, 0, siptr, b}); siptr++; si_writes++; }
+  } else if(bus.addr == 0x40) { // PCA9555 (0x20)
+    if(bus.nbyte == 1) ioexp_ptr = b;
+    else {
+      if(ioexp_ptr == 2) ioexp_out = (ioexp_out & 0xff00) | b;
+      if(ioexp_ptr == 3) ioexp_out = (ioexp_out & 0x00ff) | (b << 8);
+      ioexp_ptr++; lpf_writes++;
+    }
+  }
+  bus.nbyte++;
+}
+static void i2c_lines(uint8_t prev, uint8_t cur) { // DDRC: bit4 = SDA baja, bit5 = SCL baja
+  int sda0 = !(prev & 0x10), scl0 = !(prev & 0x20), sda1 = !(cur & 0x10), scl1 = !(cur & 0x20);
+  if(scl0 && scl1 && sda0 != sda1) { // SDA cambia con SCL alta
+    if(!sda1) { bus.in = 1; bus.nbit = 0; bus.nbyte = 0; bus.sh = 0; i2c_xfers++; } // START
+    else bus.in = 0;                                                                // STOP
+  }
+  if(bus.in && !scl0 && scl1) { // flanco de subida de SCL: bit valido
+    if(bus.nbit < 8) { bus.sh = (bus.sh << 1) | sda1; bus.nbit++; }
+    else { i2c_byte(bus.sh); bus.nbit = 0; bus.sh = 0; } // 9o pulso = ACK
+  }
+}
+static double si_pll(const uint8_t* r) { // fvco de PLLA
+  double p1 = ((r[28] & 3) << 16) | (r[29] << 8) | r[30], p2 = ((r[31] & 15) << 16) | (r[32] << 8) | r[33];
+  double p3 = ((r[31] >> 4) << 16) | (r[26] << 8) | r[27];
+  return F_XTAL_SI * (p1 + 512 + (p3 ? p2 / p3 : 0)) / 128.0;
+}
+static double si_clk(const uint8_t* r, int ms) { // frecuencia de salida de CLK<ms>
+  const uint8_t* m = r + 42 + 8 * ms;
+  double p1 = ((m[2] & 3) << 16) | (m[3] << 8) | m[4], p2 = ((m[5] & 15) << 16) | (m[6] << 8) | m[7];
+  double p3 = ((m[5] >> 4) << 16) | (m[0] << 8) | m[1];
+  double div = (p1 + 512 + (p3 ? p2 / p3 : 0)) / 128.0;
+  return (div > 0) ? si_pll(r) / div / (1 << ((m[2] >> 4) & 7)) : 0;
+}
+
+// ------------------------------------------------------------------ LCD HD44780 (4 bit)
+static char lcd[2][17];
+static int  lcd_addr, lcd_cg, lcd_hi = -1;
+static void lcd_byte(int rs, uint8_t b) {
+  if(!rs) {
+    if(b == 0x01) { memset(lcd[0], ' ', 16); memset(lcd[1], ' ', 16); lcd_addr = 0; lcd_cg = 0; }
+    else if(b & 0x80) { lcd_addr = b & 0x7f; lcd_cg = 0; }
+    else if(b & 0x40) lcd_cg = 1;
+  } else if(!lcd_cg) {
+    int row = (lcd_addr >= 0x40), col = lcd_addr & 0x3f;
+    if(col < 16) lcd[row][col] = (b >= 32 && b < 127) ? b : (b < 8 ? "#*_.:|AB"[b] : '?');
+    lcd_addr++;
+  }
+}
+static void lcd_en_fall(uint8_t portd, uint8_t ddrc) {
+  int rs = !(ddrc & 0x10), nib = portd & 0x0f;
+  if(lcd_hi < 0) lcd_hi = nib; else { lcd_byte(rs, (lcd_hi << 4) | nib); lcd_hi = -1; }
+}
+static void lcd_show(const char* tag) {
+  if(!opt_quiet) printf("   LCD %-22s |%.16s|\n   %26s |%.16s|\n", tag, lcd[0], "", lcd[1]);
+}
+
+// ------------------------------------------------------------------ ADC: microfono e I/Q
+static uint32_t vseed = 99;
+static double mic_counts(double t) {
+  if(opt_voice) {
+    double env = 0.55 + 0.45 * sin(2 * M_PI * 3.1 * t) * sin(2 * M_PI * 0.7 * t);
+    vseed = vseed * 1103515245u + 12345u;
+    return opt_a1 * env * (sin(2 * M_PI * 310 * t) + 0.6 * sin(2 * M_PI * 870 * t + 1) + 0.4 * sin(2 * M_PI * 1950 * t + 2)) +
+           (int)((vseed >> 16) % 5) - 2;
+  }
+  return opt_a1 * sin(2 * M_PI * opt_f1 * t) + opt_a2 * sin(2 * M_PI * opt_f2 * t);
+}
+static int mic_on;
+static void adc_feed(struct avr_irq_t*, uint32_t, void*) { // al iniciar cada conversion
+  double t = now_s();
+  avr_irq_t* a = avr_io_getirq(avr, AVR_IOCTL_ADC_GETIRQ, 0);
+  // Las entradas estan polarizadas a AREF/2 (como en la placa): la tension
+  // sigue a la referencia activa (1,1 V interna o AVCC) y la senal va encima.
+  double vref = ((avr->data[0x7c] >> 6) == 3) ? 1100.0 : 5000.0, lsb = vref / 1024.0;
+  double mic = 512 + (mic_on ? mic_counts(t) : 0);
+  avr_raise_irq(a + ADC_IRQ_ADC2, (uint32_t)lrint(mic * lsb));
+  // RX: portadora a +1 kHz del dial (I/Q en cuadratura), 60 cuentas de pico
+  avr_raise_irq(a + ADC_IRQ_ADC0, (uint32_t)lrint((512 + 60 * sin(2 * M_PI * 1000 * t)) * lsb));
+  avr_raise_irq(a + ADC_IRQ_ADC1, (uint32_t)lrint((512 + 60 * cos(2 * M_PI * 1000 * t)) * lsb));
+  avr_raise_irq(a + ADC_IRQ_ADC3, 0); // botones sueltos
+}
+static void pin(char port, int bit, int v) { // nivel externo: manda sobre el pull-up interno
+  avr_ioport_external_t e = {(unsigned long)port, (unsigned long)(1 << bit), (unsigned long)(v ? (1 << bit) : 0)};
+  avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL(port), &e);
+  avr_raise_irq(avr_io_getirq(avr, AVR_IOCTL_IOPORT_GETIRQ(port), bit), v);
+}
+
+// ------------------------------------------------------------------ estadistica de la ISR
+// La ISR de RX vuelve a habilitar interrupciones para el DSP lento, asi que
+// se anida: se lleva una pila de entradas. "Muestras perdidas" = ticks del
+// timer que no llegaron a entrar (esperadas por tiempo - entradas reales).
+struct IsrStat {
+  long n = 0, maxdepth = 0, over = 0; uint64_t sum = 0, mx = 0, mn = ~0ull, c_first = 0, c_last = 0, busy = 0; double period = 0;
+  void add(uint64_t entry, uint64_t dur, double per, int depth) {
+    period = per;
+    if(!n) c_first = entry;
+    c_last = entry; n++; sum += dur;
+    if(dur > mx) mx = dur;
+    if(dur < mn) mn = dur;
+    if(depth > maxdepth) maxdepth = depth;
+    if(dur > per) over++;
+  }
+  double expected() const { return n ? (c_last - c_first) / period + 1 : 0; }
+  long   lost() const { return (long)lrint(expected() - n); }
+};
+static void isr_report(const char* name, IsrStat& s) {
+  if(!s.n) { printf("   %s: sin interrupciones\n", name); return; }
+  double span = (double)(s.c_last - s.c_first);
+  printf("   %s: periodo %.0f ciclos = %.1f Hz; %ld entradas en %.3f s (esperadas %.0f) -> muestras perdidas %ld (%.2f %%)\n", name, s.period,
+         F_XTAL_MCU / s.period, s.n, span / F_XTAL_MCU, s.expected(), s.lost(), 100.0 * s.lost() / s.expected());
+  printf("      duracion de la ISR: min %llu  media %.0f  MAX %llu ciclos (periodo %.0f) -> pico %.0f %% del periodo; anidamiento max %ld\n",
+         (unsigned long long)s.mn, (double)s.sum / s.n, (unsigned long long)s.mx, s.period, 100.0 * s.mx / s.period, s.maxdepth);
+  printf("      CPU dentro de la ISR: %.1f %%  (queda %.1f %% para el bucle principal); ISR mas largas que un periodo: %.2f %%\n",
+         100.0 * s.busy / span, 100 - 100.0 * s.busy / span, 100.0 * s.over / s.n);
+}
+
+// ------------------------------------------------------------------ perfilador (simbolos de avr-nm -n)
+struct Sym { uint32_t addr; char name[64]; uint64_t cyc; };
+static std::vector<Sym> syms, dsyms; // codigo y variables (RAM)
+static std::vector<std::pair<std::string, int>> pokes;
+static void load_syms(const char* path) {
+  FILE* f = fopen(path, "r");
+  if(!f) return;
+  char line[512], type; unsigned addr; char name[400];
+  while(fgets(line, sizeof line, f)) {
+    if(sscanf(line, "%x %c %399s", &addr, &type, name) == 3 && strchr("BbDd", type) && addr >= 0x800100) {
+      Sym s; s.addr = addr - 0x800000; s.cyc = 0; snprintf(s.name, sizeof s.name, "%.63s", name); dsyms.push_back(s);
+    }
+    if(sscanf(line, "%x %c %399s", &addr, &type, name) == 3 && (type == 'T' || type == 't' || type == 'W') && addr < 0x8000) {
+      Sym s; s.addr = addr; s.cyc = 0; snprintf(s.name, sizeof s.name, "%.63s", name);
+      if(!strncmp(name, "__stack", 7) || !strncmp(name, "__heap", 6) || !strncmp(name, "__data", 6) || !strncmp(name, "__bss", 5)) continue;
+      if(!syms.empty() && syms.back().addr == addr) continue;
+      syms.push_back(s);
+    }
+  }
+  fclose(f);
+}
+static Sym* sym_at(uint32_t pc) {
+  size_t lo = 0, hi = syms.size();
+  while(lo + 1 < hi) { size_t m = (lo + hi) / 2; if(syms[m].addr <= pc) lo = m; else hi = m; }
+  return syms.empty() ? NULL : &syms[lo];
+}
+
+// ------------------------------------------------------------------ FFT
+typedef std::complex<double> cd;
+static void fft(std::vector<cd>& a) {
+  const size_t n = a.size();
+  for(size_t i = 1, j = 0; i < n; i++) { size_t bit = n >> 1; for(; j & bit; bit >>= 1) j ^= bit; j ^= bit; if(i < j) std::swap(a[i], a[j]); }
+  for(size_t len = 2; len <= n; len <<= 1) {
+    double ang = -2 * M_PI / len; cd wl(cos(ang), sin(ang));
+    for(size_t i = 0; i < n; i += len) { cd w(1); for(size_t j = 0; j < len / 2; j++) { cd u = a[i + j], v = a[i + j + len / 2] * w; a[i + j] = u + v; a[i + j + len / 2] = u - v; w *= wl; } }
+  }
+}
+
+int main(int argc, char** argv) {
+  const char* elf = NULL;
+  for(int i = 1; i < argc; i++) {
+    if(!strcmp(argv[i], "--voice")) opt_voice = 1;
+    else if(!strcmp(argv[i], "--quiet")) opt_quiet = 1;
+    else if(!strcmp(argv[i], "--study")) opt_study = 1;
+    else if(!strcmp(argv[i], "--expect-imd3") && i + 1 < argc) { opt_expect = atof(argv[++i]); opt_study = 1; }
+    else if(!strcmp(argv[i], "--rc") && i + 1 < argc) opt_rc_us = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--mic") && i + 1 < argc) opt_a1 = opt_a2 = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--tx") && i + 1 < argc) opt_tx = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--syms") && i + 1 < argc) load_syms(argv[++i]);
+    else if(!strcmp(argv[i], "--poke") && i + 1 < argc) { // variable=valor (1 byte), aplicado al pulsar PTT
+      char* eq = strchr(argv[++i], '=');
+      if(eq) { *eq = 0; pokes.push_back({argv[i], atoi(eq + 1)}); }
+    }
+    else elf = argv[i];
+  }
+  if(!elf) { fprintf(stderr, "uso: usdx_avr_sim firmware.elf [--mic N] [--voice] [--tx seg]\n"); return 2; }
+  elf_firmware_t fw;
+  memset(&fw, 0, sizeof fw);
+  if(elf_read_firmware(elf, &fw)) { fprintf(stderr, "no puedo leer %s\n", elf); return 2; }
+  avr = avr_make_mcu_by_name("atmega328p");
+  avr_init(avr);
+  avr_load_firmware(avr, &fw);
+  avr->frequency = (uint32_t)F_XTAL_MCU;
+  avr->vcc = avr->avcc = avr->aref = 5000;
+  avr->log = LOG_ERROR;
+  memset(lcd, ' ', sizeof lcd);
+  avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_ADC_GETIRQ, ADC_IRQ_OUT_TRIGGER), adc_feed, NULL);
+  pin('B', 5, 1); pin('B', 4, 1); // DIT/PTT y DAH sueltos (pull-up)
+  pin('C', 3, 0);                 // botones sueltos
+  pin('D', 6, 1); pin('D', 7, 1); // encoder en reposo
+  adc_feed(0, 0, 0);
+
+  const uint64_t c_ptt = (uint64_t)(opt_boot * F_XTAL_MCU), c_rel = c_ptt + (uint64_t)(opt_tx * F_XTAL_MCU),
+                 c_end = c_rel + (uint64_t)(opt_tail * F_XTAL_MCU);
+  IsrStat st_rx, st_tx;
+  uint8_t  ddrc = avr->data[0x27], portd = avr->data[0x2b], ocr1b = avr->data[0x8a], tccr1a = avr->data[0x80];
+  int      stage = 0, depth = 0;
+  struct { uint64_t c0; uint16_t sp; } stk[32];
+  uint64_t t_tx_on = 0, t_tx_off = 0, busy_from = 0;
+  const uint64_t c_rx0 = c_ptt - (uint64_t)(1.0 * F_XTAL_MCU); // ventana RX estable: ultimo segundo antes de la PTT
+  uint64_t i2c_t0 = 0, i2c_mx = 0, i2c_sum = 0; long i2c_n = 0; int was_in = 0;
+  double   f_dial = 0;
+  uint8_t  si_rx[256];
+  while(avr->cycle < c_end) {
+    if(avr->pc == 0x1c && depth < 31) {
+      if(!depth) busy_from = avr->cycle;
+      stk[depth].c0 = avr->cycle; stk[depth].sp = avr->data[0x5d] | (avr->data[0x5e] << 8); depth++;
+    }
+    Sym*     psym = (depth && t_tx_on && !t_tx_off && !syms.empty()) ? sym_at(avr->pc) : NULL;
+    uint64_t pc0 = avr->cycle;
+    int state = avr_run(avr);
+    if(psym) psym->cyc += avr->cycle - pc0;
+    if(state == cpu_Done || state == cpu_Crashed) { printf("   CPU parada (estado %d) en t=%.3f s\n", state, now_s()); break; }
+    if(depth && (uint16_t)(avr->data[0x5d] | (avr->data[0x5e] << 8)) == (uint16_t)(stk[depth - 1].sp + 2)) {
+      depth--;
+      double per = 64.0 * (avr->data[0xb3] + 1); // OCR2A, prescaler 64
+      int    txi = t_tx_on && !t_tx_off && avr->cycle < c_rel, rxi = stage == 0 && stk[depth].c0 >= c_rx0;
+      IsrStat* st = txi ? &st_tx : rxi ? &st_rx : NULL;
+      if(st) { st->add(stk[depth].c0, avr->cycle - stk[depth].c0, per, depth + 1); if(!depth) st->busy += avr->cycle - busy_from; }
+    }
+    uint8_t d = avr->data[0x27];
+    if(d != ddrc) {
+      i2c_lines(ddrc, d); ddrc = d;
+      if(bus.in && !(d & 0x20)) { if(!i2c_t0) i2c_t0 = avr->cycle; } // SCL baja: empieza a transmitir
+      if(bus.in && !was_in) i2c_t0 = 0;
+      if(!bus.in && was_in && bus.nbyte >= 2 && i2c_t0 && t_tx_on && !t_tx_off) { uint64_t t = avr->cycle - i2c_t0; i2c_n++; i2c_sum += t; if(t > i2c_mx) i2c_mx = t; }
+      was_in = bus.in;
+    }
+    uint8_t p = avr->data[0x2b];
+    if(p != portd) { if((portd & 0x10) && !(p & 0x10)) lcd_en_fall(portd, ddrc); portd = p; }
+    uint8_t o = avr->data[0x8a];
+    if(o != ocr1b) { ocr1b = o; evs.push_back({avr->cycle, 1, 0, o}); }
+    uint8_t t1 = avr->data[0x80];
+    if(t1 != tccr1a) { tccr1a = t1; evs.push_back({avr->cycle, 2, 0, t1}); }
+    if(stage == 0 && avr->cycle >= c_ptt) {
+      lcd_show("en recepcion");
+      f_dial = si_clk(si, 0);
+      memcpy(si_rx, si, 256);
+      if(!opt_quiet) printf("   t=%.2f s  RX: CLK0 = %.1f Hz, reles LPF = 0x%04x, I2C: %ld transacciones\n", now_s(), f_dial, ioexp_out, i2c_xfers);
+      for(auto& p : pokes) {
+        int done = 0;
+        for(auto& d : dsyms) if(p.first == d.name) { avr->data[d.addr] = (uint8_t)p.second; done = 1; }
+        printf("   %s = %d %s\n", p.first.c_str(), p.second, done ? "(fijado en RAM)" : "(VARIABLE NO ENCONTRADA)");
+      }
+      mic_on = 1; pin('B', 5, 0); stage = 1; // PTT pulsado
+    }
+    if(stage == 1 && !t_tx_on && (si[3] & 4) == 0) t_tx_on = avr->cycle;
+    if(stage == 1 && avr->cycle >= c_rel - (uint64_t)(0.05 * F_XTAL_MCU) && lcd_hi != -2) { lcd_show("en transmision"); lcd_hi = -1; stage = 2; }
+    if(stage == 2 && avr->cycle >= c_rel) { pin('B', 5, 1); stage = 3; }
+    if(stage == 3 && !t_tx_off && (si[3] & 4)) t_tx_off = avr->cycle;
+  }
+  lcd_show("de vuelta en recepcion");
+
+  printf("\n== Interrupcion de muestreo TIMER2_COMPA (firmware real, ciclo a ciclo) ==\n");
+  isr_report("RX", st_rx);
+  isr_report("TX", st_tx);
+  if(i2c_n) printf("   I2C en TX: %ld transacciones, duracion media %.0f ciclos (%.1f us), max %llu ciclos\n", i2c_n, (double)i2c_sum / i2c_n,
+                   i2c_sum / i2c_n / 20.0, (unsigned long long)i2c_mx);
+  if(!syms.empty() && st_tx.n) {
+    std::vector<Sym> v = syms;
+    std::sort(v.begin(), v.end(), [](const Sym& a, const Sym& b) { return a.cyc > b.cyc; });
+    printf("   perfil de la ISR de TX (ciclos por muestra):\n");
+    for(size_t i = 0; i < v.size() && i < 12 && v[i].cyc; i++) printf("      %7.0f  %s\n", (double)v[i].cyc / st_tx.n, v[i].name);
+  }
+  // desborda = se pierden muestras, o la ISR de TX (no anidada) no deja al menos un 5 % de CPU al bucle principal
+  int ok_rx = st_rx.n && labs(st_rx.lost()) <= st_rx.expected() * 0.001 && st_rx.busy < 0.95 * (st_rx.c_last - st_rx.c_first);
+  int ok_tx = st_tx.n && labs(st_tx.lost()) <= st_tx.expected() * 0.001 && st_tx.busy < 0.95 * (st_tx.c_last - st_tx.c_first) && st_tx.mx < 2 * st_tx.period;
+
+  printf("\n== Conmutacion ==\n");
+  if(!t_tx_on) { printf("   El firmware NO llego a transmitir (CLK2 nunca habilitado)\n"); return 1; }
+  printf("   PTT -> RF en %.2f ms; soltar PTT -> RF fuera en %.2f ms\n", (t_tx_on - c_ptt) * 1e3 / F_XTAL_MCU,
+         t_tx_off ? (t_tx_off - c_rel) * 1e3 / F_XTAL_MCU : -1.0);
+  printf("   I2C total: %ld transacciones, %ld bytes; SI5351 %ld escrituras de registro; reles %ld\n", i2c_xfers, i2c_bytes, si_writes, lpf_writes);
+
+  // ---- reconstruccion de la RF: reproducir los eventos sobre una rejilla de 16 ciclos (1,25 MHz)
+  const int    LOG2N = 20, STEP = 16;
+  const size_t N = (size_t)1 << LOG2N;
+  const double fs = F_XTAL_MCU / STEP;
+  uint64_t     c0 = t_tx_on + (uint64_t)(1.2 * F_XTAL_MCU); // ALC y filtros asentados
+  if(c0 + N * STEP > c_rel) c0 = (c_rel > N * STEP + t_tx_on) ? c_rel - N * STEP - 1000 : t_tx_on;
+  uint8_t r[256];
+  memcpy(r, si_rx, 256);
+  uint8_t oc = 0, tc = 0;
+  size_t  ei = 0;
+  // estado en c0: aplicar todo lo anterior
+  auto apply = [&](const Ev& e) { if(e.kind == 0) r[e.reg] = e.val; else if(e.kind == 1) oc = e.val; else tc = e.val; };
+  memset(r, 0, 256);
+  for(; ei < evs.size() && evs[ei].cyc < c0; ei++) apply(evs[ei]);
+  const double icr = avr->data[0x86] ? avr->data[0x86] : 255;
+  std::vector<cd> x(N);
+  double phase = 0, f = si_clk(r, 2) - f_dial, pk = 0, pw = 0;
+  long   clip = 0, nenv = 0;
+  uint8_t pwm_max = 0;
+  for(size_t k = 0; k < evs.size(); k++) if(evs[k].kind == 1 && evs[k].val > pwm_max && evs[k].cyc > t_tx_on && evs[k].cyc < c_rel) pwm_max = evs[k].val;
+  for(size_t n = 0; n < N; n++) {
+    uint64_t c = c0 + n * STEP;
+    int chg = 0;
+    for(; ei < evs.size() && evs[ei].cyc <= c; ei++) { apply(evs[ei]); chg |= evs[ei].kind == 0; }
+    if(chg) f = si_clk(r, 2) - f_dial;
+    double a = ((tc & 0x20) && !(r[3] & 4)) ? oc / icr : 0;
+    phase += 2 * M_PI * f / fs;
+    double w = 0.5 - 0.5 * cos(2 * M_PI * n / (double)N);
+    x[n] = std::polar(a * w, phase);
+    if(a > pk) pk = a;
+    pw += a * a; nenv++; clip += (oc >= pwm_max);
+  }
+  fft(x);
+  std::vector<double> psd(N);
+  for(size_t k = 0; k < N; k++) psd[k] = std::norm(x[k]);
+  const double dfb = fs / N;
+  auto band = [&](double f0, double f1) { double s = 0; for(long k = (long)floor(f0 / dfb); k <= (long)ceil(f1 / dfb); k++) s += psd[(size_t)(((k % (long)N) + N) % N)]; return s; };
+  auto peak = [&](double f0, double f1, double excl) { double best = 0, bf = 0; for(long k = (long)(f0 / dfb); k <= (long)(f1 / dfb); k++) { double fk = k * dfb; if(excl && fabs(fk - excl) < 60) continue; double v = psd[(size_t)(((k % (long)N) + N) % N)]; if(v > best) { best = v; bf = fk; } } return bf; };
+  printf("\n== Emision SSB reconstruida (%.2f s de RF a %.2f MHz de muestreo) ==\n", N / fs, fs / 1e6);
+  double f_nom = 0; // dial nominal: los digitos que muestra el LCD (resolucion 10 Hz)
+  for(int i = 1; i < 12; i++) if(lcd[1][i] >= '0' && lcd[1][i] <= '9') f_nom = f_nom * 10 + (lcd[1][i] - '0');
+  f_nom *= 10;
+  if(fabs(f_nom - f_dial) > 50) f_nom = round(f_dial / 100) * 100;
+  printf("   dial nominal %.0f Hz; OL de RX programado a %+.1f Hz del dial (cuantizacion del SI5351 en freq())\n", f_nom, f_dial - f_nom);
+  const double tone_ref = f_nom - f_dial; // los tonos se miden respecto al dial nominal
+  printf("   envolvente: pico %.0f %% del PWM maximo (OCR1B max %u, ICR1 %.0f), potencia media %.1f dB re pico, %.2f %% del tiempo en el tope\n",
+         100.0 * pk * icr / (pwm_max ? pwm_max : 1), pwm_max, icr, 10 * log10(pw / nenv / (pk * pk + 1e-12)), 100.0 * clip / nenv);
+  int ok_spec = 1;
+  if(!opt_voice) {
+    double p1 = peak(-4000, 4000, 0), p2 = peak(-4000, 4000, p1);
+    double q1 = p1 - tone_ref, q2 = p2 - tone_ref; // respecto al dial nominal
+    int lsb_side = (p1 + p2) < 0;
+    if(fabs(p1) > fabs(p2)) std::swap(p1, p2);
+    double W = 25, want = band(p1 - W, p1 + W) + band(p2 - W, p2 + W), d = p2 - p1, sg = lsb_side ? -1 : 1;
+    double imd3 = 10 * log10(fmax(band(p1 - d - W, p1 - d + W), band(p2 + d - W, p2 + d + W)) / (want / 2));
+    double imd5 = 10 * log10(fmax(band(p1 - 2 * d - W, p1 - 2 * d + W), band(p2 + 2 * d - W, p2 + 2 * d + W)) / (want / 2));
+    double opp = 10 * log10(((lsb_side ? band(100, 3000) : band(-3000, -100)) + 1e-30) / want), adj = 10 * log10((band(3300, 6300) + band(-6300, -3300) + 1e-30) / want);
+    double far = 10 * log10((band(6300, 50000) + band(-50000, -6300) + 1e-30) / want);
+    printf("   micro: dos tonos de %.0f y %.0f Hz -> en antena (%s) a dial %+.1f y %+.1f Hz (error %+.1f %% y %+.1f %%)\n", opt_f1, opt_f2,
+           lsb_side ? "LSB" : "USB", fabs(q1) < fabs(q2) ? q1 : q2, fabs(q1) < fabs(q2) ? q2 : q1, 100 * (sg * p1 / opt_f1 - 1 - sg * tone_ref / opt_f1),
+           100 * (sg * p2 / opt_f2 - 1 - sg * tone_ref / opt_f2));
+    printf("   IMD3 %.1f dBc   IMD5 %.1f dBc   banda lateral opuesta %.1f dBc   canal adyacente %.1f dBc   espurios lejanos %.1f dBc\n", imd3, imd5, opp, adj, far);
+    ok_spec = fabs(sg * (p1 - tone_ref) / opt_f1 - 1) < 0.02 && fabs(sg * (p2 - tone_ref) / opt_f2 - 1) < 0.02;
+    printf("\nRESULTADO: ISR RX %s | ISR TX %s | frecuencias de audio %s\n", ok_rx ? "OK" : "DESBORDA", ok_tx ? "OK" : "DESBORDA", ok_spec ? "OK" : "INCORRECTAS");
+  } else {
+    double up = band(100, 3000), lo = band(-3000, -100), inb = fmax(up, lo); // la banda con mas potencia es la deseada (USB o LSB)
+    double opp = 10 * log10((fmin(up, lo) + 1e-30) / inb), adj = 10 * log10((band(3300, 6300) + band(-6300, -3300) + 1e-30) / inb);
+    printf("   voz: banda opuesta %.1f dBc, canal adyacente %.1f dBc, lejanos %.1f dBc (re potencia en 0,1-3 kHz)\n", opp, adj,
+           10 * log10((band(6300, 50000) + band(-50000, -6300) + 1e-30) / inb));
+    printf("\nRESULTADO: ISR RX %s | ISR TX %s\n", ok_rx ? "OK" : "DESBORDA", ok_tx ? "OK" : "DESBORDA");
+  }
+  // ---- estudio con el conformador de envolvente del esquema (usdx.png):
+  // KEY_OUT (PWM 78 kHz) -> 10k -> 10n -> 10k -> 10n -> puertas de los BS170.
+  // Se modela el PWM real (no su media) y las dos celulas RC en cascada; la
+  // amplitud de RF se toma proporcional a la tension filtrada (la curva
+  // polarizacion->potencia del PA no se conoce: es el limite del modelo).
+  // 'avance' adelanta la amplitud respecto a la frecuencia para ver cuanto
+  // compensa el retardo de grupo del filtro (3*RC a baja frecuencia).
+  if(opt_study && !opt_voice) {
+    std::vector<Ev> evs0 = evs; // eventos originales del firmware
+    // preenfasis de envolvente: a' = a + c1*(a - a1) + c2*(a - 2*a1 + a2), recortada a 0..tope
+    auto preemph = [&](double c1, double c2) {
+      evs = evs0;
+      double a1 = 0, a2 = 0;
+      for(auto& e : evs) if(e.kind == 1 && e.cyc > t_tx_on && e.cyc < c_rel) {
+        double a = e.val, v = a + c1 * (a - a1) + c2 * (a - 2 * a1 + a2);
+        a2 = a1; a1 = a;
+        e.val = (uint8_t)(v < 0 ? 0 : v > pwm_max ? pwm_max : lrint(v));
+      }
+    };
+    auto study = [&](double adv_us, double rc_us, double* o3, double* o5, double* oadj, double* opwm) {
+      const uint64_t adv = (uint64_t)(adv_us * 20.0 + 0.5);
+      uint8_t rr[256]; memset(rr, 0, 256);
+      uint8_t o = 0, tcc = 0;
+      size_t ef = 0, ea = 0;
+      for(; ef < evs.size() && evs[ef].cyc < c0; ef++) if(evs[ef].kind == 0) rr[evs[ef].reg] = evs[ef].val;
+      for(; ea < evs.size() && evs[ea].cyc < c0 + adv; ea++) { if(evs[ea].kind == 1) o = evs[ea].val; else if(evs[ea].kind == 2) tcc = evs[ea].val; }
+      std::vector<cd> y(N);
+      double ph = 0, ff = si_clk(rr, 2) - f_dial, v1 = 0, v2 = 0;
+      const double k = (STEP / F_XTAL_MCU) / (rc_us * 1e-6);
+      for(int pre = 0; pre < 4000; pre++) { double vin = o / 256.0; if(rc_us > 0) { v1 += k * (vin - 2 * v1 + v2); v2 += k * (v1 - v2); } else v2 = vin; }
+      for(size_t n = 0; n < N; n++) {
+        uint64_t c = c0 + n * STEP;
+        int chg = 0;
+        for(; ef < evs.size() && evs[ef].cyc <= c; ef++) if(evs[ef].kind == 0) { rr[evs[ef].reg] = evs[ef].val; chg = 1; }
+        for(; ea < evs.size() && evs[ea].cyc <= c + adv; ea++) { if(evs[ea].kind == 1) o = evs[ea].val; else if(evs[ea].kind == 2) tcc = evs[ea].val; }
+        if(chg) ff = si_clk(rr, 2) - f_dial;
+        // PWM rapido de Timer1 (TOP=255): alto mientras el contador < OCR1B
+        int cnt = (int)(c & 255), hi = 0;
+        for(int j = 0; j < STEP; j++) hi += ((cnt + j) & 255) < o;
+        double vin = ((tcc & 0x20) && !(rr[3] & 4)) ? hi / (double)STEP : 0;
+        if(rc_us > 0) { v1 += k * (vin - 2 * v1 + v2); v2 += k * (v1 - v2); } else v2 = vin;
+        ph += 2 * M_PI * ff / fs;
+        double w = 0.5 - 0.5 * cos(2 * M_PI * n / (double)N);
+        y[n] = std::polar(v2 * w, ph);
+      }
+      fft(y);
+      for(size_t i = 0; i < N; i++) psd[i] = std::norm(y[i]);
+      double p1 = peak(-4000, 4000, 0), p2 = peak(-4000, 4000, p1);
+      if(fabs(p1) > fabs(p2)) std::swap(p1, p2);
+      double W = 25, want = band(p1 - W, p1 + W) + band(p2 - W, p2 + W), d = p2 - p1;
+      *o3 = 10 * log10(fmax(band(p1 - d - W, p1 - d + W), band(p2 + d - W, p2 + d + W)) / (want / 2));
+      *o5 = 10 * log10(fmax(band(p1 - 2 * d - W, p1 - 2 * d + W), band(p2 + 2 * d - W, p2 + 2 * d + W)) / (want / 2));
+      *oadj = 10 * log10((band(3300, 6300) + band(-6300, -3300) + 1e-30) / want);
+      *opwm = 10 * log10((band(78125 - 3000, 78125 + 3000) + band(-78125 - 3000, -78125 + 3000) + 1e-30) / want);
+    };
+    printf("\n== Estudio: conformador de envolvente del esquema (2 x RC de %.0f us) ==\n", opt_rc_us);
+    printf("   avance de amplitud    IMD3     IMD5   adyacente  PWM +-78 kHz\n");
+    double a3, a5, aadj, apwm;
+    study(0, 0, &a3, &a5, &aadj, &apwm);
+    printf("   sin filtro RC       %6.1f   %6.1f   %6.1f   %6.1f dBc   (PWM directo, referencia)\n", a3, a5, aadj, apwm);
+    double best = 0, best3 = 99;
+    for(double adv : {0.0, 100.0, 200.0, 250.0, 300.0, 350.0, 400.0, 500.0}) {
+      study(adv, opt_rc_us, &a3, &a5, &aadj, &apwm);
+      printf("   %5.0f us            %6.1f   %6.1f   %6.1f   %6.1f dBc%s\n", adv, a3, a5, aadj, apwm, adv == 0 ? "   <- firmware actual (= legacy)" : "");
+      if(a3 < best3) { best3 = a3; best = adv; }
+      if(adv == 0 && opt_expect < 0) {
+        printf("   exigido IMD3 <= %.1f dBc con el RC del esquema: %s\n", opt_expect, a3 <= opt_expect ? "OK" : "NO SE CUMPLE");
+        if(a3 > opt_expect) ok_spec = 0;
+      }
+    }
+    printf("   mejor alineamiento: amplitud adelantada %.0f us (%.2f muestras de TX) -> IMD3 %.1f dBc\n", best, best / 208.0, best3);
+    printf("   con preenfasis digital de la envolvente  a' = a + c1*(a-a1) + c2*(a-2*a1+a2):\n");
+    printf("     c1    c2   avance    IMD3     IMD5   adyacente\n");
+    const double T = 208.0, tau = opt_rc_us;
+    struct { double c1, c2; } pe[] = {{1.0, 0}, {1.5, 0}, {3 * tau / T, 0}, {3 * tau / T, tau * tau / (T * T)}, {2.0, 0.25}};
+    for(auto& p : pe)
+      for(double adv : {0.0, 50.0, 100.0, 200.0}) {
+        preemph(p.c1, p.c2);
+        study(adv, opt_rc_us, &a3, &a5, &aadj, &apwm);
+        printf("   %5.2f %5.2f  %4.0f us  %6.1f   %6.1f   %6.1f\n", p.c1, p.c2, adv, a3, a5, aadj);
+      }
+    evs = evs0;
+  }
+  return (ok_rx && ok_tx && ok_spec) ? 0 : 1;
+}

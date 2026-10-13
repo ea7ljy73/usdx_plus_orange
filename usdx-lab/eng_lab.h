@@ -12,9 +12,11 @@
 #include "menu.h"    // menu.state (MENU_MAIN)
 
 // ---------------------------------------------------------------------------
-// Selector (parametro de menu, eslot 35): 0=OFF, 1=ADC, 2=AUDIO
+// Selectores (parametros de menu): dos filas ON/OFF independientes.
+// Si ambas estan on, manda AUDIO.
 // ---------------------------------------------------------------------------
-volatile uint8_t eng_view = 0;
+volatile uint8_t eng_adc_en   = 0; // monitor ADC (fila menu)
+volatile uint8_t eng_audio_en = 0; // monitor AUDIO (fila menu)
 
 // ---------------------------------------------------------------------------
 // Raiz cuadrada entera 32->16 (Newton bit a bit)
@@ -50,7 +52,7 @@ volatile uint16_t eng_au_peak = 0, eng_au_clip = 0, eng_au_n = 0;
 
 // Tap ADC crudo (desde sdr_rx_common_i, raw 0..1023)
 __attribute__((noinline)) void eng_feed_adc(uint16_t raw) {
-  if(!eng_view)
+  if(!eng_adc_en)
     return;
   if(eng_adc_n < (1U << ENG_ADC_SH)) {
     eng_adc_sum += raw;
@@ -66,14 +68,15 @@ __attribute__((noinline)) void eng_feed_adc(uint16_t raw) {
   }
 }
 
-// Tap audio final (desde slow_dsp, tras clamp +-511)
+// Tap audio pre-NR (desde slow_dsp, tras AGC/volumen; estable con NR on)
 __attribute__((noinline)) void eng_feed_audio(int16_t ac) {
-  if(!eng_view)
+  if(!eng_audio_en)
     return;
   if(eng_au_n < (1U << ENG_AU_SH)) {
     uint16_t a = (ac < 0) ? (uint16_t)-ac : (uint16_t)ac;
     eng_au_sum += ac;
-    eng_au_sq += (uint32_t)a * a;
+    uint16_t as = (a > 1023) ? 1023 : a; // stats acotadas (anti-overflow u32)
+    eng_au_sq += (uint32_t)as * as;
     if(a > eng_au_peak)
       eng_au_peak = a;
     if(a >= 511)
@@ -92,6 +95,7 @@ inline void eng_print(long v) {
 inline void eng_blank() { lcd.print("                "); }
 
 inline void eng_render_adc() {
+  lcd.noCursor(); // apaga el cursor parpadeante que deja el menu
   noInterrupts();
   uint32_t sum = eng_adc_sum, sq = eng_adc_sq;
   uint16_t mn = eng_adc_min, mx = eng_adc_max, cl = eng_adc_clip, n = eng_adc_n;
@@ -105,7 +109,10 @@ inline void eng_render_adc() {
   if(!n)
     return;
   uint16_t mean  = (uint16_t)(sum >> ENG_ADC_SH);
-  uint16_t rms   = eng_isqrt(sq >> ENG_ADC_SH) * 2; // (raw>>1)^2 -> x2
+  uint16_t mh    = mean >> 1; // media en dominio (raw>>1)
+  uint32_t avg2  = sq >> ENG_ADC_SH;
+  uint32_t mhsq  = (uint32_t)mh * mh;
+  uint16_t rms   = eng_isqrt(avg2 > mhsq ? avg2 - mhsq : 0) * 2; // AC (sin DC)
   uint16_t range = mx - mn;
   lcd.setCursor(0, 0);
   eng_blank();
@@ -128,6 +135,7 @@ inline void eng_render_adc() {
 }
 
 inline void eng_render_audio() {
+  lcd.noCursor(); // apaga el cursor parpadeante que deja el menu
   noInterrupts();
   int32_t  sum = eng_au_sum;
   uint32_t sq  = eng_au_sq;
@@ -162,14 +170,14 @@ inline void eng_render_audio() {
   eng_print(cl);
 }
 
-inline void eng_tick() { // llamado desde display_tick con eng_view!=0, MENU_MAIN, RX
+inline void eng_tick() { // llamado desde display_tick con monitor on, MENU_MAIN, RX
   static uint32_t last = 0;
   uint32_t        now  = millis();
   if((int32_t)(now - last) < 500)
     return;
   last = now;
-  if(eng_view == 1)
+  if(eng_audio_en)
+    eng_render_audio(); // el audio manda si ambos estan on
+  else if(eng_adc_en)
     eng_render_adc();
-  else if(eng_view == 2)
-    eng_render_audio();
 }

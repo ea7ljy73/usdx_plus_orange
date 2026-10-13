@@ -46,7 +46,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm && ./parity_rx
 cd ../ab_agc && ./run_ab_agc.sh
 ```
 
-TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatches (los niveles NR ≥2 difieren intencionadamente — mejora NR de 2 polos, ver `ROADMAP.md`).
+TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatches (los niveles NR ≥2 difieren intencionadamente — mejora NR por puerta de ruido, ver `ROADMAP.md`).
 
 ---
 
@@ -70,7 +70,7 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 | 7 AGC | Fast (SSB) / Slow (CW) | Fast = respuesta legacy; Slow = nivel CW estable |
 | 32 AGC Start | ON | Ganancia audible al instante (precarga x8) |
 | 33 AGC Rec | 4 | Recuperación lenta: menos bombeo entre palabras |
-| 8 NR | 1–2 (SSB) | Reducción de ruido 2 polos; más nivel en CW |
+| 8 NR | 2–3 (SSB) | Puerta de ruido: enmudece el fondo en pausas, la voz pasa bit-exacta; niveles bajos para DX débil |
 | 9/10 ATT/ATT2 | 0 al inicio | Subir si señales fuertes saturan el frontal |
 | 11 S-meter | S o dBm | Indicador de señal |
 
@@ -124,7 +124,7 @@ Para voz SSB conecta un micro electret al jack de paddle (DOT = PTT, DASH = audi
 ## Características de este firmware
 
 - Paridad bit-exacta con la referencia legacy verificada (ver tests arriba)
-- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, compresor de voz 2:1, low-cut TX, NR de 2 polos, AGC arranque rápido / recovery anti-bombeo / modo Slow (M0PUB)
+- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, compresor de voz 2:1, low-cut TX, puerta de ruido NR, AGC arranque rápido / recovery anti-bombeo / modo Slow (M0PUB)
 - Subconjunto CAT TS-480 completo, VFO A/B + RIT/Split, keyer Iambic-A/B/Straight + decodificador CW + mensajes CQ, menú procedimental con persistencia EEPROM
 
 Detalle y medidas: `ROADMAP.md`. Validación hardware: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.

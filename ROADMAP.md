@@ -3,21 +3,45 @@
 ## Estado actual (2026-09-15)
 
 - **Producción en la raíz**: `usdx_plus_orange.ino` + módulos, versión
-  `v2.0.0`, con CAT. Build: **30804 B (95 %) flash / 1189 B (58 %) RAM**,
-  0 warnings. Margen: ~1450 B flash, ~859 B RAM.
+  `v2.0.0`, con CAT. Build: **31248 B (96 %) flash / 1193 B (58 %) RAM**,
+  0 warnings. Margen: ~1000 B flash, ~855 B RAM.
 - **Paridad verificada con `usdx-legazy/`** (tests host, ver `AGENTS.md`):
   TX `ssb()` bit-exacto; RX core/filtros/AGC 0 mismatches (NR ≥2 diverge
-  intencionado: NR de 2 polos).
+  intencionado: puerta de ruido DNR).
 - **Mejoras integradas tras flag de menú** (todas apagables, default legacy):
   S-meter punto fijo, `freq_calc_fast`, I2C bulk diferencial, banda
   direccional, mic atten, DIGI/FT8 plano, ALC, compresor voz 2:1, LoCut,
-  NR 2-polos, AGC Start (precarga x8), AGC Rec (anti-bombeo), AGC Slow M0PUB.
+  puerta de ruido NR, AGC Start (precarga x8), AGC Rec (anti-bombeo), AGC Slow M0PUB.
 - **Laboratorio en `usdx-lab/`**: copia + `eng_lab.h` (monitor ADC/audio),
   sin CAT, versión/magia EEPROM propias. Toda prueba hardware se hace ahí
   (guía: `usdx-lab/GUIA_TEST_HW.md`).
 - **Puerta pendiente**: validación en hardware (`HARDWARE_TEST_GUIDE.md` +
   `usdx-lab/GUIA_TEST_HW.md`). Hasta entonces, ningún comportamiento
   RF/audio se da por cerrado.
+
+## Correcciones 2026-10-13 (detectadas con `tests/avr_sim`, firmware real en simavr)
+
+- **`F_CPU` no se redefinía** (legacy 135-139 sí: 20007000). Timer2 iba a
+  78125 Hz en RX y 6010 Hz en TX, ICR1 a 204: RX con 2 % de CPU libre, TX
+  perdiendo el 18,7 % de las muestras y tonos desplazados un 2-3 %.
+  Corregido en `usdx_settings.h` (producción y lab).
+- **ISR de TX**: `freq_calc_fast` reescrito en 32 bit (bit-exacto; el
+  "rápido" de Fase 1 costaba ~1000 ciclos, como la división de legacy);
+  `/3` y `/9` de `ssb()` por multiplicación exacta; compresor con división de
+  16 bit (la de 32 desbordaba: 4300 ciclos de media para 4160 de periodo).
+  Resultado simulado: 3456 ciclos de media (83 %), máx 4007; con voz fuerte +
+  compresor + low-cut 3846 (92,5 %), máx 4085. Legacy: 3803 (91,4 %), máx 4596.
+- Emisión de dos tonos reconstruida del firmware real: IMD3 −29 dBc
+  (legacy −8,9 dBc, envolvente 89 % del tiempo en el tope).
+- **F3.10 TX EnvPre (menú, eslot 37, default 0 = legacy)**: preénfasis de
+  envolvente `a' = a + c1·(a − a_ant)`, c1 = 0,5/1/1,5. Compensa el retardo y
+  el suavizado de las dos células RC 10k/10n entre KEY_OUT y las puertas del
+  PA (esquema `usdx.png`). Simulado con el firmware real + modelo RC, dos
+  tonos: IMD3 −19,9 (off) → −25,6 / **−31,6** / −28,3 dBc (1/2/3); IMD5
+  −22,0 → −29,8; canal adyacente −26,3 → −29,6 dBc. +30 ciclos de ISR,
+  +98 B flash. Si la placa NO lleva ese RC empeora (−29 → −20 dBc): ajustar
+  en banco con dos tonos. PENDIENTE HW.
+- Build: 31018 B (96 %) flash / 1190 B (58 %) RAM.
 
 ## Pendiente (en orden)
 
@@ -70,6 +94,11 @@
 ## Historial — Fase 2: fluidez
 
 - [x] 4. No reprogramar SI5351 si `df==0` (subsumido en bulk diferencial F1.3).
+  **F1.3 RETIRADO 2026-10-13** (rollback a bulk completo legacy, −100 B):
+  medido en `tests/fw_sim`: hacía variable el instante de aplicación de
+  frecuencia/amplitud (+2,7 dB de IMD3 a 7 MHz con envolvente limpia) y no se
+  recuperaba de una escritura I2C perdida con df constante. Se conserva
+  `freq_calc_fast` sin división de 64 bit (bit-exacto, verificado).
 - [x] 5. Cambio de banda direccional según último sentido del dial (GW8RDI 4.00d).
 
 ## Historial — Fase 3: TX (por dB/esfuerzo)
@@ -84,6 +113,13 @@
   máx −18 dB; excluye drive=8 y dig_mode). Sin display ni menú (+138 B).
   AB tonos: usb −18 dB ante saturación sostenida (esperado); IMD de fase sin
   cambio (−8 dBc). PENDIENTE HW voz real.
+  **Rehecho 2026-10-13 (ALC de pico)**: el de pasos recortaba a 255 ANTES de
+  atenuar (misma distorsión con −18 dB de potencia). Ahora ganancia fina
+  aplicada antes del recorte: ataque 0,56 dB/muestra, recuperación ~5 dB/s.
+  Simulado (`tests/fw_sim/txamp_sim`, `txtiming_sim`), dos tonos saturando a
+  drive 2–6: IMD3 −8…−10 → −28…−30 dBc, PEP completa, potencia media −3,6 dB
+  (el máximo de dos tonos limpios es −3,0). En reposo, bit-exacto con legacy.
+  Coste 0 B flash, −2 B RAM. PENDIENTE HW.
 - [x] 9. CESSB: EVALUADO Y REVERTIDO. Con drive en saturación y ALC activo,
   un pre-clipper I/Q no puede actuar nunca (todo lo que supera _amp 16 sale
   plano a drive 4); en zona lineal nunca se alcanza el umbral. Medido en A/B
@@ -102,9 +138,16 @@
   pre-Hilbert. Sin efecto medido.
 - [x] Drive-by: `MENU_IDX_CWMSG` desactualizado tras inserts (apuntaba a TX Comp,
   disparaba CQ al editar comp). Corregido a 26 y reverificado tras revert NB.
-- [x] 13. NR 2-polos en cascada (12dB/oct, cortes ~3000..850Hz, +~110 B).
-  AB: tono intacto en todos los niveles, ruido 53,7→35,3 monótono.
-  Divergencia intencional legacy en nr>=2 (paridad TX exacta, RX resto 0 %).
+- [x] 13. NR expansor (puerta DNR, F4; sustituye al 2-polos: el paso-bajos
+  empastaba la voz y el suelo adaptativo la mataba en régimen permanente).
+  Puerta con umbral por nivel compensado por volumen + histéresis + ganancia
+  suavizada; ABIERTA = bit-exacto. AB: tono 23,9 intacto en todos los niveles,
+  ruido 53,7→30,6→27,2→13,6→13,6→6,8→6,8→3,4 (−5…−24dB monótono).
+  Caveats (como Yaesu/Icom): voz débil bajo umbral duckea en nr alto (usar nr
+  bajo para DX), mejor con AGC on. Divergencia intencional legacy en nr>=2
+  (nr 0/1 bit-idénticos; paridad RX resto 0 %).
+  (+444 B flash, +4 B RAM). PENDIENTE validar en HW (oído: pausas mudas,
+  sin bombeo/aspereza en nr 2-4).
 - [x] 16. AGC arranque rápido (F4.16, menú "AGC Start" OFF/ON, eslot 33 banco
   extra; OFF = legacy exacto). Legacy arranca gain x1 y tarda ~7 s en cargar
   con banda floja (medido host); ON precarga x8 (8192): audible al instante,
@@ -164,7 +207,7 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 - [ ] B9. ATT automático (filosofía QMX RF-gain + docs uSDX 80/40 m): seguir
   estado AGC con histéresis (sin clicar relés). Medio; gran valor portable.
 - Parked: ANF LMS notch (Flex ANF/Yaesu DNF/Icom auto-notch; sin flash),
-  `NR_FIR` GW8RDI (nuestro 2-polos ya mide bien), NR espectral/RNNoise +
+  `NR_FIR` GW8RDI (puerta actual mide mejor y cabe), NR espectral/RNNoise +
   waterfall (imposibles en AVR), Goertzel decoder (QMX lo usa; aparcado),
   Twin-PBT/sharp-soft (Icom), APF CW (cubierto por filtros 500/200/100/50).
 
@@ -187,3 +230,5 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 | 2026-09-14 | 30804 / 1189 | — | — | — | F4.18 AGC Slow M0PUB (+286 B/+2 B, menú AGC 0..2 default 1). AB dits: var nivel 97,9→1,4. Paridad 0 (agc 0/1). PENDIENTE HW |
 | 2026-09-14 | 30804 / 1189 | — | — | — | B2 blanker REVERTIDO (no separable en este tap + 99% flash). Vuelve a 30804/1189. Ver B2 |
 | 2026-09-15 | 30804 / 1189 | — | — | — | Fusión a raíz (v2.0.0 producción) + `usdx-lab/` creado (v2.0.0-lab, sin CAT, Engineer ADC/AUDIO). Paridad reverificada. Sin cambio de build |
+| 2026-09-17 | 31248 / 1193 | — | — | — | F4 NR expansor-puerta (+444 B/+4 B, sustituye 2-polos). AB: tono 23,9 intacto 0-8, ruido 53,7→3,4 (−5…−24dB). Paridad 0 (nr 0/1). PENDIENTE HW |
+| 2026-09-17 | 31264 / 1193 | — | — | — | Menú: doble-click (banda/filtro) puerta en MAIN + move con módulo real (+16 B). Divergencia intencional legacy (en legacy saltaba editando). Cazado en banco (lab). PENDIENTE HW |
