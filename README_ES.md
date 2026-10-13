@@ -46,7 +46,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm && ./parity_rx
 cd ../ab_agc && ./run_ab_agc.sh
 ```
 
-TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatches (los niveles NR ≥2 difieren intencionadamente — mejora NR por puerta de ruido, ver `ROADMAP.md`).
+TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatches (los niveles NR ≥2 difieren intencionadamente — mejora NR de 2 polos, ver `ROADMAP.md`).
 
 ---
 
@@ -58,7 +58,7 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 |------|-------|-----------|
 | 20 TX Drive | 4–6 | ~5W PEP; empezar bajo y subir viendo SWR |
 | 28 Mic Atten | 0 | Atenuador 6 dB/paso; subir solo si el micro recorta |
-| 30 TX Comp | 1–2 | Procesador de voz (recorte de envolvente tras el ALC): unos +3 / +5 / +6 dB de potencia media con 1 / 2 / 3, a costa de IMD en banda. 0 = señal más limpia |
+| 30 TX Comp | ON | Compresor de voz 2:1, más potencia media |
 | 31 TX LoCut | 2 (200 Hz) | Elimina retumbe sub-audio; ahorra potencia e IMD |
 | 29 DIGI Mode | ON en digital | Path TX plano (USB + VOX + BW completo manual) |
 | 23/24 PA Bias | Calibrar | Rango PWM donde arranca el PA / potencia máx |
@@ -69,8 +69,8 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 |------|-------|-----------|
 | 7 AGC | Fast (SSB) / Slow (CW) | Fast = respuesta legacy; Slow = nivel CW estable |
 | 32 AGC Start | ON | Ganancia audible al instante (precarga x8) |
-| 33 AGC Hang | 5 (con AGC Slow) | Retiene la ganancia 0,4 s tras la voz: sin bombeo de ruido entre palabras, las señales débiles vuelven en ~1 s. Solo actúa con AGC Slow |
-| 8 NR | 2–4 (SSB/CW) | Puerta de ruido relativa al suelo de ruido medido: 6/12/18/24 dB menos ruido en pausas y en banda vacía, la voz no se toca. Las señales a menos de ~10 dB del ruido y las portadoras fijas (a los 2–3 s) también se atenúan: apágalo para DX débil y modos digitales |
+| 33 AGC Rec | 4 | Recuperación lenta: menos bombeo entre palabras |
+| 8 NR | 1–2 (SSB) | Reducción de ruido 2 polos; más nivel en CW |
 | 9/10 ATT/ATT2 | 0 al inicio | Subir si señales fuertes saturan el frontal |
 | 11 S-meter | S o dBm | Indicador de señal |
 
@@ -110,10 +110,10 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 | 27 | Backlight | ON, OFF |
 | 28 | Mic Atten | 0–4 (6 dB/paso) |
 | 29 | DIGI Mode | ON, OFF |
-| 30 | TX Comp | 0 (off), 1, 2, 3 |
+| 30 | TX Comp | ON, OFF |
 | 31 | TX LoCut | OFF, 100, 200, 400 Hz |
 | 32 | AGC Start | ON, OFF |
-| 33 | AGC Hang | 1–8 (1 = legacy; cada paso ≈ 0,1 s) |
+| 33 | AGC Rec | 1–8 (1 = legacy) |
 
 Atajos (L=izquierdo, E=encoder, R=derecho): **E+giro** volumen · **R** modo · **R doble** filtro · **E doble** banda · **E / E largo** paso · **2x R largo** VFO · **R largo** RIT · **L** menú · **L+giro** menú rápido · **R** atrás · **E largo al encender** reset de fábrica.
 
@@ -124,7 +124,7 @@ Para voz SSB conecta un micro electret al jack de paddle (DOT = PTT, DASH = audi
 ## Características de este firmware
 
 - Paridad bit-exacta con la referencia legacy verificada (ver tests arriba)
-- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, procesador de voz por recorte de envolvente (TX Comp), low-cut TX, puerta de ruido NR, AGC arranque rápido / hang anti-bombeo / modo Slow (M0PUB)
+- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, compresor de voz 2:1, low-cut TX, NR de 2 polos, AGC arranque rápido / recovery anti-bombeo / modo Slow (M0PUB)
 - Subconjunto CAT TS-480 completo, VFO A/B + RIT/Split, keyer Iambic-A/B/Straight + decodificador CW + mensajes CQ, menú procedimental con persistencia EEPROM
 
 Detalle y medidas: `ROADMAP.md`. Validación hardware: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.

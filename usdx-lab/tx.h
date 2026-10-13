@@ -37,16 +37,11 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 
 volatile uint8_t mic_atten = 0; // F3.6: mic attenuation 0..4 in 6dB steps (menu)
 
-// F3.9b "TX Comp" 0..3: procesador de voz por recorte de envolvente (el
-// equivalente polar del recorte de RF). El ALC deja pasar picos hasta
-// 255+128*nivel (+3,5/+6/+8 dB) y lo que sobra se recorta a 255. Medido en
-// tests/avr_sim con habla sintetica: +3,3/+5,0/+6,2 dB de potencia media,
-// canal adyacente sin cambio y 0 ciclos de ISR; a cambio IMD3 de dos tonos
-// -18/-13/-11 dBc (0 = limpio, -32). Sustituye al compresor de audio 2:1,
-// que no subia la potencia media (-1 dB) y desbordaba la ISR (4457 ciclos).
-volatile uint8_t comp_enable = 0;
+volatile bool     comp_enable = false; // F3.9b: voice compressor 2:1 (menu)
+#define COMP_TH 128                    // threshold on |ac| (post 6dB gain scale)
+static int16_t comp_env = 0;           // envelope follower state
+
 volatile uint8_t tx_lowcut = 0; // F3.9c: HPF micro 0=off,1=100Hz,2=200Hz,3=400Hz
-volatile uint8_t tx_envpre = 0; // F3.10: preenfasis de envolvente 0=off(legacy), 1..3 = c1 0,5/1/1,5
 static int16_t  lc_lp     = 0;  // HPF state
 
 // ---------------------------------------------------------------------------
@@ -119,11 +114,6 @@ inline int16_t arctan3(int16_t q, int16_t i) {
 // ALC (F3.8). Con todo off, bit-exacto con legacy.
 // ---------------------------------------------------------------------------
 inline int16_t ssb(int16_t in) {
-// x/3 y x/9 con signo (truncadas, como el operador / de C) por multiplicacion:
-// identicas a la division para todo int16 (verificado exhaustivamente en
-// tests/fw_sim/txamp_sim) y ~170 ciclos mas rapidas cada una en el AVR.
-#define TX_DIV3(x) (((x) < 0) ? -(int16_t)(((uint32_t)(uint16_t)(-(x)) * 43691U) >> 17) : (int16_t)(((uint32_t)(uint16_t)(x) * 43691U) >> 17))
-#define TX_DIV9(x) (((x) < 0) ? -(int16_t)(((uint32_t)(uint16_t)(-(x)) * 58255U) >> 19) : (int16_t)(((uint32_t)(uint16_t)(x) * 58255U) >> 19))
   static int16_t dc, z1;
   int16_t        i, q;
   uint8_t        j;
@@ -144,9 +134,18 @@ inline int16_t ssb(int16_t in) {
   } else {
   ac = in * 2;                    // 6dB gain
   ac         = ac + z1;                   // lpf
-  {
-    int16_t t = in - (8) * z1;
-    z1        = TX_DIV9(t); // lpf: (in - 8*z1) / 9 (legacy 2045)
+  z1         = (in - (8) * z1) / (8 + 1); // lpf
+
+  // F3.9b voice compressor 2:1 above COMP_TH (soft knee via instant attack +
+  // slow release envelope; gain computed with one 32-bit div when compressing)
+  if(comp_enable && !dig_mode) {
+    int16_t aa = (ac >= 0) ? ac : -ac;
+    if(aa > comp_env)
+      comp_env = aa; // attack: instant
+    else
+      comp_env -= (comp_env - aa) >> 8; // release: ~53ms
+    if(comp_env > COMP_TH)
+      ac = (int16_t)((int32_t)ac * (COMP_TH + ((comp_env - COMP_TH) >> 1)) / comp_env);
   }
 
   // smooth clipping limiter
@@ -156,10 +155,7 @@ inline int16_t ssb(int16_t in) {
     ac = -250 - (-250 - ac) / 2;
   }
 
-  {
-    int16_t t = ac + (2) * dc;
-    dc        = TX_DIV3(t); // (ac + 2*dc) / 3 (legacy 2054)
-  }
+  dc    = (ac + (2) * dc) / (2 + 1);
   v[15] = (ac - dc);
   }
 #else
@@ -176,31 +172,32 @@ inline int16_t ssb(int16_t in) {
 
   _vox(_amp > vox_thresh);
 
-  // F3.8 ALC de pico (sustituye al de pasos de 6 dB, que recortaba ANTES de
-  // atenuar: misma distorsion con 18 dB menos de potencia). Ganancia fina
-  // alc_g/65536 aplicada ANTES del recorte: si un pico supera 255 baja un
-  // 6 % (0,56 dB) por muestra: ataque de pocos ms; si no, sube un 0,8 % cada
-  // 64 muestras (~5 dB/s). El pico de envolvente queda en 255 (PEP completa)
-  // sin recorte sostenido. Con alc_g=0xFFFF (reposo) es bit-exacto con legacy
-  // (2086-2088). Excluye drive=8 (amplitud constante) y dig_mode (tonos).
-  static uint16_t alc_g   = 0xFFFF;
-  static uint8_t  alc_rel = 0;
+  // F3.8 ALC: si la envolvente satura de forma sostenida, baja drive efectivo
+  // (hasta -18dB); si no, lo recupera lento. Excluye drive=8 (amplitud
+  // constante por diseño) y dig_mode (tonos constantes FT8).
+  static uint8_t  alc_att = 0; // 0..3 pasos de 6dB
+  static uint16_t alc_t   = 0;
   uint16_t        a       = _amp << (drive);
-  if(drive == 8) {
-    a = 255; // legacy 2087: drive=8 = salida maxima constante
-  } else if(!dig_mode) { // dig_mode: solo el recorte a 255 de abajo
-    if(alc_g != 0xFFFF)
-      a = ((uint32_t)a * alc_g) >> 16;
-    if(a > (uint16_t)(255 + ((uint16_t)comp_enable << 7))) { // TX Comp: margen de recorte
-      alc_g -= (alc_g >> 4) + 1; // nunca llega a 0: minimo ~ -70 dB
-    } else if(alc_g != 0xFFFF && !(++alc_rel & 63)) {
-      uint16_t g = alc_g + (alc_g >> 7) + 1;
-      alc_g      = (g < alc_g) ? 0xFFFF : g; // satura en ganancia unidad
+  if(a > 255 && drive != 8 && !dig_mode) {
+    a = 255;
+    if(++alc_t >= 480 && alc_att < 3) { // ~100ms saturado
+      alc_att++;
+      alc_t = 0;
+    }
+  } else {
+    if(a > 255)
+      a = 255;
+    if(alc_t > 0) {
+      alc_t--;
+    } else if(alc_att > 0) {
+      static uint16_t alc_rel = 0;
+      if(++alc_rel >= 4800) { // ~1s limpio por paso
+        alc_att--;
+        alc_rel = 0;
+      }
     }
   }
-  if(a > 255)
-    a = 255;
-  amp = (tx) ? lut[a] : 0;
+  amp = (tx) ? lut[a >> alc_att] : 0;
 
   static int16_t prev_phase;
   int16_t        phase = arctan3(q, i);
@@ -229,25 +226,6 @@ inline int16_t ssb(int16_t in) {
 }
 
 // ---------------------------------------------------------------------------
-// F3.10 Preenfasis de envolvente. KEY_OUT llega a las puertas del PA por dos
-// celulas RC (10k/10n en el esquema: ~300 us de retardo de grupo, casi muestra
-// y media) que retrasan y suavizan la amplitud respecto a la fase. Se compensa
-// con a' = a + c1*(a - a_ant), c1 = tx_envpre/2, recortado al rango del PWM.
-// Simulado (tests/avr_sim --study, dos tonos, RC del esquema): IMD3 -19,8 ->
-// -31,9 dBc con c1 = 1. 0 = apagado: salida identica a legacy.
-// ---------------------------------------------------------------------------
-static uint8_t env_prev;
-inline uint8_t tx_env_out() {
-  uint8_t a = amp;
-  if(tx_envpre) {
-    int16_t v = a + ((((int16_t)a - env_prev) * tx_envpre) >> 1);
-    env_prev  = a;
-    a         = (v < 0) ? 0 : (v > lut[255]) ? lut[255] : v;
-  }
-  return a;
-}
-
-// ---------------------------------------------------------------------------
 // dsp_tx() - SSB TX ISR body
 // ---------------------------------------------------------------------------
 static int16_t _adc;
@@ -257,7 +235,7 @@ inline void    dsp_tx() { // jitter dependent things first
   adc = ADC;
   ADCSRA |= (1 << ADSC);
   si5351.SendPLLRegisterBulk(); // submit frequency regs (88us I2C)
-  OCR1BL = tx_env_out();        // submit amplitude to PWM (F3.10: preenfasis opcional)
+  OCR1BL = amp;                 // submit amplitude to PWM
   adc += ADC;
   ADCSRA |= (1 << ADSC); // causes RFI on QCX-SSB (use direct biasing!)
   int16_t df = ssb(_adc >> mic_atten);
@@ -270,7 +248,7 @@ inline void    dsp_tx() { // jitter dependent things first
 #else                                 // SSB with single ADC conversion:
   ADCSRA |= (1 << ADSC);
   si5351.SendPLLRegisterBulk();
-  OCR1BL      = tx_env_out();
+  OCR1BL      = amp;
   int16_t adc = ADC - 512;
   int16_t df  = ssb(adc >> mic_atten);
   si5351.freq_calc_fast(df);

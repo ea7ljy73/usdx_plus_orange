@@ -68,15 +68,6 @@ static int16_t   centiGain = 128;
 #define DECAY_FACTOR 400 // AGC decay <DECAY_FACTOR> slower than attack
 static uint16_t decayCount = DECAY_FACTOR;
 
-// F4.17 "AGC Hang" 1..8 (solo AGC Slow/M0PUB; 1 = legacy exacto): tras una
-// senal que supera el umbral, la ganancia se retiene (agc_hang-1)*0,1 s antes
-// de empezar a subir. Medido en tests/avr_sim (voz entrecortada + ruido):
-// bombeo en pausas de 0,5 s 3,9 dB -> 0,3 dB con Hang 5, y una senal 20 dB mas
-// debil se recupera en ~1 s (AGC Fast: >7 s). Sustituye a "AGC Rec" (divisor
-// de subida del AGC Fast), que bajaba el audio hasta 13 dB y alargaba 8x la
-// recuperacion sin reducir el bombeo de forma apreciable.
-volatile uint8_t agc_hang     = 1;
-static uint8_t   agc_hang_cnt = 0; // ventanas de 51 ms que quedan de retencion
 inline int16_t process_agc(int16_t in) {
   static bool small = true;
   int16_t     out;
@@ -89,16 +80,11 @@ inline int16_t process_agc(int16_t in) {
 
   if(HI(abs(out)) > HI(1536)) {
     centiGain -= (centiGain >> 4); // fast attack
-    agc_hang_cnt = (agc_hang - 1) << 1;
   } else {
     if(HI(abs(out)) > HI(1024))
       small = false;
     if(--decayCount == 0) { // slow ramp up when signal disappears
-      if(!small)
-        agc_hang_cnt = (agc_hang - 1) << 1;
-      else if(agc_hang_cnt)
-        agc_hang_cnt--;
-      else {
+      if(small) {
         if(centiGain < (INT16_MAX - (INT16_MAX >> 4)))
           centiGain += (centiGain >> 4);
         else
@@ -123,9 +109,24 @@ static int16_t gain = 1024;
 #define AGC_PRECHARGE 8192 // x8 (pico 16000 con in=2000: sin overflow int16)
 volatile uint8_t agc_start = 0; // 0=legacy (gain x1), 1=precarga x8 al arrancar
 inline void      agc_precharge() { gain = AGC_PRECHARGE; }
+// F4.17 AGC recovery anti-bombeo (menu "AGC Rec" 1..8, 1 = legacy exacto;
+// estilo QMX "Recovery dB/s"): la subida de ganancia (+1) se aplica 1 de cada
+// N muestras; el ataque rápido NO se toca. Con N>1 la ganancia apenas se mueve
+// entre palabras (no respira) pero sigue rampando en señales débiles
+// permanentes y a plena sensibilidad con F4.16. El knee (volver rápido a máx
+// bajo umbral, QMX Threshold) se EVALUÓ Y REVIRTIÓ: A/B host mostró soplo 4x,
+// varianza 15x y clipping en flancos — no reintentar por esa vía.
+volatile uint8_t agc_rec = 1; // divisor de recovery (1=legacy, mayor=más lento)
+static uint8_t agc_rec_cnt = 0; // fase del divisor (file-scope: testeable en host)
 inline int16_t   process_agc_fast(int16_t in) {
   int16_t out   = (gain >= 1024) ? (gain >> 10) * in : in;
   int16_t accum = (1 - abs(out >> 10));
+  if(accum > 0) { // solo se ralentiza la subida; el ataque es legacy intacto
+    if(++agc_rec_cnt < agc_rec)
+      accum = 0; // aún no toca subir en este ciclo
+    else
+      agc_rec_cnt = 0;
+  }
   if((INT16_MAX - gain) > accum)
     gain = gain + accum;
   if(gain < 1)
@@ -134,44 +135,23 @@ inline int16_t   process_agc_fast(int16_t in) {
 }
 
 // ---------------------------------------------------------------------------
-// Noise reduction: puerta de ruido (expansor) relativa al suelo de ruido.
-// nr<=1 bypass (paridad legacy); nr 2..8 atenua 6/12/18/24 dB (nr 2-3/4-5/
-// 6-7/8) todo lo que no supere 3x (+9,5 dB) el suelo, que se estima siguiendo
-// los minimos de la envolvente (baja en ~33 ms, sube x2 cada ~1,5 s). Al ser
-// relativa funciona igual con cualquier AGC y volumen. Abre en ~1 ms y cierra
-// en ~30-60 ms. Medido en tests/avr_sim: palabras 0,0 dB, pausas y banda
-// vacia -6..-24 dB. Limites: una senal a menos de ~10 dB del ruido se atenua
-// igual que el ruido, y una portadora o tono continuo se atenua a los 2-3 s
-// (el suelo lo alcanza): NR es para voz y CW, no para modos digitales.
-// La version anterior usaba un umbral absoluto por encima del nivel que
-// regula el AGC: la puerta no abria nunca y NR era un simple atenuador.
-// Divergencia intencional de legacy en nr>=2 (nr 0/1 bit-identicos).
+// Noise reduction: 2-pole EA lowpass (12dB/oct). nr=1 passthrough (legacy),
+// nr 2..8 cortes ~3000..850Hz. El 1-polo legacy colapsaba a 10Hz en nr=8
+// (-40dB en 1kHz: mudo); este quita siseo sin cargarse la voz. ~40 ciclos,
+// 4B RAM, 7B tabla. Divergencia intencional legacy en nr>=2 (conmutada por
+// el propio nivel NR; nr 0/1 idénticos).
 // ---------------------------------------------------------------------------
+static const uint8_t NR_K[7] PROGMEM = {250, 240, 229, 211, 191, 167, 142};
 inline int16_t process_nr(int16_t in) {
-  static int16_t env;      // envolvente: ataque >>4 (~2ms), caida >>7 (~16ms)
-  static int32_t flq;      // suelo de ruido Q8: baja rapido, sube lento
-  static int16_t g = 256;  // ganancia suavizada (256 = puerta abierta)
-  int16_t m = in >> 15;
-  int16_t a = (in ^ m) - m;               // |in| sin ramas
-  if(a > env) env += (a - env) >> 4;
-  else        env += (a - env) >> 7;
-  int32_t eq = (int32_t)env << 8;
-  if(eq < flq || flq == 0) flq += (eq - flq) >> 8; // sigue los minimos (~33ms)
-  else                     flq += (flq >> 14) + 1; // sube x2 cada ~1,5s
+  static int16_t ea1, ea2;
   if(nr <= 1) {
-    g = 256;
-    return in; // bypass bit-exacto (nr 0/1 paridad legacy)
+    ea1 = ea2 = in;
+    return in; // bypass (estados siguen, sin thump al conmutar)
   }
-  int16_t fl = flq >> 8;
-  if(fl > 8000) fl = 8000;
-  int16_t th = fl + (fl << 1) + 8;        // abre a 3x el suelo (+9,5 dB)
-  if(g > 128) th -= (th >> 2);            // histeresis: cierra al 75%
-  uint8_t d = (nr > 8) ? 4 : (nr >> 1);   // profundidad 6/12/18/24 dB
-  int16_t tgt = (env > th) ? 256 : (int16_t)(256 >> d);
-  int16_t dg = tgt - g;
-  if(dg > 0) { g += dg >> 3; if(dg < 8) g = tgt; } // abre en ~1ms
-  else       g += dg >> 8;                         // cierra en ~30-60ms (sin cortar colas)
-  return (int16_t)(((int32_t)in * g) >> 8);
+  uint8_t k = pgm_read_byte(&NR_K[(nr <= 8) ? nr - 2 : 6]);
+  ea1 += (int16_t)(((int32_t)k * (in - ea1)) >> 8);
+  ea2 += (int16_t)(((int32_t)k * (ea1 - ea2)) >> 8);
+  return ea2;
 }
 
 // ---------------------------------------------------------------------------

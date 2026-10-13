@@ -93,7 +93,7 @@ extern volatile uint8_t  cw_msg_id;
 extern char              cw_msg[1][48];
 #endif
 
-#define N_MENU_ITEMS 37 // declared capacity; MENU_COUNT computed from table
+#define N_MENU_ITEMS 35 // declared capacity; MENU_COUNT computed from table
 #define MENU_IDX_CWMSG 26 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ public:
   void get_cur(MenuParam& p) { memcpy_P(&p, (PGM_P)&MENU[index], sizeof(MenuParam)); }
 
 private:
-  void move(int32_t delta);
+  void move(int8_t delta);
   void select_mode();
   void edit_value(int32_t delta);
   void edit_text(int32_t delta);
@@ -167,12 +167,12 @@ extern Menu menu;
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
-inline void Menu::move(int32_t delta) { // LAB: envolvente con modulo real
-  int16_t n = (int16_t)index + (int16_t)delta; // el loop consume a menudo
-  n %= MENU_COUNT;
-  if(n < 0)
-    n += MENU_COUNT;
-  index = (int8_t)n;
+inline void Menu::move(int8_t delta) { // G8RDI cycle-menu parity (v1): wrap around
+  index += delta;
+  if(index < 0)
+    index = MENU_COUNT - 1;
+  if(index >= MENU_COUNT)
+    index = 0;
 }
 
 inline void Menu::commit() {
@@ -370,7 +370,6 @@ inline void Menu::process() {
   static uint8_t  b_dc_armed   = 0; // optimistic BE|SC fired; 2nd press = DC
   static uint8_t  b_is_dc      = 0;
   static uint8_t  b_pt_done    = 0; // dial hold+turn adjusted volume this hold
-  static uint8_t  b_edge_t     = 0; // ultimo flanco aceptado (debounce 20ms; 8 bit: el wrap solo retrasa <20ms)
 
   // --- button state machine: ALWAYS runs so the dial hold (PT volume) is
   // tracked even while the encoder turns. BL/BR fire on release (SC/PL); the
@@ -383,25 +382,16 @@ inline void Menu::process() {
     } else if(b_dc_armed && (int32_t)(millis() - b_dc_deadline) >= 0)
       b_dc_armed = 0; // DC window expired (optimistic SC already applied)
     if(pressed) {
-      if((uint8_t)((uint8_t)millis() - b_edge_t) < 20) {
-        ; // rebote al pulsar: ignorar
-      } else {
-        b_edge_t = millis();
-        b_state  = B_HOLD;
-        b_t0     = millis();
-        b_v      = analogSafeRead(BUTTONS_ADC);
-        b_is_dc  = b_dc_armed; // 2nd press inside window -> DC (any button, legacy)
-        b_dc_armed = 0;
-        b_pt_done  = 0;
-      }
+      b_state = B_HOLD;
+      b_t0    = millis();
+      b_v     = analogSafeRead(BUTTONS_ADC);
+      b_is_dc = b_dc_armed; // 2nd press inside window -> DC (any button, legacy)
+      b_dc_armed = 0;
+      b_pt_done = 0;
     }
   } else if(b_state == B_HOLD) {
     uint8_t type = (b_v < (uint16_t)(4.2 * 1024.0 / 5.0)) ? BL_ : (b_v < (uint16_t)(4.8 * 1024.0 / 5.0)) ? BR_ : BE_;
-    if(!pressed) { // released -> dispatch (con debounce: flanco <20ms se ignora)
-      if((uint8_t)((uint8_t)millis() - b_edge_t) < 20) {
-        ; // rebote al soltar: seguir en HOLD sin despachar
-      } else {
-        b_edge_t = millis();
+    if(!pressed) { // released -> dispatch
       uint32_t dur = millis() - b_t0;
       b_state      = B_IDLE;
       if(b_is_dc) {
@@ -412,15 +402,12 @@ inline void Menu::process() {
         ; // else PT quick-menu consumed this hold: nothing else on release
       } else if(type == BE_ && dur <= LONG_PRESS_MS) {
         handle_event(BE_ | SC_); // optimistic: instant cursor step...
-        if(state == MENU_MAIN) { // ...pero DC solo se arma en MAIN (en menu
-          b_dc_armed    = 1; // el doble-click no hace nada: no comerse clicks)
-          b_dc_deadline = millis() + DC_WINDOW_MS;
-        }
+        b_dc_armed    = 1;       // ...a 2nd press within DC_WINDOW_MS upgrades to DC
+        b_dc_deadline = millis() + DC_WINDOW_MS;
       } else if(type == BE_) {
         handle_event(BE_ | PL_); // dial long press (no turn) -> stepsize_change(-1)
       } else {
         handle_event(((dur > LONG_PRESS_MS) ? PL_ : SC_) | type); // BL/BR (PL threshold raised vs legacy 300ms)
-        }
       }
     } else if(b_is_dc) {
       ; // 2nd-click hold: ignore turns until release (legacy DC waits release)
@@ -430,10 +417,8 @@ inline void Menu::process() {
         b_pt_done = 1;
         handle_event(BL_ | PT_);
       }
-    } else if((millis() - b_t0) > LONG_PRESS_MS && type == BE_ && state == MENU_MAIN) {
-      // dial held long + turning -> PT: volume adjust while held (legacy 5472).
-      // LAB: puerta en MAIN; en menu los giros son de edicion/navegacion y el
-      // volumen a -1 apagaba el equipo (powerDown) a mitad de edicion.
+    } else if((millis() - b_t0) > LONG_PRESS_MS && type == BE_) {
+      // dial held long + turning -> PT: volume adjust while held (legacy 5472)
       noInterrupts();
       int32_t pt_enc = encoder_val; // atomic read+clear
       encoder_val    = 0;
@@ -507,14 +492,7 @@ inline void Menu::handle_event(uint8_t ev) {
         break;
       }
 #endif
-      // LAB: no se resetea index (legacy lo pone a 0): el lab recuerda la
-      // ultima fila (Engineer queda a 1 click) y el dial envuelve igual.
-      if(state == MENU_MAIN) {
-        state = MENU_SELECT;
-        if(index < 0 || index >= MENU_COUNT)
-          index = 0;
-        saved_flag = 0;
-      }
+      if(state == MENU_MAIN) { state = MENU_SELECT; index = 0; saved_flag = 0; }
       else if(state == MENU_SELECT) {
         if(saved_flag) { state = MENU_MAIN; saved_flag = 0; }
         else {
@@ -624,11 +602,6 @@ inline void Menu::handle_event(uint8_t ev) {
       }
       break;
     case BE_ | DC_: // dial double-click -> band change (legacy 5463-5470)
-      // Puerta en MAIN (igual que produccion): en legacy disparaba tambien
-      // editando y un doble-click rapido al salir saltaba de banda con reles.
-      // Divergencia intencional legacy.
-      if(state != MENU_MAIN)
-        break;
       // F2.5 direccional (GW8RDI 4.00d): según último sentido del dial
       extern volatile int8_t last_tune_dir;
       if(last_tune_dir < 0) {
@@ -648,8 +621,6 @@ inline void Menu::handle_event(uint8_t ev) {
       display_vfo(); // immediate refresh + stepsize cursor (legacy change block)
       break;
     case BR_ | DC_: // right double-click -> filter BW cycle (legacy 5384-5396)
-      if(state != MENU_MAIN)
-        break; // igual que BE_|DC_ (ademas bloquea 1500ms con delay)
       filt++;
       _init = true;
       if(mode == CW && filt > N_FILT)

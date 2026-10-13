@@ -29,12 +29,11 @@ void (*vfo_apply_freq)(int32_t) = NULL;
 
 // --- Operador / control ------------------------------------------------
 volatile uint8_t mode     = USB;
-volatile int8_t  volume   = 12; // legacy 2116 (SDR: el "volume = 10" de legacy 5076 solo aplica a dsp_cap == DSP)
+volatile int8_t  volume   = 12;
 volatile uint8_t agc      = 1; // legacy default 1 (offon; w/o FAST_AGC)
 volatile uint8_t txdelay  = 0; // legacy default 0 (ms)
 volatile uint8_t practice = 0; // TX disabled
 volatile uint8_t vox_tx   = 0; // VOX currently transmitting
-volatile uint8_t mcusr_boot = 0; // LAB: causa del ultimo reset (W/B/E/P)
 
 // --- CW ---
 volatile uint8_t keyer_speed = 25; // wpm
@@ -83,6 +82,12 @@ static const char agc_label_0[] PROGMEM = "OFF";
 static const char agc_label_1[] PROGMEM = "Fast";
 static const char agc_label_2[] PROGMEM = "Slow";
 const char* const agc_label[3] PROGMEM = {agc_label_0, agc_label_1, agc_label_2};
+
+// LAB Engineer: 0=OFF, 1=ADC, 2=AUDIO (eslot 35)
+static const char eng_label_0[] PROGMEM = "OFF";
+static const char eng_label_1[] PROGMEM = "ADC";
+static const char eng_label_2[] PROGMEM = "AUDIO";
+const char* const eng_label[3] PROGMEM = {eng_label_0, eng_label_1, eng_label_2};
 
 static const char mode_label_0[] PROGMEM = "LSB";
 static const char mode_label_1[] PROGMEM = "USB";
@@ -185,11 +190,9 @@ static const char menu_label_29[] PROGMEM = "DIGI Mode";
 static const char menu_label_30[] PROGMEM = "TX Comp";
 static const char menu_label_31[] PROGMEM = "TX LoCut";
 static const char menu_label_32[] PROGMEM = "AGC Start";
-static const char menu_label_33[] PROGMEM = "AGC Hang";
-static const char menu_label_34[] PROGMEM = "Eng ADC";
-static const char menu_label_35[] PROGMEM = "Eng Audio";
-static const char menu_label_36[] PROGMEM = "TX EnvPre";
-const char* const MENU_LABELS[37] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33, menu_label_34, menu_label_35, menu_label_36};
+static const char menu_label_33[] PROGMEM = "AGC Rec";
+static const char menu_label_34[] PROGMEM = "Engineer";
+const char* const MENU_LABELS[35] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33, menu_label_34};
 
 void menu_print_label(uint8_t id) {
   lcd.print((const __FlashStringHelper*)pgm_read_ptr(&MENU_LABELS[id]));
@@ -330,7 +333,7 @@ void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band m
 }
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
-uint8_t vfomode[2] = {USB, USB}; // como legacy 3551 (7.074 = FT8, USB)
+uint8_t vfomode[2] = {LSB, USB}; // VFOA=LSB (40m), VFOB=USB (v1 G8RDI: was USB,USB)
 void    on_vfosel() { // legacy 5585-5592
   uint8_t other   = !vfosel;
   vfo[vfosel]     = freq; // keep slots current
@@ -358,7 +361,6 @@ void on_pwm() { // legacy 5620-5622: build_lut on PWM_MIN/PWM_MAX edit
     lut[i] = (i * (int16_t)(pwm_max - pwm_min)) / 255 + pwm_min;
 }
 void on_rit() { // legacy 5594-5597
-  rit = (uint8_t)rit; // el menu (P_ENUM) solo escribe el byte bajo del int32
   stepsize = (rit) ? STEP_10 : STEP_500;
   vfo_apply();
 }
@@ -413,12 +415,10 @@ const MenuParam MENU[] PROGMEM = {
     {28, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
     // DIGI Mode (F3.7: flat TX path for digital modes)
     {29, (void*)&dig_mode, P_ENUM, 0, 1, offon_label, 23, NULL},
-    // TX Comp (F3.9b: recorte de envolvente 0..3 = 0/+3,5/+6/+8 dB)
-    {30, (void*)&comp_enable, P_T8, 0, 3, NULL, 24, NULL},
+    // TX Comp (F3.9b: voice compressor 2:1)
+    {30, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 24, NULL},
     // TX LoCut (F3.9c: HPF micro; eslot 32 = banco extra)
     {31, (void*)&tx_lowcut, P_T8, 0, 3, NULL, 32, NULL},
-    // TX EnvPre (F3.10: preenfasis de envolvente 0..3; eslot 37 = banco extra 0x2C5)
-    {36, (void*)&tx_envpre, P_T8, 0, 3, NULL, 37, NULL},
     // CQ Interval / CQ Message (CWINTERVAL/CWMSG1 legacy 0x41/0x42)
     {21, (void*)&cw_msg_interval, P_T8, 0, 60, NULL, 25, NULL},
     {22, (void*)cw_msg[0], P_TEXT, 0, 0, NULL, 26, NULL},
@@ -432,14 +432,13 @@ const MenuParam MENU[] PROGMEM = {
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
     // AGC Start (F4.16: precarga x8 al arrancar; eslot 33 = banco extra 0x2C1)
     {32, (void*)&agc_start, P_ENUM, 0, 1, offon_label, 33, NULL},
-    // AGC Hang (F4.17: retencion del AGC Slow, 1..8 = 0..0,7 s, 1=legacy; eslot 34 = banco extra 0x2C2)
-    {33, (void*)&agc_hang, P_T8, 1, 8, NULL, 34, NULL},
-    // LAB Engineer: dos filas ON/OFF independientes (eslots 35/36 = 0x2C3/0x2C4)
-    {34, (void*)&eng_adc_en, P_ENUM, 0, 1, offon_label, 35, NULL},
-    {35, (void*)&eng_audio_en, P_ENUM, 0, 1, offon_label, 36, NULL},
+    // AGC Rec (F4.17: divisor de recovery 1..8, 1=legacy; eslot 34 = banco extra 0x2C2)
+    {33, (void*)&agc_rec, P_T8, 1, 8, NULL, 34, NULL},
+    // LAB Engineer (monitor ADC/audio eng_lab.h; eslot 35 = banco extra 0x2C3)
+    {34, (void*)&eng_view, P_ENUM, 0, 2, eng_label, 35, NULL},
 };
 
-const int8_t MENU_COUNT = 37; // number of entries above
+const int8_t MENU_COUNT = 35; // number of entries above
 
 // --- VFO / sintonia ---
 uint32_t max_absavg256 = 0; // smeter peak (legacy 3560)
@@ -457,11 +456,7 @@ static const uint16_t SM_ATT[17] PROGMEM = {0,96,193,289,385,482,578,674,771,867
 //   rms = M*2^att2 / (256*1024*4*8*500*1.414/(0.707*1.1))
 //   dbm = 10*log10(rms*rms/50) + 30 - ref
 static int16_t sm_log20_16(uint32_t M) {
-  // floor(log2(M)), M>=1. OJO: en AVR 'int' es de 16 bit; __builtin_clz(M)
-  // truncaba M y contaba sobre 16 bit (e salia 16..31: el medidor marcaba
-  // +60..+100 dB de mas). clzl opera sobre long = 32 bit. Detectado con
-  // tests/avr_sim --scenario rx (en host, con int de 32 bit, no se veia).
-  uint8_t e = 31 - __builtin_clzl(M);
+  uint8_t e = 31 - __builtin_clz(M); // floor(log2), __builtin_clz(0) indef -> M>=1
   uint8_t j = (e >= 7) ? ((M >> (e - 7)) & 0xFF) - 128 : ((M << (7 - e)) & 0xFF) - 128;
   return (int16_t)(pgm_read_word(&SM_EXP[e]) + pgm_read_byte(&SM_FRAC[j]));
 }
@@ -563,8 +558,7 @@ inline void do_tune() {
       si5351.SendPLLRegisterBulk();
     }
 #endif
-    if(!(eng_adc_en || eng_audio_en))
-      display_vfo_line1(); // instant frequency update (el monitor es dueño si eng on)
+    display_vfo_line1(); // instant frequency update on screen (light, no smeter)
   }
 }
 
@@ -604,6 +598,11 @@ void display_vfo() {
   lcd.print('\x01'); // logo CGRAM (legacy 3926)
   lcd.print("    "); // gap before the meter
   smeter(); // draws according to smode (1=dBm, 2=S, 3=Sbar, 4=wpm)
+  // CW decoder on line 0 (legacy 5187): right-aligned RX CW
+  if(mode == CW && cwdec && cw_event && !tx) {
+    lcd.setCursor(8, 0);
+    lcd.print(cw_line + 8);
+  }
   // stepsize cursor on the frequency line (like legacy stepsize_showcursor)
   if(menu.state == MENU_MAIN) {
     lcd.setCursor(stepsize + 1, 1);
@@ -615,14 +614,13 @@ void display_vfo() {
 // meter/decoder digits on line 0 — never a full rewrite while tuning, so dial
 // steps are never stalled by the display (each nibble masks the encoder ISR).
 void display_tick() {
-  if(eng_adc_en || eng_audio_en) {
+  if(eng_view) {
     eng_tick(); // LAB: la pantalla es del monitor (2 Hz)
     return;
   }
-  if(cw_event) { // CW decoder (legacy 5180-5192): texto desde col 0, mas o
-    cw_event = false; // menos caracteres segun el medidor, que sigue vivo
-    lcd.setCursor(0, 0);
-    lcd.print(cw_line + ((smode == 0) ? 0 : (smode == 1) ? 7 : (smode == 3) ? 5 : 3));
+  if(mode == CW && cwdec && cw_event && !tx) {
+    lcd.setCursor(8, 0);
+    lcd.print(cw_line + 8);
   } else if(!(semi_qsk_timeout) && (!vox_tx)) {
     smeter();
   }
@@ -652,7 +650,6 @@ void setup() {
 
   si5351.powerDown();
 
-  mcusr_boot = MCUSR; // LAB: causa del reset para diagnostico (se muestra abajo)
   MCUSR = 0;
   wdt_enable(WDTO_4S);
   ADMUX  = (1 << REFS0);
@@ -672,11 +669,6 @@ void setup() {
   show_banner();        // uSDX + logo
   lcd.setCursor(0, 1);
   lcd.print(FIRMWARE_VERSION); // show version at boot
-  lcd.print(' ');
-  lcd.print((mcusr_boot & (1 << WDRF))  ? 'W' // watchdog (bucle colgado)
-            : (mcusr_boot & (1 << BORF)) ? 'B' // brown-out (alimentacion)
-            : (mcusr_boot & (1 << EXTRF)) ? 'E' // reset externo (pin RST/ISP)
-                                          : 'P'); // power-on
   lcd.print("                ");
   delay(300);
   wdt_reset();
@@ -731,7 +723,6 @@ void setup() {
   encoder_setup();
   perf_init(); // sonda PD5 solo con PERF_METER
   vox = 0; // disable VOX at boot (legacy parity + seguridad: nunca TX al arrancar)
-  rit = 0; // disable RIT at boot (legacy 5100): el eslot guardado no debe desplazar RX
   // nr NO se fuerza: persiste el último valor guardado (divergencia intencional de legacy)
   loadWPM(keyer_speed);       // CW timing
   keyer_set_mode(keyer_mode); // initialize keyerControl (IAMBICA/B, SINGLE)

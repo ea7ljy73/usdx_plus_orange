@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_ab_agc.sh — test A/B + regresion de F4.16 (AGC Start) y F4.17 (AGC Hang).
+# run_ab_agc.sh — test A/B + regresion de F4.16 (AGC Start) y F4.17 (AGC Rec).
 # Usa el cuerpo REAL de process_agc_fast extraido de rx.h (via rx_v2.c).
 # Sale 0 si pasa, 1 si falla.
 set -e

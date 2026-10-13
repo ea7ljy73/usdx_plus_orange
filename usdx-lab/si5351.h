@@ -24,30 +24,37 @@ public:
 
   volatile uint32_t fxtal = F_XTAL;
   uint32_t df_recip = 0; // round(2^55/fxtal), cacheada en freq() para calc_fast
+  uint8_t  pll_bulk_cache[4]; // F1.3: última terna enviada por bulk (regs 30-33)
+  bool     pll_bulk_valid = false; // invalidar en freq()/ms()
+
   inline void FAST freq_calc_fast(int32_t df) {
-    // Bit-exacto con legacy 1396: msb128 = _msb128 + ((_div*df)*2^23)/fxtal
-    // (division truncada), pero sin division ni producto de 64 bit completos.
-    // q0 = |x|*2^23/fxtal aproximado con el reciproco cacheado (un producto
-    // 32x32->64, parte alta) y corregido en +-1 con el resto calculado en
-    // 32 bit modulo 2^32 (valido porque |resto| < 2*fxtal < 2^31).
-    // Medido en tests/avr_sim: ~1000 -> ~330 ciclos por muestra de TX.
-    // Verificado en tests/fw_sim/si5351_sim (df +-10 kHz, 12 bandas, fxtal).
+    // Fase 1: bit-exacto como ((div*df)*2^23)/fxtal pero sin división 64 bit
+    // (~500-900 ciclos -> ~150-250). q0 = cociente aprox vía recíproco (1
+    // mult64) + un paso de corrección exacto (1 mult64). Probado en host:
+    // 0 mismatches en 19.7M combinaciones (div 4..254, df +-10000, fxtal
+    // 14M..28M). Nota: relies on cached _msb128, _msa128min512, _div, fxtal.
 #define _MSC 0x10000
     int32_t  x  = _div * df;
     uint32_t ux = (x >= 0) ? (uint32_t)x : (uint32_t)-x;
-    uint32_t fx = fxtal;
-    // parte alta de ux*df_recip con 4 productos 16x16 (avr-gcc haria uno de 64 bit)
-    uint16_t al = ux, ah = ux >> 16, bl = df_recip, bh = df_recip >> 16;
-    uint32_t m1 = (uint32_t)ah * bl + (((uint32_t)al * bl) >> 16);
-    uint32_t m2 = (uint32_t)al * bh + (uint16_t)m1;
-    uint32_t q0 = (uint32_t)ah * bh + (m1 >> 16) + (m2 >> 16);
-    // (ux << 23) mod 2^32 sin bucle de 23 desplazamientos de 32 bit
-    int32_t rem = (int32_t)(((uint32_t)(uint16_t)((uint16_t)ux << 7) << 16) - q0 * fx);
-    if(rem >= (int32_t)fx)
-      q0++;
-    else if(rem < 0)
-      q0--;
-    uint32_t msb128 = _msb128 + ((x >= 0) ? q0 : (uint32_t)-q0);
+    uint32_t q0 = (uint32_t)(((uint64_t)ux * df_recip) >> 32);
+    int64_t  num = (int64_t)x * (65536LL * 128); // x*2^23 exacto
+    int32_t  dq;
+    if(x >= 0) {
+      int64_t rem = num - (int64_t)q0 * (int64_t)fxtal;
+      if(rem >= (int64_t)fxtal)
+        q0++;
+      else if(rem < 0)
+        q0--;
+      dq = (int32_t)q0;
+    } else {
+      int64_t rem = num + (int64_t)q0 * (int64_t)fxtal;
+      if(rem > 0)
+        q0--;
+      else if(rem <= -(int64_t)fxtal)
+        q0++;
+      dq = -(int32_t)q0;
+    }
+    uint32_t msb128 = _msb128 + (uint32_t)dq;
 
     uint16_t msp1 = _msa128min512 + msb128 / _MSC;
     uint16_t msp2 = msb128; // = msb128 % _MSC (since _MSC = 2^16)
@@ -58,20 +65,29 @@ public:
     pll_regs[7] = BB0(msp2);
   }
 
-  // Bulk COMPLETO como legacy (1412-1422): los 4 registros en cada muestra.
-  // El bulk diferencial (F1.3) se retiro tras medirlo en tests/fw_sim: hacia
-  // variable el instante en que cambian frecuencia y amplitud (hasta +2,7 dB
-  // de IMD3 a 7 MHz con envolvente limpia) y no se recuperaba de una
-  // escritura I2C perdida mientras df no cambiase. Su unica ganancia era CPU.
   inline void SendPLLRegisterBulk() {
+    // F1.3: bulk diferencial. Solo se envía el tramo [first..last] que cambió
+    // (normalmente 1-3 regs; en silencio nada: transacción omitida). Mismos
+    // bytes en bus que el bulk completo; verificar en HW (TX + duty PD5).
+    uint8_t first = 8, last = 4;
+    for(uint8_t i = 4; i != 8; i++) {
+      if(!pll_bulk_valid || pll_regs[i] != pll_bulk_cache[i - 4]) {
+        if(i < first)
+          first = i;
+        last = i;
+      }
+    }
+    if(last < first)
+      return; // sin cambios: se omite toda la transacción I2C
     i2c.start();
     i2c.SendByte(SI5351_ADDR << 1);
-    i2c.SendByte(26 + 0 * 8 + 4); // Write to PLLA
-    i2c.SendByte(pll_regs[4]);
-    i2c.SendByte(pll_regs[5]);
-    i2c.SendByte(pll_regs[6]);
-    i2c.SendByte(pll_regs[7]);
+    i2c.SendByte(26 + 0 * 8 + first); // Write to PLLA desde 'first'
+    for(uint8_t i = first; i <= last; i++) {
+      i2c.SendByte(pll_regs[i]);
+      pll_bulk_cache[i - 4] = pll_regs[i];
+    }
     i2c.stop();
+    pll_bulk_valid = true;
   }
 
   void SendRegister(uint8_t reg, uint8_t* data, uint8_t n) {
@@ -89,6 +105,7 @@ public:
 
   void ms(int8_t n, uint32_t div_nom, uint32_t div_denom, uint8_t pll = PLLA, uint8_t _int = 0, uint16_t phase = 0,
           uint8_t rdiv = 0) {
+    pll_bulk_valid = false; // F1.3: reescribe estado PLL fuera del bulk
     uint16_t msa;
     uint32_t msb, msc, msp1, msp2, msp3;
     msa = div_nom / div_denom;
@@ -120,6 +137,7 @@ public:
   void oe(uint8_t mask) { SendRegister(3, ~mask); }
 
   void freq(int32_t fout, uint16_t i, uint16_t q) {
+    pll_bulk_valid = false; // F1.3: reescribe estado PLL fuera del bulk
     uint8_t rdiv = 0;
     if(fout > 300000000) {
       i /= 3;

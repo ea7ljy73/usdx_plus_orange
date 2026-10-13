@@ -54,7 +54,7 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
    (ej. `USB 7100000`) y `RX S..` en línea 2.
 2. **Voltage**: si mides el pin AREF, ~2.5V (bias SDR).
 3. **Cat**: si conectas USB-serial, debe responder `ID020;` al `ID;` (puerto
-   38400 baudios). Si no responde, revisa el puerto.
+   115200 baudios, corregido a 20MHz). Si no responde, revisa el puerto.
 
 > Si la pantalla se queda en negro: revisar fuses (1MHz vs 20MHz) y el lcd
 > wiring (PD0-4+PC4 RS).
@@ -75,20 +75,6 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
    volverse más agudo/estrecho a filtros CW.
 2. **Vol** (1er parámetro): sube/baja volumen audiblemente.
 3. **NR / ATT / AGC**: ajusta y comprueba que el ruido/nivel cambia.
-
-### Prueba 3b — Mejoras de RX (medidas solo en simulador)
-Todas arrancan en su valor legacy; actívalas de una en una y compara de oído.
-1. **AGC Start = ON**: apaga y enciende sobre una señal débil. El audio debe
-   oírse desde el primer segundo (en OFF tarda 2-3 s en subir).
-2. **AGC = Slow + AGC Hang = 5**: escucha un QSO de fonía fuerte. Entre
-   palabras el ruido NO debe subir ("bombeo"). Compara con `AGC Hang = 1`.
-   Al acabar una señal fuerte, una débil debe volver en ~1 s.
-   `AGC Hang` no hace nada con `AGC = Fast`.
-3. **NR = 2 / 4 / 6**: en banda vacía el ruido baja ~6 / 12 / 18 dB. Con voz
-   clara las palabras deben sonar al mismo volumen que con NR 0 y el fondo
-   apagarse en las pausas. Anota si corta inicios o colas de palabra.
-   Límite esperado: señales muy débiles (<10 dB sobre el ruido) y portadoras
-   fijas se atenúan → para DX débil y FT8, NR 0.
 
 ### Prueba 3 — S-meter S9
 1. Si tienes generador de RF: inyecta ~-73dBm en 7.1MHz USB. El S-meter
@@ -120,15 +106,6 @@ Sintoniza un segundo receptor a la misma frecuencia:
    (rechazo de imagen — depende de la fase IQ `rx_ph_q`, restaurada a legacy).
 4. Sin **CLICKING** ni cortes (valida el timing ISR).
 
-### Prueba 5b — TX Comp, LoCut y Mic Atten (carga ficticia + segundo receptor)
-1. **TX Comp 0 → 1 → 2 → 3** hablando igual: la potencia media debe subir
-   (simulador: +3 / +5 / +6 dB) sin que suba el pico. La voz se oye más
-   "densa"; en 3 ya suena procesada. Si en 1-2 se oye áspera o hay
-   salpicadura fuera del canal, anótalo y vuelve a 0.
-2. **TX LoCut 0..3**: quita graves (corte ~100 / 200 / 350 Hz en 1 / 2 / 3).
-3. **Mic Atten**: cada paso baja ~6 dB; úsalo si el ALC trabaja siempre a tope.
-4. Vigila la temperatura del PA con TX Comp 2-3: sube la potencia media.
-
 ### Prueba 6 — CW TX (keyer)
 1. Modo CW (BR cambia modo). Conecta paddle en DIT/DAH.
 2. En el SDR sintoniza **frecuencia − 600Hz** (el v2 transmite a `freq -
@@ -155,7 +132,7 @@ Sintoniza un segundo receptor a la misma frecuencia:
 
 ### Prueba 10 — Navegación (flujo 4 pulsaciones)
 1. **BL corto** en principal → `MENU_SELECT` (1er parámetro `Vol`).
-2. **Encoder** → recorre los 35 parámetros.
+2. **Encoder** → recorre los 28 parámetros.
 3. **BL corto** → `EDIT` (cursor `>` visible).
 4. **Encoder** → cambia el valor.
 5. **BL corto** → guarda (EEPROM) y vuelve a selección.
@@ -173,7 +150,7 @@ Sintoniza un segundo receptor a la misma frecuencia:
 
 ### Prueba 9 — Control por PC
 ```bash
-# en terminal serie 38400 8N1:
+# en terminal serie 115200 8N1:
 ID;      ->  ID020;
 FA;      ->  FA007101000;     (frecuencia actual, sin captura)
 FA00007050000;  ->  sintoniza a 7.050MHz
@@ -182,7 +159,7 @@ TX;      ->  transmite (carga/dummy)
 RX;      ->  vuelve a RX
 MD1;     ->  usb ; MD3 -> CW
 ```
-Si `ID;` no responde: verifica el baudrate (38400) y que el
+Si `ID;` no responde: verifica el baudrate (115200 corregido a 20MHz) y que el
 USB-serial no esté ocupado por el bootloader ("serdas").
 
 ---
@@ -194,12 +171,10 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 | 1 | Arranque LCD | `uSDX v2` → `USB 7100000` / `RX S..` | ☐ |
 | 2 | Ruido RX | S-meter >0, audio de ruido al sintonizar | ☐ |
 | 3 | Filtros/AGC/NR | Audio cambia con el menú | ☐ |
-| 3b | AGC Start / AGC Hang / NR | Sin bombeo, ruido baja en pausas, voz intacta | ☐ |
 | 4 | SSB TX (VOX) | Audio limpio sin clicks, portadora rechazada | ☐ |
-| 5b | TX Comp / LoCut / Mic Atten | Más potencia media, sin salpicadura | ☐ |
 | 5 | CW keyer | Tonos limpios, Iambic responde | ☐ |
 | 6 | AM/FM TX | Portadora/desviación presentes | ☐ |
-| 7 | Menú | Navegación completa 35 params | ☐ |
+| 7 | Menú | Navegación completa 31 params | ☐ |
 | 8 | Persistencia | Vuelve con valores guardados tras power cycle | ☐ |
 | 9 | CAT | `ID/FA/IF/MD/TX/RX` responden | ☐ |
 
@@ -232,7 +207,7 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 | TX distorsionado / clicks | Sample-rate OCR2A wrong | Ver fix R3 (OCR2A TX=4800) |
 | S-meter siempre 0 | `_absavg256` no actualiza | Verificar CIC `func_ptr` del RX |
 | No recuerda settings | EEPROM antes de 0x250 | slot VFO 0x250, menú hasta 0x248 |
-| CAT no responde | baudrate/port | 38400 8N1, cable USB-serial |
+| CAT no responde | baudrate/port | 115200 @20MHz, cable USB-serial |
 
 ---
 

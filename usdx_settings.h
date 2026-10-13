@@ -39,16 +39,6 @@ enum mode_t { LSB, USB, CW, FM, AM };
 // =============================================================================
 #define F_MCU 20000000  // 20MHz (overclock uSDX+); 16MHz para Uno/Nano stock
 // #define F_MCU 16000000
-// Legacy 135-139: el IDE compila con F_CPU=16 MHz, pero los timers y el ADC
-// se calculan con la frecuencia REAL del cristal. Sin esto (se perdio en el
-// refactor) Timer2 salia a 78125 Hz en RX y 6010 Hz en TX en vez de 62500 y
-// 4808, y el TOP del PWM (ICR1) a 204 en vez de 255. Detectado con
-// tests/avr_sim (firmware real en simavr).
-#if(F_CPU != 16000000)
-#  error "Compilar como Arduino Uno (F_CPU=16MHz); el cristal real va en F_MCU."
-#endif
-#undef F_CPU
-#define F_CPU 20007000
 #define F_XTAL 27000000 // cristal SI5351 27MHz
 // #define F_XTAL 25004000  // 25MHz SI5351 break-out (WB2CBA-uSDX, uSDXDuO)
 // #define F_XTAL 25000000  // 25MHz TCXO
@@ -130,7 +120,7 @@ enum mode_t { LSB, USB, CW, FM, AM };
 #define AUDIO2 15  // PC1/A1 (pin 24)
 #define DVM 16     // PC2/A2 (pin 25)
 #define SCL 15     // AUX SCL alias para DVM read
-#define SIG_OUT 11 // PB3 (pin 17), como legacy 25. Salida a nivel bajo en reposo (initPins)
+#define SIG_OUT 7  // PD7 alias reservado
 
 // =============================================================================
 // CONSTANTES DE TX (SI_CLK_OE) - WHITE_BUTTONS (PA en CLK2)

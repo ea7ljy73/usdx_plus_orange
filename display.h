@@ -205,9 +205,8 @@ void show_banner() {
 // ---------------------------------------------------------------------------
 uint16_t analogSafeRead(uint8_t adcpin) { // legacy active variant (usdx-legazy:3495-3510)
   noInterrupts();
-  uint16_t to = 60000; // timeout anti-cuelgue (~ms). Sin conversion en
-  while(!(ADCSRA & (1 << ADIF)) && --to) // marcha (p.ej. en TX) el ADC no
-    ; // termina: antes colgaba hasta el WDT y reseteaba el equipo
+  for(; !(ADCSRA & (1 << ADIF));)
+    ; // wait until (a potential previous) ADC conversion is completed
   uint8_t adcsra = ADCSRA;
   uint8_t admux  = ADMUX;
   ADCSRA &= ~(1 << ADIE);                              // disable interrupts when measurement complete

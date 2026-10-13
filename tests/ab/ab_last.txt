@@ -1,22 +1,22 @@
 == AB TX (dos tonos 700+1100, SSB reconstruida) ==
-TX drive=2        mic=  150 usb= 0.495 img= -42.2dBc imd3= -20.8dBc car= -61.7dBc
-TX drive=4        mic=  150 usb= 0.494 img= -42.2dBc imd3= -20.8dBc car= -61.4dBc
-TX drive=6        mic=  150 usb= 0.495 img= -42.2dBc imd3= -20.8dBc car= -61.5dBc
-TX bajo           mic=   60 usb= 0.353 img= -40.7dBc imd3= -39.8dBc car= -76.0dBc
-TX alto           mic=  300 usb= 0.496 img= -39.8dBc imd3= -23.8dBc car= -71.9dBc
-TX att1           mic=   75 usb= 0.261 img= -41.6dBc imd3= -32.9dBc car= -73.1dBc
-TX att2           mic=   38 usb= 0.249 img= -43.1dBc imd3= -34.9dBc car= -73.8dBc
-TX flat voz  400= 0.421 2000= 0.506 diff=  1.6dB
-TX flat digi 400= 0.646 2000= 0.687 diff=  0.5dB
-TX digi700+1100   mic=  150 usb= 0.636 img= -32.0dBc imd3=  -8.4dBc car= -89.6dBc
-TX env150         mic=  150 usb= 0.169 imd3= -23.2dBc crest=2.62
-TX locut0         100Hz= 0.002 1000Hz= 0.030 rej=-23.3dB
-TX locut1         100Hz= 0.008 1000Hz= 0.109 rej=-23.2dB
-TX locut2         100Hz= 0.017 1000Hz= 0.376 rej=-26.8dB
-TX locut3         100Hz= 0.029 1000Hz= 0.758 rej=-28.4dB
-TX compON         mic=  150 usb= 0.479 imd3= -18.2dBc crest=1.58
-TX mixOFF         mic=   80 usb= 0.122 imd3= -26.2dBc crest=2.77
-TX mixComp        mic=   80 usb= 0.220 imd3= -25.9dBc crest=2.75
+TX drive=2        mic=  150 usb= 0.132 img= -36.4dBc imd3=  -7.9dBc car= -50.1dBc
+TX drive=4        mic=  150 usb= 0.077 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX drive=6        mic=  150 usb= 0.077 img= -36.6dBc imd3=  -7.5dBc car= -58.3dBc
+TX bajo           mic=   60 usb= 0.077 img= -42.4dBc imd3=  -8.1dBc car= -91.1dBc
+TX alto           mic=  300 usb= 0.077 img= -31.9dBc imd3=  -7.7dBc car= -71.5dBc
+TX att1           mic=   75 usb= 0.077 img= -38.4dBc imd3=  -8.0dBc car= -91.1dBc
+TX att2           mic=   38 usb= 0.077 img= -39.1dBc imd3=  -8.1dBc car=-259.6dBc
+TX flat voz  400= 0.058 2000= 0.099 diff=  4.7dB
+TX flat digi 400= 0.078 2000= 0.084 diff=  0.5dB
+TX digi700+1100   mic=  150 usb= 0.077 img= -32.4dBc imd3=  -8.3dBc car= -89.6dBc
+TX env150         mic=  150 usb= 0.077 imd3=  -7.7dBc crest=1.00
+TX locut0         100Hz= 0.015 1000Hz= 0.075 rej=-13.8dB
+TX locut1         100Hz= 0.011 1000Hz= 0.080 rej=-17.4dB
+TX locut2         100Hz= 0.006 1000Hz= 0.085 rej=-22.9dB
+TX locut3         100Hz= 0.002 1000Hz= 0.093 rej=-32.4dB
+TX compON         mic=  150 usb= 0.077 imd3=  -7.9dBc crest=1.01
+TX mixOFF         mic=   80 usb= 0.075 imd3= -10.3dBc crest=1.11
+TX mixComp        mic=   80 usb= 0.073 imd3= -12.6dBc crest=1.19
 == AB RX (USB, agc=0, vol=12, att2=2, nr=0, estado virgen) ==
 RX piso=   0.0
 RX nb=0 tono800=   13.8 pico_max=   255
@@ -31,16 +31,16 @@ RX nr=0 ruido=   53.7
 RX nr=1 tono800=   23.9
 RX nr=1 ruido=   53.7
 RX nr=2 tono800=   23.9
-RX nr=2 ruido=   53.7
+RX nr=2 ruido=   52.8
 RX nr=3 tono800=   23.9
-RX nr=3 ruido=   53.7
+RX nr=3 ruido=   51.2
 RX nr=4 tono800=   23.9
-RX nr=4 ruido=   53.7
-RX nr=5 tono800=   23.9
-RX nr=5 ruido=   53.7
-RX nr=6 tono800=   23.9
-RX nr=6 ruido=   53.7
-RX nr=7 tono800=   23.9
-RX nr=7 ruido=   53.7
-RX nr=8 tono800=   23.9
-RX nr=8 ruido=   53.7
+RX nr=4 ruido=   49.5
+RX nr=5 tono800=   24.0
+RX nr=5 ruido=   46.7
+RX nr=6 tono800=   24.0
+RX nr=6 ruido=   43.5
+RX nr=7 tono800=   24.1
+RX nr=7 ruido=   39.5
+RX nr=8 tono800=   24.2
+RX nr=8 ruido=   35.3
