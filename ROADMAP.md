@@ -10,8 +10,9 @@
   intencionado: puerta de ruido DNR).
 - **Mejoras integradas tras flag de menú** (todas apagables, default legacy):
   S-meter punto fijo, `freq_calc_fast`, I2C bulk diferencial, banda
-  direccional, mic atten, DIGI/FT8 plano, ALC, compresor voz 2:1, LoCut,
-  puerta de ruido NR, AGC Start (precarga x8), AGC Rec (anti-bombeo), AGC Slow M0PUB.
+  direccional, mic atten, DIGI/FT8 plano, ALC, TX Comp (recorte de envolvente
+  0..3), LoCut, puerta de ruido NR (suelo adaptativo), AGC Start (precarga x8),
+  AGC Hang (anti-bombeo, AGC Slow), AGC Slow M0PUB.
 - **Laboratorio en `usdx-lab/`**: copia + `eng_lab.h` (monitor ADC/audio),
   sin CAT, versión/magia EEPROM propias. Toda prueba hardware se hace ahí
   (guía: `usdx-lab/GUIA_TEST_HW.md`).

@@ -124,7 +124,7 @@ For SSB voice connect an electret mic to the paddle jack (DOT = PTT, DASH = audi
 ## Features in this firmware
 
 - Bit-exact parity with the verified legacy reference (see tests above)
-- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, 2:1 voice compressor, TX low-cut, NR noise gate, AGC fast-start / anti-pumping recovery / Slow (M0PUB) mode
+- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, envelope-clipping speech processor (TX Comp), TX low-cut, NR noise gate, AGC fast-start / anti-pumping hang / Slow (M0PUB) mode
 - Full CAT TS-480 subset, VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
 
 Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
