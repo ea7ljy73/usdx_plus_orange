@@ -46,7 +46,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm && ./parity_rx
 cd ../ab_agc && ./run_ab_agc.sh
 ```
 
-TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches (NR levels ≥2 differ intentionally — 2-pole NR improvement, see `ROADMAP.md`).
+TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches (NR levels ≥2 differ intentionally — noise-gate NR improvement, see `ROADMAP.md`).
 
 ---
 
@@ -58,7 +58,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 |------|-------|---------|
 | 20 TX Drive | 4–6 | ~5W PEP; start low, raise while watching SWR |
 | 28 Mic Atten | 0 | 6 dB/step attenuator; raise only if mic clips |
-| 30 TX Comp | ON | 2:1 voice compressor, more average talk power |
+| 30 TX Comp | 1–2 | Speech processor (envelope clipping after the ALC): about +3 / +5 / +6 dB average talk power at 1 / 2 / 3, at the cost of in-band IMD. 0 = cleanest signal |
 | 31 TX LoCut | 2 (200 Hz) | Removes sub-audio rumble; saves power and IMD |
 | 29 DIGI Mode | ON for digital | Flat TX path (USB + VOX + full bandwidth set manually) |
 | 23/24 PA Bias | Calibrate | PWM range where the PA starts / max power |
@@ -69,8 +69,8 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 |------|-------|---------|
 | 7 AGC | Fast (SSB) / Slow (CW) | Fast = legacy response; Slow = stable CW level |
 | 32 AGC Start | ON | Instant audible gain on band start (x8 preload) |
-| 33 AGC Rec | 4 | Slower recovery: less breathing between words |
-| 8 NR | 1–2 (SSB) | 2-pole noise reduction; stronger settings for CW |
+| 33 AGC Hang | 5 (with AGC Slow) | Holds the gain 0.4 s after speech: no noise pumping between words, weak signals back in ~1 s. Only acts on AGC Slow |
+| 8 NR | 2–4 (SSB/CW) | Noise gate relative to the tracked noise floor: 6/12/18/24 dB less noise in pauses and on an empty band, voice untouched. Signals within ~10 dB of the noise and steady carriers (after 2–3 s) are attenuated too: turn it off for weak DX and digital modes |
 | 9/10 ATT/ATT2 | 0 to start | Raise if strong signals overload the front end |
 | 11 S-meter | S or dBm | Signal indicator |
 
@@ -110,10 +110,10 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 27 | Backlight | ON, OFF |
 | 28 | Mic Atten | 0–4 (6 dB/step) |
 | 29 | DIGI Mode | ON, OFF |
-| 30 | TX Comp | ON, OFF |
+| 30 | TX Comp | 0 (off), 1, 2, 3 |
 | 31 | TX LoCut | OFF, 100, 200, 400 Hz |
 | 32 | AGC Start | ON, OFF |
-| 33 | AGC Rec | 1–8 (1 = legacy) |
+| 33 | AGC Hang | 1–8 (1 = legacy; each step ≈ 0.1 s) |
 
 Shortcuts (L=left, E=encoder, R=right): **E+turn** volume · **R** mode · **R double** filter · **E double** band · **E / E long** step · **2x R long** VFO · **R long** RIT · **L** menu · **L+turn** quick menu · **R** back · **E long at power-up** factory reset.
 
@@ -124,7 +124,7 @@ For SSB voice connect an electret mic to the paddle jack (DOT = PTT, DASH = audi
 ## Features in this firmware
 
 - Bit-exact parity with the verified legacy reference (see tests above)
-- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, 2:1 voice compressor, TX low-cut, 2-pole NR, AGC fast-start / anti-pumping recovery / Slow (M0PUB) mode
+- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, envelope-clipping speech processor (TX Comp), TX low-cut, NR noise gate, AGC fast-start / anti-pumping hang / Slow (M0PUB) mode
 - Full CAT TS-480 subset, VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
 
 Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
