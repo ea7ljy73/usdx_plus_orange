@@ -1,0 +1,25 @@
+ok T1 BL entra a SELECT por la fila 0 (legacy 5343)
+ok T2 rebote = un solo evento
+ok T3 entra en Engineer
+ok T3 edita
+ok T3 dial cambia valor
+ok T3 guarda eslot 35 y vuelve
+ok T3 sale a MAIN
+ok T4 doble-click en menu no salta de banda
+ok T4b doble-click en MAIN salta de banda
+ok T5 hold+giro en menu edita, no volumen
+ok T6 adc=859 es BL
+ok T6 adc=860 ya es BR (cambia modo)
+ok T6 adc=983 es BE (dial)
+ok T7 pulsacion larga entra directo a EDIT
+ok T8 rebote al soltar = un evento
+ok T9 wrap 0-1=4
+ok T9 modulo (4+7)%5=1
+ok T10 izquierda 0->2
+ok T10 derecha 2->0
+ok T12 dial edita Eng
+ok T12 dial vuelve a browser conserva
+ok T12 menu sale a MAIN
+ok T11 volumen -1 apaga (trampa documentada)
+
+23/23 ok
