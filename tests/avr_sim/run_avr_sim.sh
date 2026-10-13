@@ -38,6 +38,9 @@ sim "PRODUCCION: preenfasis de envolvente (TX EnvPre=2) con el conformador RC de
     --poke tx_envpre=2 --expect-imd3 -28 --quiet
 sim "PRODUCCION: recepcion (senal conocida en I/Q -> audio, medidor S, AGC, respuesta)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario rx --quiet
 sim "PRODUCCION: CW (boton de modo real + llave)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cw --quiet
+echo "=================== PRODUCCION: mejoras de RX (AGC Start, AGC Hang, NR) medidas sobre el audio"
+if python3 -c "import numpy" 2>/dev/null; then python3 rx_mejoras.py ./usdx_avr_sim "$B"/prod/*.elf "$B/prod.syms" || rc=1
+else echo "   (omitido: falta numpy)"; fi
 build lab ../../usdx-lab
 sim "LAB: dos tonos 700+1100 Hz" "$B"/lab/*.elf --syms "$B/lab.syms" --quiet
 if [ "$1" = "--legacy" ]; then # referencia: legacy con DIAG desactivado (sus chequeos de placa no aplican al simulador)

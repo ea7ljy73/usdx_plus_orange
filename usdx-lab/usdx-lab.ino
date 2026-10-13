@@ -185,7 +185,7 @@ static const char menu_label_29[] PROGMEM = "DIGI Mode";
 static const char menu_label_30[] PROGMEM = "TX Comp";
 static const char menu_label_31[] PROGMEM = "TX LoCut";
 static const char menu_label_32[] PROGMEM = "AGC Start";
-static const char menu_label_33[] PROGMEM = "AGC Rec";
+static const char menu_label_33[] PROGMEM = "AGC Hang";
 static const char menu_label_34[] PROGMEM = "Eng ADC";
 static const char menu_label_35[] PROGMEM = "Eng Audio";
 static const char menu_label_36[] PROGMEM = "TX EnvPre";
@@ -432,8 +432,8 @@ const MenuParam MENU[] PROGMEM = {
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
     // AGC Start (F4.16: precarga x8 al arrancar; eslot 33 = banco extra 0x2C1)
     {32, (void*)&agc_start, P_ENUM, 0, 1, offon_label, 33, NULL},
-    // AGC Rec (F4.17: divisor de recovery 1..8, 1=legacy; eslot 34 = banco extra 0x2C2)
-    {33, (void*)&agc_rec, P_T8, 1, 8, NULL, 34, NULL},
+    // AGC Hang (F4.17: retencion del AGC Slow, 1..8 = 0..0,7 s, 1=legacy; eslot 34 = banco extra 0x2C2)
+    {33, (void*)&agc_hang, P_T8, 1, 8, NULL, 34, NULL},
     // LAB Engineer: dos filas ON/OFF independientes (eslots 35/36 = 0x2C3/0x2C4)
     {34, (void*)&eng_adc_en, P_ENUM, 0, 1, offon_label, 35, NULL},
     {35, (void*)&eng_audio_en, P_ENUM, 0, 1, offon_label, 36, NULL},

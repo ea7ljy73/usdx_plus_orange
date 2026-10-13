@@ -20,6 +20,7 @@
 #include <vector>
 extern "C" {
 #include "avr_adc.h"
+#include "avr_eeprom.h"
 #include "avr_ioport.h"
 #include "sim_avr.h"
 #include "sim_cycle_timers.h"
@@ -35,6 +36,10 @@ static double now_s() { return avr->cycle / F_XTAL_MCU; }
 static double opt_boot = 6.0, opt_tx = 2.4, opt_tail = 0.4;
 static double opt_a1 = 32, opt_f1 = 700, opt_a2 = 32, opt_f2 = 1100;
 static int    opt_log2n = 20; // --win: 2^n muestras de RF analizadas (20 = 0,84 s; 22 = 3,4 s)
+static const char *opt_aud = NULL, *opt_eesave = NULL, *opt_eeload = NULL;
+static std::vector<std::pair<int, int>> ee_set;
+struct TPoke { double t; std::string name; int v; int done; };
+static std::vector<TPoke> tpokes;
 static int    opt_voice = 0, opt_quiet = 0, opt_study = 0, opt_dump = 0, opt_tone = 0;
 static double opt_expect = 0; // --expect-imd3: IMD3 maxima admitida con el RC del esquema
 static double opt_rc_us = 100.0; // celula RC del conformador: 10 kohm x 10 nF (esquema usdx.png), dos en cascada
@@ -154,7 +159,6 @@ static Stim stims[] = {
 };
 static const int NSTIM = sizeof stims / sizeof stims[0];
 static int    stim_i = -1, rx_side = 0; // rx_side: signo de Q que da la banda deseada
-static uint32_t nseed = 7;
 static int    btn_mv = 0; // tension en la linea de botones (0 = sueltos)
 // ---- ADC propio, fiel al ATmega328P (el de simavr calcula el valor al LEER
 // y con el canal ya conmutado; el firmware arranca la conversion siguiente y
@@ -162,7 +166,19 @@ static int    btn_mv = 0; // tension en la linea de botones (0 = sueltos)
 // resultado aparece en ADCL/ADCH al terminar (13 ciclos de reloj ADC) junto
 // con ADIF, ADSC se borra solo, y escribir un 1 en ADIF lo borra (por eso el
 // "ADCSRA |= ADSC" del firmware limpia la bandera, como en el chip real).
+// escenario 3 (rxt): linea de tiempo libre desde el arranque, para medir dinamica (AGC, NR)
+static uint32_t nseed = 7;
+struct Seg { double dur, f, a, noise; };
+static std::vector<Seg> seq; static double seq_side = -1;
+static double gauss() { double s = 0; for(int i = 0; i < 4; i++) { nseed = nseed * 1103515245u + 12345u; s += ((int)((nseed >> 16) % 2001) - 1000) / 1000.0; } return s * 0.866; } // ~N(0,1)
 static void sig_iq(double t, double* vi, double* vq) {
+  if(scenario == 3) {
+    double t0 = 0; const Seg* s = seq.empty() ? NULL : &seq.back();
+    for(auto& g : seq) { if(t < t0 + g.dur) { s = &g; break; } t0 += g.dur; }
+    double a = s ? s->a : 0, f = s ? s->f : 1000, nz = s ? s->noise : 0;
+    *vi = a * cos(2 * M_PI * f * t) + nz * gauss(); *vq = seq_side * a * sin(2 * M_PI * f * t) + nz * gauss();
+    return;
+  }
   *vi = 60 * sin(2 * M_PI * 1000 * t); *vq = 60 * cos(2 * M_PI * 1000 * t);
   if(scenario == 1 && stim_i >= 0) { // I/Q en cuadratura + ~0,5 LSB de ruido del ADC
     const Stim& s = stims[stim_i];
@@ -372,10 +388,18 @@ int main(int argc, char** argv) {
     if(!strcmp(argv[i], "--voice")) opt_voice = 1;
     else if(!strcmp(argv[i], "--speech")) opt_voice = 2;
     else if(!strcmp(argv[i], "--win") && i + 1 < argc) opt_log2n = atoi(argv[++i]);
+    else if(!strcmp(argv[i], "--seq") && i + 1 < argc) { // "dur:f:a:ruido;..." (s, Hz, cuentas de pico, cuentas rms) desde el arranque
+      for(char* tk = strtok(argv[++i], ";"); tk; tk = strtok(NULL, ";")) { Seg g = {0, 1000, 0, 0}; sscanf(tk, "%lf:%lf:%lf:%lf", &g.dur, &g.f, &g.a, &g.noise); seq.push_back(g); } }
+    else if(!strcmp(argv[i], "--side") && i + 1 < argc) seq_side = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--aud") && i + 1 < argc) opt_aud = argv[++i];
+    else if(!strcmp(argv[i], "--ee-save") && i + 1 < argc) opt_eesave = argv[++i];
+    else if(!strcmp(argv[i], "--ee-load") && i + 1 < argc) opt_eeload = argv[++i];
+    else if(!strcmp(argv[i], "--ee") && i + 1 < argc) { unsigned a = 0, v = 0; if(sscanf(argv[++i], "%i=%i", (int*)&a, (int*)&v) == 2) ee_set.push_back({(int)a, (int)v}); }
+    else if(!strcmp(argv[i], "--poke-at") && i + 2 < argc) { double tt = atof(argv[++i]); char* eq = strchr(argv[++i], '='); if(eq) { *eq = 0; tpokes.push_back({tt, argv[i], atoi(eq + 1), 0}); } }
     else if(!strcmp(argv[i], "--quiet")) opt_quiet = 1;
     else if(!strcmp(argv[i], "--study")) opt_study = 1;
     else if(!strcmp(argv[i], "--dump-state")) opt_dump = 1;
-    else if(!strcmp(argv[i], "--scenario") && i + 1 < argc) { i++; scenario = !strcmp(argv[i], "rx") ? 1 : !strcmp(argv[i], "cw") ? 2 : 0; }
+    else if(!strcmp(argv[i], "--scenario") && i + 1 < argc) { i++; scenario = !strcmp(argv[i], "rx") ? 1 : !strcmp(argv[i], "cw") ? 2 : !strcmp(argv[i], "rxt") ? 3 : 0; }
     else if(!strcmp(argv[i], "--expect-imd3") && i + 1 < argc) { opt_expect = atof(argv[++i]); opt_study = 1; }
     else if(!strcmp(argv[i], "--rc") && i + 1 < argc) opt_rc_us = atof(argv[++i]);
     else if(!strcmp(argv[i], "--mic") && i + 1 < argc) opt_a1 = opt_a2 = atof(argv[++i]);
@@ -408,6 +432,13 @@ int main(int argc, char** argv) {
   const double   STIM_S = 2.3; // por estimulo: 1,2 s de asentamiento + 1,05 s de medida
   if(scenario == 1) { opt_tx = NSTIM * STIM_S; opt_tail = 0; }
   if(scenario == 2) { opt_tx = 5.2; opt_tail = 0.2; }
+  if(scenario == 3) { opt_boot = 0.001; opt_tx = 0; for(auto& g : seq) opt_tx += g.dur; opt_tail = 0; }
+  if(opt_eeload) { // EEPROM de una ejecucion anterior (+ cambios --ee dir=valor): arranque con ajustes de menu reales
+    static uint8_t eb[1024]; memset(eb, 0xff, sizeof eb);
+    FILE* f = fopen(opt_eeload, "rb"); if(f) { if(fread(eb, 1, sizeof eb, f) != sizeof eb) printf("   (EEPROM incompleta)\n"); fclose(f); } else printf("   (no se pudo leer %s)\n", opt_eeload);
+    for(auto& e : ee_set) eb[e.first & 1023] = (uint8_t)e.second;
+    avr_eeprom_desc_t d = {eb, 0, sizeof eb}; avr_ioctl(avr, AVR_IOCTL_EEPROM_SET, &d);
+  }
   const uint64_t c_ptt = (uint64_t)(opt_boot * F_XTAL_MCU), c_rel = c_ptt + (uint64_t)(opt_tx * F_XTAL_MCU),
                  c_end = c_rel + (uint64_t)(opt_tail * F_XTAL_MCU);
   uint8_t  ocr1a = 0;
@@ -475,6 +506,7 @@ int main(int argc, char** argv) {
       for(int r : {3,16,17,18,24,26,27,28,29,30,31,32,33,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,165,166,167,183,187}) printf(" %d=%02x", r, si[r]); printf("\n");
       printf("RELES expansor = %04x\n", ioexp_out);
     }
+    if(!tpokes.empty()) for(auto& tp : tpokes) if(!tp.done && now_s() >= tp.t) { tp.done = 1; if(!poke_var(tp.name.c_str(), tp.v)) printf("   (variable %s no encontrada)\n", tp.name.c_str()); }
     if(scenario == 1 && avr->cycle >= c_ptt) { // recepcion: secuencia de estimulos
       int k = (int)((avr->cycle - c_ptt) / (uint64_t)(STIM_S * F_XTAL_MCU));
       if(k != stim_i && k < NSTIM) {
@@ -520,6 +552,18 @@ int main(int argc, char** argv) {
     if(stage == 1 && avr->cycle >= c_rel - (uint64_t)(0.05 * F_XTAL_MCU) && lcd_hi != -2) { lcd_show("en transmision"); lcd_hi = -1; stage = 2; }
     if(stage == 2 && avr->cycle >= c_rel) { pin('B', 5, 1); stage = 3; }
     if(stage == 3 && !t_tx_off && (si[3] & 4)) t_tx_off = avr->cycle;
+  }
+  if(opt_eesave) { static uint8_t eb[1024]; avr_eeprom_desc_t d = {eb, 0, sizeof eb}; avr_ioctl(avr, AVR_IOCTL_EEPROM_GET, &d);
+    FILE* f = fopen(opt_eesave, "wb"); if(f) { fwrite(eb, 1, sizeof eb, f); fclose(f); } }
+  if(scenario == 3) { // audio completo a 7812,5 Hz (media de 8 muestras de 62,5 kHz), float32, para analizar fuera
+    long h[320] = {0}; for(auto& e : aud) h[e.cyc % 320]++;
+    long best = -1; int ph = 0;
+    for(int p = 0; p < 320; p++) { long w = 0; for(int d = -40; d <= 40; d++) w += h[(p + d + 320) % 320]; if(best < 0 || w < best) { best = w; ph = p; } }
+    FILE* f = opt_aud ? fopen(opt_aud, "wb") : NULL; size_t i = 0; uint8_t v = 128; double acc = 0; int na = 0; long nout = 0;
+    for(uint64_t c = ph; c < c_end; c += 320) { while(i < aud.size() && aud[i].cyc <= c) v = aud[i++].val; acc += v; if(++na == 8) { float o = (float)(acc / 8); if(f) fwrite(&o, 4, 1, f); acc = 0; na = 0; nout++; } }
+    if(f) fclose(f);
+    printf("AUDIO %ld muestras a 7812.5 Hz en %s | LCD |%.16s|%.16s|\n", nout, opt_aud ? opt_aud : "(sin --aud)", lcd[0], lcd[1]);
+    return 0;
   }
   // ================================================================ escenario RX
   if(scenario == 1) {

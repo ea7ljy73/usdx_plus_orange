@@ -69,8 +69,8 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 |------|-------|---------|
 | 7 AGC | Fast (SSB) / Slow (CW) | Fast = legacy response; Slow = stable CW level |
 | 32 AGC Start | ON | Instant audible gain on band start (x8 preload) |
-| 33 AGC Rec | 4 | Slower recovery: less breathing between words |
-| 8 NR | 2–3 (SSB) | Noise gate: mutes background in pauses, voice passes bit-exact; low levels for weak DX |
+| 33 AGC Hang | 5 (with AGC Slow) | Holds the gain 0.4 s after speech: no noise pumping between words, weak signals back in ~1 s. Only acts on AGC Slow |
+| 8 NR | 2–4 (SSB/CW) | Noise gate relative to the tracked noise floor: 6/12/18/24 dB less noise in pauses and on an empty band, voice untouched. Signals within ~10 dB of the noise and steady carriers (after 2–3 s) are attenuated too: turn it off for weak DX and digital modes |
 | 9/10 ATT/ATT2 | 0 to start | Raise if strong signals overload the front end |
 | 11 S-meter | S or dBm | Signal indicator |
 
@@ -113,7 +113,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 30 | TX Comp | 0 (off), 1, 2, 3 |
 | 31 | TX LoCut | OFF, 100, 200, 400 Hz |
 | 32 | AGC Start | ON, OFF |
-| 33 | AGC Rec | 1–8 (1 = legacy) |
+| 33 | AGC Hang | 1–8 (1 = legacy; each step ≈ 0.1 s) |
 
 Shortcuts (L=left, E=encoder, R=right): **E+turn** volume · **R** mode · **R double** filter · **E double** band · **E / E long** step · **2x R long** VFO · **R long** RIT · **L** menu · **L+turn** quick menu · **R** back · **E long at power-up** factory reset.
 

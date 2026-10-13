@@ -74,9 +74,26 @@
     Mismo eslot de EEPROM (24); un "ON" guardado pasa a ser nivel 1.
   - Peor caso de CPU (habla fuerte + TX Comp 3 + LoCut): media 3466, máx
     4116 de 4160 ciclos, 0 muestras perdidas.
-  - Las mejoras de RX (AGC Start/Rec, NR) siguen cubiertas solo por los
-    tests host (`ab_agc`, `parity_rx`); no se han medido en simavr.
-- Build: 30938 B (95 %) flash / 1188 B (58 %) RAM.
+- **Mejoras de RX comprobadas en el simulador** (escenario `rxt`: señal y
+  ruido programables en I/Q, EEPROM real, audio analizado; regresión en
+  `tests/avr_sim/rx_mejoras.py`, dentro de `run_avr_sim.sh`):
+  - *AGC Start*: cumple. Señal débil desde el encendido: 4–5× más audio el
+    primer segundo y 2–3 s de adelanto; mismo régimen final.
+  - *AGC Rec* (divisor de subida del AGC Fast): **no cumplía**. Bajaba el
+    audio de la propia voz (hasta 13 dB con señal floja) y alargaba 8× la
+    recuperación tras una señal fuerte; el bombeo que debía quitar ya era
+    ≤3 dB. **Sustituido por *AGC Hang*** (mismo eslot, 1 = legacy): retención
+    de (n−1)·0,1 s en el AGC Slow (M0PUB). Con Hang 5 el bombeo en pausas de
+    0,5 s pasa de 3,9 a 0,3 dB y una señal 20 dB más débil vuelve en ~1 s
+    (AGC Fast: >7 s).
+  - *NR ≥2*: **no cumplía**. El umbral absoluto quedaba por encima del nivel
+    que regula el AGC: la puerta no abría nunca y NR atenuaba por igual voz
+    y ruido (−6/−12/−18/−24 dB, S/N sin cambio). **Rehecho** con umbral
+    relativo al suelo de ruido (3× el mínimo de envolvente): palabras 0,0 dB,
+    banda vacía −6/−12/−18/−23 dB y pausas −6/−11,5/−16/−17 dB (NR 2/4/6/8).
+    Límites: atenúa señales a <10 dB del ruido y tonos continuos a los 2–3 s.
+  - −158 B de flash entre los dos cambios.
+- Build: 30780 B (95 %) flash / 1188 B (58 %) RAM.
 
 ## Pendiente (en orden)
 
