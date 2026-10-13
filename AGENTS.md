@@ -106,7 +106,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 31084B (96%) flash, 1190B (58%) RAM, 0 warnings (2026-10-13)
+# Build actual: 30938B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-13)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -186,8 +186,10 @@ Ejecuta el **`.elf` real** en un ATmega328P simulado (simavr, 20 MHz, ciclo a
 ciclo) con SI5351 (I2C bit-bang decodificado), relés LPF, LCD, micro por ADC y
 PTT. Mide cada interrupción `TIMER2_COMPA` (periodo, duración, anidamiento,
 muestras perdidas, perfil por función) y reconstruye la emisión SSB para sacar
-IMD3/IMD5, banda opuesta y espurios. Casos: dos tonos, peor caso de CPU (voz
-fuerte + compresor + low-cut, variables fijadas con `--poke`) y lab; `--legacy`
+IMD3/IMD5, banda opuesta y espurios. Casos: dos tonos, peor caso de CPU (habla
+sintética fuerte `--speech` + TX Comp 3 + low-cut, variables fijadas con
+`--poke`) y lab; `--tone f a` (un tono) y la línea `MEDIDA` sirven para
+barrer mejoras de TX; `--legacy`
 pasa también `usdx-legazy` (sin DIAG) como referencia. simavr se descarga sin
 root a `~/.cache/usdx-simavr` si no está instalado.
 
@@ -228,7 +230,7 @@ tiempos I2C): eso sigue siendo la validación en hardware.
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
 
-> Build actual: 31084B (96%) flash, 1190B (58%) RAM, 0 warnings
+> Build actual: 30938B (95%) flash, 1188B (58%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código

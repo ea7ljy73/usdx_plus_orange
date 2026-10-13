@@ -58,7 +58,25 @@
   audio caía, según el desfase de arranque, justo sobre el instante en que la
   ISR escribe OCR1AL. Ahora la rejilla se aleja de las escrituras: producción
   y legacy dan 0,60 / 0,56 cuentas en todos los arranques.
-- Build: 31084 B (96 %) flash / 1190 B (58 %) RAM.
+- **Mejoras de TX comprobadas en el simulador** (firmware real, 2026-10-13):
+  - *TX LoCut*: −3 dB a ≈100 / 200 / 350 Hz (1/2/3), como se diseñó; +1…2,5 dB
+    de realce de agudos en 2/3 (propio del filtro de un polo).
+  - *Mic Atten*: ≈6,2 dB por paso. *DIGI*: respuesta más plana (−1,4 dB a
+    300 Hz frente a −3,8) y tono tipo FT8 mucho más limpio a nivel alto
+    (resto en banda −38 dBc frente a −27; banda opuesta −44 frente a −34).
+  - *TX Comp* (compresor de audio 2:1): **no cumplía**. Con habla sintética
+    (`--speech`) la potencia media no subía (−0,6…−1,3 dB) y la ISR de TX
+    desbordaba (máx 4457 de 4160 ciclos). **Rehecho** como recorte de
+    envolvente tras el ALC, niveles 0..3 (el ALC deja pasar picos hasta
+    255+128·nivel y se recorta a 255): +3,3 / +5,0 / +6,2 dB de potencia
+    media, canal adyacente sin cambio, 0 ciclos de ISR y −146 B de flash.
+    Coste: IMD3 de dos tonos −32 (0) / −18 / −13,5 / −11,5 dBc (legacy −9).
+    Mismo eslot de EEPROM (24); un "ON" guardado pasa a ser nivel 1.
+  - Peor caso de CPU (habla fuerte + TX Comp 3 + LoCut): media 3466, máx
+    4116 de 4160 ciclos, 0 muestras perdidas.
+  - Las mejoras de RX (AGC Start/Rec, NR) siguen cubiertas solo por los
+    tests host (`ab_agc`, `parity_rx`); no se han medido en simavr.
+- Build: 30938 B (95 %) flash / 1188 B (58 %) RAM.
 
 ## Pendiente (en orden)
 
