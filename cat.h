@@ -31,6 +31,12 @@ extern int32_t vfo[2];
 extern volatile uint32_t save_event_time; // deferred VFO persist (main .ino)
 extern void             switch_rxtx(uint8_t tx_enable);
 extern void             vfo_apply(void);
+extern volatile uint8_t tx;
+extern volatile uint8_t vox_tx;
+
+// FA/MD recibidos: se aplican en loop() SOLO con TX off (legacy 'change',
+// 5676: "prevent simultaneous I2C bus access" con el ISR de TX).
+volatile uint8_t cat_change = 0;
 
 // --- response formatter (no sprintf, saves flash) --------------------------
 static inline void cat_print(char c) { Serial.print(c); }
@@ -78,15 +84,28 @@ static void Command_IF() {
 static void Command_SETFreqA() { // legacy 4512-4520: no range check
   if(CATcmd[2] != ';') { // 'FAxxxx...;'
     freq = (uint32_t)atol(CATcmd + 2);
-    vfo_apply(); // mode-dependent IQ phase + CW offset (legacy change handler)
-    vfo[vfosel % 2] = freq; // VFO follows (legacy change block)
-    save_event_time = millis() + 1000; // persist when idle (legacy 5684)
-    uint8_t f = freq / 1000000UL;
-    set_lpf(f); // switch LPF band (legacy 5701)
-    bandval_align();
-    if(menu.state == MENU_MAIN)
-      display_vfo(); // refresh + cursor (legacy change block)
+    cat_change = 1; // legacy 4519: change=true (aplicado en loop, fuera de TX)
   }
+}
+// legacy change block (5676-5712): VFO, LPF, SI5351 y display, nunca en TX
+static void cat_apply() {
+  if(!cat_change || tx || vox_tx)
+    return;
+  cat_change = 0;
+  vfo[vfosel % 2] = freq; // VFO follows (legacy change block)
+  save_event_time = millis() + 1000; // persist when idle (legacy 5684)
+  uint8_t f = freq / 1000000UL;
+  set_lpf(f); // switch LPF band (legacy 5701)
+  bandval_align();
+  vfo_apply(); // mode-dependent IQ phase + CW offset (legacy 5704)
+#ifdef RIT_ENABLE
+  if(rit) { // legacy 5712
+    si5351.freq_calc_fast(rit);
+    si5351.SendPLLRegisterBulk();
+  }
+#endif
+  if(menu.state == MENU_MAIN)
+    display_vfo(); // refresh + cursor (legacy change block)
 }
 static void Command_AI() { Serial.print("AI0;"); }
 static void Command_AI0() { Serial.print("AI0;"); } // legacy parity
@@ -121,10 +140,7 @@ static void Command_SetMD() { // legacy 4589-4596 (legacy: no range check)
   mode = (uint8_t)m;
   vfomode[vfosel % 2] = mode; // legacy 4593
   si5351.iqmsa = 0;           // enforce PLL reset (legacy 4595)
-  vfo_apply();
-  vfo_save_current(); // persist vfomode (legacy change block)
-  if(menu.state == MENU_MAIN)
-    display_vfo_line1(); // immediate mode label (GW8RDI 4.00a)
+  cat_change = 1;             // legacy 4594: change=true (aplicado fuera de TX)
 }
 static void Command_RX() {
   switch_rxtx(0);
@@ -154,8 +170,8 @@ static void analyseCATcmd() {
   } else if(c0 == 'R' && c1 == 'T') {
     if(c2 == '1')
       Command_RT1();
-    else if(c2 == 'C')
-      Command_RC();
+  } else if(c0 == 'R' && c1 == 'C' && c2 == ';') { // legacy 4347 (antes 'RTC': inalcanzable)
+    Command_RC();
   } else if(c0 == 'I' && c1 == 'D' && c2 == ';') {
     Command_ID();
   } else if(c0 == 'P' && c1 == 'S') {

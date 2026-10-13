@@ -65,10 +65,17 @@ void update_PaddleLatch() {
     keyerControl |= keyer_swap ? DIT_L : DAH_L;
 }
 
+#ifdef CW_MESSAGE
+extern volatile uint32_t cw_msg_event;
+#endif
+
 void keyer_process() { // call from loop() when mode==CW
   switch(keyerState) {
   case IDLE:
     if((digitalRead(DAH) == LOW) || (digitalRead(DIT) == LOW) || (keyerControl & 0x03)) {
+#ifdef CW_MESSAGE
+      cw_msg_event = 0; // clear cw message event (legacy 5210)
+#endif
       update_PaddleLatch();
       keyerState = CHK_DIT;
     }

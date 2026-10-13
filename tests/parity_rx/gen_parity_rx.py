@@ -198,7 +198,7 @@ static volatile uint8_t nr;
 static volatile uint8_t filt;
 static volatile uint8_t att2;
 static volatile uint8_t cw_tone;
-static volatile uint8_t agc_rec = 1; /* F4.17 recovery (1 = legacy exacto) */
+static volatile uint8_t agc_hang = 1; /* F4.17 retencion AGC Slow (1 = legacy exacto) */
 '''
 
 SUF = {'L': '_legacy', 'V': '_v2'}
@@ -218,7 +218,7 @@ static int16_t ozi1, ozi2;
 static uint32_t amp32 = 0;
 static volatile uint32_t _amp32 = 0;
 static int16_t gain = 1024;
-static uint8_t agc_rec_cnt = 0; /* F4.17 (solo cuerpo v2 lo usa) */
+static uint8_t agc_hang_cnt = 0; /* F4.17 (solo cuerpo v2 lo usa) */
 static volatile uint8_t nb_enable = 0; // F4 NB (declarado aquí; slow_dsp lo usa)
 #define DECAY_FACTOR 400
 static int16_t centiGain = 128;
@@ -295,7 +295,9 @@ int16_t wrap_agcfast{s}(int16_t x){{ return process_agc_fast(x); }}
     if tag == 'V':
         txt += '''
 /* tests/ab_agc: control estado AGC v2 */
-void rx_agc_v2_set(int16_t g, uint8_t rec){ gain=g; agc_rec=rec; agc_rec_cnt=0; }
+void rx_agc_v2_set(int16_t g){ gain=g; }
+void rx_agcslow_v2_set(uint8_t hang){ centiGain=128; decayCount=400; agc_hang=hang; agc_hang_cnt=0; }
+int16_t rx_centigain_v2(void){ return centiGain; }
 int16_t rx_gain_v2(void){ return gain; }
 '''
     return txt
