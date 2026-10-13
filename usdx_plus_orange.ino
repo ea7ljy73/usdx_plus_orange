@@ -180,7 +180,7 @@ static const char menu_label_29[] PROGMEM = "DIGI Mode";
 static const char menu_label_30[] PROGMEM = "TX Comp";
 static const char menu_label_31[] PROGMEM = "TX LoCut";
 static const char menu_label_32[] PROGMEM = "AGC Start";
-static const char menu_label_33[] PROGMEM = "AGC Rec";
+static const char menu_label_33[] PROGMEM = "AGC Hang";
 static const char menu_label_34[] PROGMEM = "TX EnvPre";
 const char* const MENU_LABELS[35] PROGMEM = {menu_label_0, menu_label_1, menu_label_2, menu_label_3, menu_label_4, menu_label_5, menu_label_6, menu_label_7, menu_label_8, menu_label_9, menu_label_10, menu_label_11, menu_label_12, menu_label_13, menu_label_14, menu_label_15, menu_label_16, menu_label_17, menu_label_18, menu_label_19, menu_label_20, menu_label_21, menu_label_22, menu_label_23, menu_label_24, menu_label_25, menu_label_26, menu_label_27, menu_label_28, menu_label_29, menu_label_30, menu_label_31, menu_label_32, menu_label_33, menu_label_34};
 
@@ -425,8 +425,8 @@ const MenuParam MENU[] PROGMEM = {
     {27, (void*)&backlight, P_ENUM, 0, 1, offon_label, 31, NULL},
     // AGC Start (F4.16: precarga x8 al arrancar; eslot 33 = banco extra 0x2C1)
     {32, (void*)&agc_start, P_ENUM, 0, 1, offon_label, 33, NULL},
-    // AGC Rec (F4.17: divisor de recovery 1..8, 1=legacy; eslot 34 = banco extra 0x2C2)
-    {33, (void*)&agc_rec, P_T8, 1, 8, NULL, 34, NULL},
+    // AGC Hang (F4.17: retencion del AGC Slow, 1..8 = 0..0,7 s, 1=legacy; eslot 34 = banco extra 0x2C2)
+    {33, (void*)&agc_hang, P_T8, 1, 8, NULL, 34, NULL},
 };
 
 const int8_t MENU_COUNT = 35; // number of entries above

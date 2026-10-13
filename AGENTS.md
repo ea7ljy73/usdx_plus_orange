@@ -106,7 +106,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 30938B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-13)
+# Build actual: 30780B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-13)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -141,7 +141,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm
 | TX `ssb()` | **PARIDAD EXACTA** (avg\|diff\|=0, RMS/peak idénticos) |
 | RX core USB/LSB/CW/AM/FM (agc=0, filt=0) | **0 mismatches** (CIC+Hilbert+demod idénticos) |
 | RX att2 / volume / NR 0..1 | **0 mismatches** |
-| RX NR ≥2 | Divergencia **intencional** (puerta de ruido DNR, ver ROADMAP F4) |
+| RX NR ≥2 | Divergencia **intencional** (puerta relativa al suelo de ruido; medida en `tests/avr_sim/rx_mejoras.py`) |
 | RX filt=1/2/3 (SSB) | **0 mismatches** |
 | RX filt=4..7 (CW) | **0 mismatches** |
 | RX agc=1 (AGC ON) | **0 mismatches** |
@@ -230,7 +230,7 @@ tiempos I2C): eso sigue siendo la validación en hardware.
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
 
-> Build actual: 30938B (95%) flash, 1188B (58%) RAM, 0 warnings
+> Build actual: 30780B (95%) flash, 1188B (58%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código
