@@ -41,7 +41,24 @@
   −22,0 → −29,8; canal adyacente −26,3 → −29,6 dBc. +30 ciclos de ISR,
   +98 B flash. Si la placa NO lleva ese RC empeora (−29 → −20 dBc): ajustar
   en banco con dos tonos. PENDIENTE HW.
-- Build: 31018 B (96 %) flash / 1190 B (58 %) RAM.
+- **Medidor S**: `__builtin_clz` opera sobre `int` de 16 bit en AVR; el
+  log2 salía 16..31 y el medidor marcaba −4…+14 dBm donde legacy marca
+  −109…−52. Corregido con `__builtin_clzl`; simulado: −96 dBm (3 cuentas) y
+  −53 dBm (400), legacy −95 / −52.
+- **RX simulado (firmware real)**: rechazo de banda lateral −78 dB (legacy
+  −80), respuesta idéntica a legacy (−0,4 / −4,2 / −9,8 / −19,2 dB a 300 /
+  2000 / 2800 / 3600 Hz), IMD3 −47 dBc, sin muestras perdidas, 76 % de CPU.
+- **CW simulado**: rampas de 1,08 ms tras el RC, clics −39,6 dB fuera de
+  ±500 Hz, sidetone 607 Hz: igual que legacy.
+- **PB3/SIG_OUT (pin 17)**: quedaba como entrada flotante; ahora salida a
+  LOW como legacy (4242/4249). Estado tras el arranque idéntico a legacy
+  (92 registros/variables, `run_avr_sim.sh --legacy`).
+- **Ruido RX sin AGC "intermitente" (0,83 vs 0,60 cuentas)**: era un artefacto
+  del analizador del simulador, no del firmware. La rejilla de remuestreo del
+  audio caía, según el desfase de arranque, justo sobre el instante en que la
+  ISR escribe OCR1AL. Ahora la rejilla se aleja de las escrituras: producción
+  y legacy dan 0,60 / 0,56 cuentas en todos los arranques.
+- Build: 31084 B (96 %) flash / 1190 B (58 %) RAM.
 
 ## Pendiente (en orden)
 

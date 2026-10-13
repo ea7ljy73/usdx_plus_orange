@@ -22,6 +22,7 @@ extern "C" {
 #include "avr_adc.h"
 #include "avr_ioport.h"
 #include "sim_avr.h"
+#include "sim_cycle_timers.h"
 #include "sim_elf.h"
 }
 
@@ -33,7 +34,7 @@ static double now_s() { return avr->cycle / F_XTAL_MCU; }
 // ------------------------------------------------------------------ opciones
 static double opt_boot = 6.0, opt_tx = 2.4, opt_tail = 0.4;
 static double opt_a1 = 32, opt_f1 = 700, opt_a2 = 32, opt_f2 = 1100;
-static int    opt_voice = 0, opt_quiet = 0, opt_study = 0;
+static int    opt_voice = 0, opt_quiet = 0, opt_study = 0, opt_dump = 0;
 static double opt_expect = 0; // --expect-imd3: IMD3 maxima admitida con el RC del esquema
 static double opt_rc_us = 100.0; // celula RC del conformador: 10 kohm x 10 nF (esquema usdx.png), dos en cascada
 
@@ -87,6 +88,7 @@ static double si_clk(const uint8_t* r, int ms) { // frecuencia de salida de CLK<
   return (div > 0) ? si_pll(r) / div / (1 << ((m[2] >> 4) & 7)) : 0;
 }
 
+static int  adcj_on; static long lcd_nibbles; // medida de puntualidad activa / nibbles escritos al LCD
 // ------------------------------------------------------------------ LCD HD44780 (4 bit)
 static char lcd[2][17];
 static int  lcd_addr, lcd_cg, lcd_hi = -1;
@@ -103,6 +105,7 @@ static void lcd_byte(int rs, uint8_t b) {
 }
 static void lcd_en_fall(uint8_t portd, uint8_t ddrc) {
   int rs = !(ddrc & 0x10), nib = portd & 0x0f;
+  if(adcj_on) lcd_nibbles++;
   if(lcd_hi < 0) lcd_hi = nib; else { lcd_byte(rs, (lcd_hi << 4) | nib); lcd_hi = -1; }
 }
 static void lcd_show(const char* tag) {
@@ -121,18 +124,92 @@ static double mic_counts(double t) {
   return opt_a1 * sin(2 * M_PI * opt_f1 * t) + opt_a2 * sin(2 * M_PI * opt_f2 * t);
 }
 static int mic_on;
-static void adc_feed(struct avr_irq_t*, uint32_t, void*) { // al iniciar cada conversion
-  double t = now_s();
-  avr_irq_t* a = avr_io_getirq(avr, AVR_IOCTL_ADC_GETIRQ, 0);
-  // Las entradas estan polarizadas a AREF/2 (como en la placa): la tension
-  // sigue a la referencia activa (1,1 V interna o AVCC) y la senal va encima.
-  double vref = ((avr->data[0x7c] >> 6) == 3) ? 1100.0 : 5000.0, lsb = vref / 1024.0;
-  double mic = 512 + (mic_on ? mic_counts(t) : 0);
-  avr_raise_irq(a + ADC_IRQ_ADC2, (uint32_t)lrint(mic * lsb));
-  // RX: portadora a +1 kHz del dial (I/Q en cuadratura), 60 cuentas de pico
-  avr_raise_irq(a + ADC_IRQ_ADC0, (uint32_t)lrint((512 + 60 * sin(2 * M_PI * 1000 * t)) * lsb));
-  avr_raise_irq(a + ADC_IRQ_ADC1, (uint32_t)lrint((512 + 60 * cos(2 * M_PI * 1000 * t)) * lsb));
-  avr_raise_irq(a + ADC_IRQ_ADC3, 0); // botones sueltos
+static int scenario = 0; // 0 = emision SSB, 1 = recepcion, 2 = CW
+struct Stim { const char* name; double f, a, f2, a2; int swap; const char* poke; int pv; };
+static Stim stims[] = {
+  {"tono +1000 Hz (AGC)", 1000, 60, 0, 0, 0, NULL, 0},
+  {"tono -1000 Hz (AGC)", 1000, 60, 0, 0, 1, NULL, 0},
+  {"sin senal (solo ruido ADC)", 0, 0, 0, 0, 0, NULL, 0},
+  {"tono debil, 3 cuentas", 1000, 3, 0, 0, -1, NULL, 0},
+  {"tono fuerte, 400 cuentas", 1000, 400, 0, 0, -1, NULL, 0},
+  {"sin AGC:  300 Hz", 300, 20, 0, 0, -1, "agc", 0},
+  {"sin AGC: 1000 Hz", 1000, 20, 0, 0, -1, NULL, 0},
+  {"sin AGC: 2000 Hz", 2000, 20, 0, 0, -1, NULL, 0},
+  {"sin AGC: 2800 Hz", 2800, 20, 0, 0, -1, NULL, 0},
+  {"sin AGC: 3600 Hz", 3600, 20, 0, 0, -1, NULL, 0},
+  {"sin AGC: dos tonos 900+1300", 900, 20, 1300, 20, -1, NULL, 0},
+};
+static const int NSTIM = sizeof stims / sizeof stims[0];
+static int    stim_i = -1, rx_side = 0; // rx_side: signo de Q que da la banda deseada
+static uint32_t nseed = 7;
+static int    btn_mv = 0; // tension en la linea de botones (0 = sueltos)
+// ---- ADC propio, fiel al ATmega328P (el de simavr calcula el valor al LEER
+// y con el canal ya conmutado; el firmware arranca la conversion siguiente y
+// lee la anterior). Aqui: se muestrea el canal seleccionado al poner ADSC, el
+// resultado aparece en ADCL/ADCH al terminar (13 ciclos de reloj ADC) junto
+// con ADIF, ADSC se borra solo, y escribir un 1 en ADIF lo borra (por eso el
+// "ADCSRA |= ADSC" del firmware limpia la bandera, como en el chip real).
+static void sig_iq(double t, double* vi, double* vq) {
+  *vi = 60 * sin(2 * M_PI * 1000 * t); *vq = 60 * cos(2 * M_PI * 1000 * t);
+  if(scenario == 1 && stim_i >= 0) { // I/Q en cuadratura + ~0,5 LSB de ruido del ADC
+    const Stim& s = stims[stim_i];
+    double sg = (s.swap < 0) ? rx_side : (s.swap ? -1 : 1);
+    nseed = nseed * 1103515245u + 12345u; double n1 = ((int)((nseed >> 16) % 2001) - 1000) / 1000.0;
+    nseed = nseed * 1103515245u + 12345u; double n2 = ((int)((nseed >> 16) % 2001) - 1000) / 1000.0;
+    *vi = s.a * cos(2 * M_PI * s.f * t) + s.a2 * cos(2 * M_PI * s.f2 * t) + n1;
+    *vq = sg * (s.a * sin(2 * M_PI * s.f * t) + s.a2 * sin(2 * M_PI * s.f2 * t)) + n2;
+  }
+}
+static int      adc_busy;
+static long     adc_skipped;
+// puntualidad del muestreo I/Q: desviacion del intervalo entre arranques respecto a 320 ciclos
+static uint64_t adc_last; static long adcj_n, adcj_late8, adcj_late32, adcj_late100; static double adcj_sq; static long adcj_max;
+ // ADSC escrito con una conversion aun en curso (el chip lo ignora)
+static uint16_t adc_sample;
+static long     adc_convs;
+static uint16_t adc_counts(int ch, int refs, double t) {
+  // Entradas polarizadas a AREF/2 (como en la placa); la senal se define en
+  // cuentas con la referencia de 1,1 V y encoge con la de 5 V (atenuador).
+  double vref = (refs == 3) ? 1.1 : 5.0, k = 1.1 / vref, v = 0, vi, vq;
+  switch(ch) {
+  case 0: sig_iq(t, &vi, &vq); v = 512 + vi * k; break;
+  case 1: sig_iq(t, &vi, &vq); v = 512 + vq * k; break;
+  case 2: v = 512 + (mic_on ? mic_counts(t) : 0) * k; break;
+  case 3: v = btn_mv / (vref * 1000.0) * 1024; break; // escalera de botones (tension absoluta)
+  case 14: v = 1.1 / vref * 1024; break;               // bandgap
+  default: v = 0;
+  }
+  long r = lrint(v);
+  return (uint16_t)(r < 0 ? 0 : r > 1023 ? 1023 : r);
+}
+static avr_cycle_count_t adc_done(avr_t* a, avr_cycle_count_t, void*) {
+  a->data[0x78] = adc_sample & 0xff;
+  a->data[0x79] = adc_sample >> 8;
+  a->data[0x7a] = (a->data[0x7a] & ~0x40) | 0x10; // ADSC=0, ADIF=1
+  adc_busy = 0;
+  return 0;
+}
+static void adcsra_write(avr_t* a, avr_io_addr_t, uint8_t v, void*) {
+  uint8_t nv = (v & ~0x10) | ((v & 0x10) ? 0 : (a->data[0x7a] & 0x10)); // escribir 1 en ADIF lo borra
+  if(!(v & 0x80)) { adc_busy = 0; avr_cycle_timer_cancel(a, adc_done, NULL); nv &= ~0x40; }
+  else if((v & 0x40) && !adc_busy) {
+    adc_busy = 1; adc_convs++;
+    if(adcj_on && (a->data[0x7c] & 0x0f) < 2) {
+      long d = (long)(a->cycle - adc_last) - 320; if(d < 0) d = -d;
+      if(adc_last && d < 5000) { adcj_n++; adcj_sq += (double)d * d; if(d > adcj_max) adcj_max = d; adcj_late8 += d > 8; adcj_late32 += d > 32; adcj_late100 += d > 100; }
+      adc_last = a->cycle;
+    }
+    adc_sample = adc_counts(a->data[0x7c] & 0x0f, a->data[0x7c] >> 6, now_s());
+    int ps = v & 7; if(ps < 1) ps = 1;
+    avr_cycle_timer_register(a, 13 * (1 << ps), adc_done, NULL);
+  }
+  else if((v & 0x40) && adc_busy) adc_skipped++;
+  if(adc_busy) nv |= 0x40;
+  a->data[0x7a] = nv;
+}
+static void adc_install() {
+  avr->io[0x7a - 32].w.c = adcsra_write; avr->io[0x7a - 32].w.param = NULL;
+  avr->io[0x78 - 32].r.c = NULL; avr->io[0x79 - 32].r.c = NULL; avr->io[0x7a - 32].r.c = NULL; // lecturas directas de RAM
 }
 static void pin(char port, int bit, int v) { // nivel externo: manda sobre el pull-up interno
   avr_ioport_external_t e = {(unsigned long)port, (unsigned long)(1 << bit), (unsigned long)(v ? (1 << bit) : 0)};
@@ -196,6 +273,17 @@ static Sym* sym_at(uint32_t pc) {
   return syms.empty() ? NULL : &syms[lo];
 }
 
+static int poke_var(const char* name, int v) {
+  for(auto& d : dsyms) if(!strcmp(d.name, name)) { avr->data[d.addr] = (uint8_t)v; return 1; }
+  return 0;
+}
+static int peek_var(const char* name) {
+  for(auto& d : dsyms) if(!strcmp(d.name, name)) return avr->data[d.addr];
+  return -1;
+}
+struct AEv { uint64_t cyc; uint8_t val; };
+static std::vector<AEv> aud; // escrituras de OCR1AL (PWM de audio / sidetone)
+
 // ------------------------------------------------------------------ FFT
 typedef std::complex<double> cd;
 static void fft(std::vector<cd>& a) {
@@ -207,16 +295,77 @@ static void fft(std::vector<cd>& a) {
   }
 }
 
+// audio de salida: OCR1AL retenido, remuestreado a 62,5 kHz, 2^16 muestras (1,05 s)
+struct Aud { double fpk, tone, total, thd, sinad, pp; };
+static Aud audio_an(uint64_t c0, double f_expect) {
+  const size_t N = 1 << 16; const int STEP = 320; const double fs = F_XTAL_MCU / STEP;
+  std::vector<cd> x(N);
+  size_t i = 0; uint8_t v = 128;
+  while(i < aud.size() && aud[i].cyc < c0) v = aud[i++].val;
+  // La rejilla de remuestreo se coloca lo mas lejos posible del instante en que
+  // el firmware escribe OCR1AL. Si coincide, el jitter de la ISR hace que unas
+  // muestras cojan el valor anterior y otras el nuevo: ruido de medida que no
+  // existe en el audio (aparecia segun el desfase de arranque, +3 dB de suelo).
+  { long h[STEP] = {0};
+    for(size_t j = i; j < aud.size() && aud[j].cyc < c0 + (uint64_t)N * STEP; j++) h[aud[j].cyc % STEP]++;
+    long best = -1; int ph = 0;
+    for(int p = 0; p < STEP; p++) { long w = 0; for(int d = -40; d <= 40; d++) w += h[(p + d + STEP) % STEP]; if(best < 0 || w < best) { best = w; ph = p; } }
+    c0 += (ph + STEP - (int)(c0 % STEP)) % STEP;
+    while(i < aud.size() && aud[i].cyc < c0) v = aud[i++].val; }
+  double mean = 0, mn = 255, mx = 0; std::vector<double> s(N);
+  for(size_t n = 0; n < N; n++) { uint64_t c = c0 + n * STEP; while(i < aud.size() && aud[i].cyc <= c) v = aud[i++].val; s[n] = v; mean += v; if(v < mn) mn = v; if(v > mx) mx = v; }
+  mean /= N;
+  for(size_t n = 0; n < N; n++) x[n] = (s[n] - mean) * (0.5 - 0.5 * cos(2 * M_PI * n / (double)N));
+  fft(x);
+  const double dfb = fs / N, norm = 1.0 / (N * N * 0.375 / 2); // potencia -> cuentas^2 (ventana Hann)
+  auto band = [&](double f0, double f1) { double p = 0; for(long k = (long)(f0 / dfb); k <= (long)(f1 / dfb) && k < (long)N / 2; k++) if(k > 0) p += std::norm(x[k]); return p * norm; };
+  Aud r; r.pp = mx - mn;
+  double best = 0; r.fpk = 0;
+  for(long k = (long)(100 / dfb); k < (long)(3900 / dfb); k++) if(std::norm(x[k]) > best) { best = std::norm(x[k]); r.fpk = k * dfb; }
+  double f0 = f_expect > 0 ? f_expect : r.fpk, W = 20;
+  r.tone = band(f0 - W, f0 + W);
+  r.total = band(100, 3800);
+  r.thd = (band(2 * f0 - W, 2 * f0 + W) + band(3 * f0 - W, 3 * f0 + W)) / (r.tone + 1e-12);
+  r.sinad = r.tone / (r.total - r.tone + 1e-12);
+  return r;
+}
+// RF: reproduce los eventos (registros SI5351, OCR1B, TCCR1A) con el PWM real y el
+// conformador RC (rc_us = 0: PWM directo). Devuelve tambien la envolvente filtrada.
+static void rf_build(uint64_t c0, size_t N, double rc_us, double f_ref, std::vector<cd>& y, std::vector<float>* env) {
+  const int STEP = 16; const double fs = F_XTAL_MCU / STEP;
+  uint8_t rr[256]; memset(rr, 0, 256);
+  uint8_t o = 0, tcc = 0; size_t e = 0;
+  for(; e < evs.size() && evs[e].cyc < c0; e++) { if(evs[e].kind == 0) rr[evs[e].reg] = evs[e].val; else if(evs[e].kind == 1) o = evs[e].val; else tcc = evs[e].val; }
+  y.assign(N, 0); if(env) env->assign(N, 0);
+  double ph = 0, ff = si_clk(rr, 2) - f_ref, v1 = 0, v2 = 0;
+  const double k = rc_us > 0 ? (STEP / F_XTAL_MCU) / (rc_us * 1e-6) : 0;
+  for(size_t n = 0; n < N; n++) {
+    uint64_t c = c0 + n * STEP; int chg = 0;
+    for(; e < evs.size() && evs[e].cyc <= c; e++) { if(evs[e].kind == 0) { rr[evs[e].reg] = evs[e].val; chg = 1; } else if(evs[e].kind == 1) o = evs[e].val; else tcc = evs[e].val; }
+    if(chg) ff = si_clk(rr, 2) - f_ref;
+    int cnt = (int)(c & 255), hi = 0;
+    for(int j = 0; j < STEP; j++) hi += ((cnt + j) & 255) < o;
+    double vin = ((tcc & 0x20) && !(rr[3] & 4)) ? hi / (double)STEP : 0;
+    if(k > 0) { v1 += k * (vin - 2 * v1 + v2); v2 += k * (v1 - v2); } else v2 = vin;
+    ph += 2 * M_PI * ff / fs;
+    y[n] = std::polar(v2, ph);
+    if(env) (*env)[n] = (float)v2;
+  }
+}
+
 int main(int argc, char** argv) {
   const char* elf = NULL;
   for(int i = 1; i < argc; i++) {
     if(!strcmp(argv[i], "--voice")) opt_voice = 1;
     else if(!strcmp(argv[i], "--quiet")) opt_quiet = 1;
     else if(!strcmp(argv[i], "--study")) opt_study = 1;
+    else if(!strcmp(argv[i], "--dump-state")) opt_dump = 1;
+    else if(!strcmp(argv[i], "--scenario") && i + 1 < argc) { i++; scenario = !strcmp(argv[i], "rx") ? 1 : !strcmp(argv[i], "cw") ? 2 : 0; }
     else if(!strcmp(argv[i], "--expect-imd3") && i + 1 < argc) { opt_expect = atof(argv[++i]); opt_study = 1; }
     else if(!strcmp(argv[i], "--rc") && i + 1 < argc) opt_rc_us = atof(argv[++i]);
     else if(!strcmp(argv[i], "--mic") && i + 1 < argc) opt_a1 = opt_a2 = atof(argv[++i]);
     else if(!strcmp(argv[i], "--tx") && i + 1 < argc) opt_tx = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--boot") && i + 1 < argc) opt_boot = atof(argv[++i]); // segundos de arranque antes del estimulo
     else if(!strcmp(argv[i], "--syms") && i + 1 < argc) load_syms(argv[++i]);
     else if(!strcmp(argv[i], "--poke") && i + 1 < argc) { // variable=valor (1 byte), aplicado al pulsar PTT
       char* eq = strchr(argv[++i], '=');
@@ -235,17 +384,30 @@ int main(int argc, char** argv) {
   avr->vcc = avr->avcc = avr->aref = 5000;
   avr->log = LOG_ERROR;
   memset(lcd, ' ', sizeof lcd);
-  avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_ADC_GETIRQ, ADC_IRQ_OUT_TRIGGER), adc_feed, NULL);
+  adc_install();
   pin('B', 5, 1); pin('B', 4, 1); // DIT/PTT y DAH sueltos (pull-up)
   pin('C', 3, 0);                 // botones sueltos
   pin('D', 6, 1); pin('D', 7, 1); // encoder en reposo
-  adc_feed(0, 0, 0);
 
+  const double   STIM_S = 2.3; // por estimulo: 1,2 s de asentamiento + 1,05 s de medida
+  if(scenario == 1) { opt_tx = NSTIM * STIM_S; opt_tail = 0; }
+  if(scenario == 2) { opt_tx = 5.2; opt_tail = 0.2; }
   const uint64_t c_ptt = (uint64_t)(opt_boot * F_XTAL_MCU), c_rel = c_ptt + (uint64_t)(opt_tx * F_XTAL_MCU),
                  c_end = c_rel + (uint64_t)(opt_tail * F_XTAL_MCU);
+  uint8_t  ocr1a = 0;
+  char     lcd_stim[32][2][17]; memset(lcd_stim, ' ', sizeof lcd_stim);
+  // CW: pulsaciones del boton de modo hasta ver "CW" en el LCD, luego manipulacion
+  int      cw_clicks = 0, cw_ready = 0; uint64_t cw_next = c_ptt, cw_key0 = 0;
+  auto key_down = [&](uint64_t c) { // 6 puntos de 48 ms (25 wpm) y una raya de 300 ms
+    if(!cw_key0 || c < cw_key0) return 0;
+    double ms = (c - cw_key0) * 1e3 / F_XTAL_MCU;
+    if(ms < 576) return (int)(fmod(ms, 96) < 48);
+    return (int)(ms >= 700 && ms < 1000);
+  };
+  int key_state = 0;
   IsrStat st_rx, st_tx;
   uint8_t  ddrc = avr->data[0x27], portd = avr->data[0x2b], ocr1b = avr->data[0x8a], tccr1a = avr->data[0x80];
-  int      stage = 0, depth = 0;
+  int      stage = 0, depth = 0, dumped = 0;
   struct { uint64_t c0; uint16_t sp; } stk[32];
   uint64_t t_tx_on = 0, t_tx_off = 0, busy_from = 0;
   const uint64_t c_rx0 = c_ptt - (uint64_t)(1.0 * F_XTAL_MCU); // ventana RX estable: ultimo segundo antes de la PTT
@@ -265,7 +427,7 @@ int main(int argc, char** argv) {
     if(depth && (uint16_t)(avr->data[0x5d] | (avr->data[0x5e] << 8)) == (uint16_t)(stk[depth - 1].sp + 2)) {
       depth--;
       double per = 64.0 * (avr->data[0xb3] + 1); // OCR2A, prescaler 64
-      int    txi = t_tx_on && !t_tx_off && avr->cycle < c_rel, rxi = stage == 0 && stk[depth].c0 >= c_rx0;
+      int    txi = scenario == 0 && t_tx_on && !t_tx_off && avr->cycle < c_rel, rxi = (stage == 0 && stk[depth].c0 >= c_rx0) || (scenario == 1 && stage == 9);
       IsrStat* st = txi ? &st_tx : rxi ? &st_rx : NULL;
       if(st) { st->add(stk[depth].c0, avr->cycle - stk[depth].c0, per, depth + 1); if(!depth) st->busy += avr->cycle - busy_from; }
     }
@@ -281,9 +443,52 @@ int main(int argc, char** argv) {
     if(p != portd) { if((portd & 0x10) && !(p & 0x10)) lcd_en_fall(portd, ddrc); portd = p; }
     uint8_t o = avr->data[0x8a];
     if(o != ocr1b) { ocr1b = o; evs.push_back({avr->cycle, 1, 0, o}); }
+    uint8_t oa = avr->data[0x88];
+    if(oa != ocr1a) { ocr1a = oa; aud.push_back({avr->cycle, oa}); }
+    if(opt_dump && avr->cycle >= c_ptt && !dumped && depth == 0) { dumped = 1; // --dump-state: registros y variables para comparar con legacy
+      static const struct { const char* n; int a; } regs[] = {{"PINB",0x23},{"DDRB",0x24},{"PORTB",0x25},{"DDRC",0x27},{"PORTC",0x28},{"DDRD",0x2a},{"PORTD",0x2b},
+        {"TIFR0",0x35},{"TCCR0A",0x44},{"TCCR0B",0x45},{"OCR0A",0x47},{"OCR0B",0x48},{"SMCR",0x53},{"MCUCR",0x55},{"WDTCSR",0x60},{"PRR",0x64},{"PCICR",0x68},{"EICRA",0x69},{"PCMSK0",0x6b},{"PCMSK1",0x6c},{"PCMSK2",0x6d},
+        {"TIMSK0",0x6e},{"TIMSK1",0x6f},{"TIMSK2",0x70},{"ADCSRA",0x7a},{"ADCSRB",0x7b},{"ADMUX",0x7c},{"DIDR0",0x7e},{"DIDR1",0x7f},{"TCCR1A",0x80},{"TCCR1B",0x81},{"TCCR1C",0x82},{"ICR1L",0x86},{"ICR1H",0x87},{"OCR1AH",0x89},{"OCR1BL",0x8a},
+        {"TCCR2A",0xb0},{"TCCR2B",0xb1},{"OCR2A",0xb3},{"OCR2B",0xb4},{"ASSR",0xb6},{"UCSR0A",0xc0},{"UCSR0B",0xc1},{"UCSR0C",0xc2},{"UBRR0L",0xc4},{"UBRR0H",0xc5},{"ACSR",0x50}};
+      for(auto& r : regs) printf("REG %-7s %02x\n", r.n, avr->data[r.a] & (strcmp(r.n,"ADCSRA") ? 0xff : 0xaf));
+      static const char* vars[] = {"mode","volume","agc","nr","att","att2","filt","smode","rx_ph_q","cwdec","semi_qsk","vox","vox_thresh","drive","keyer_mode","keyer_speed","keyer_swap","practice","rit","bandval","stepsize","vfosel","cw_tone","backlight","pwm_min","pwm_max","tx","mox","_init","rx_state","tc","inv","cat_active","txdelay","menumode","quad"};
+      for(auto v : vars) { int x = peek_var(v); if(x >= 0) printf("VAR %-11s %d\n", v, x); else printf("VAR %-11s (no existe)\n", v); }
+      for(auto n : {"cw_offset","centiGain","gain","si5351"}) for(auto& d : dsyms) if(!strcmp(d.name, n)) printf("VAR16 %-9s %d\n", n, avr->data[d.addr] | (avr->data[d.addr + 1] << 8));
+      for(int i = 0; i < 3; i++) for(auto& d : dsyms) if(!strcmp(d.name, "admux")) printf("VAR admux[%d]   %02x\n", i, avr->data[d.addr + i]);
+      printf("SI5351 regs 3,16-18,24,26-33,42-49,50-57,58-65,165-167,177,183,187:");
+      for(int r : {3,16,17,18,24,26,27,28,29,30,31,32,33,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,165,166,167,183,187}) printf(" %d=%02x", r, si[r]); printf("\n");
+      printf("RELES expansor = %04x\n", ioexp_out);
+    }
+    if(scenario == 1 && avr->cycle >= c_ptt) { // recepcion: secuencia de estimulos
+      int k = (int)((avr->cycle - c_ptt) / (uint64_t)(STIM_S * F_XTAL_MCU));
+      if(k != stim_i && k < NSTIM) {
+        if(stim_i >= 0) { memcpy(lcd_stim[stim_i][0], lcd[0], 16); memcpy(lcd_stim[stim_i][1], lcd[1], 16); }
+        if(k == 2) { // tras los dos primeros: cual de las dos bandas es la deseada
+          Aud a0 = audio_an(c_ptt + (uint64_t)(1.2 * F_XTAL_MCU), 1000), a1 = audio_an(c_ptt + (uint64_t)((STIM_S + 1.2) * F_XTAL_MCU), 1000);
+          rx_side = (a0.tone >= a1.tone) ? 1 : -1;
+        }
+        stim_i = k;
+        adcj_on = (k >= 5 && k <= 9);
+        if(stims[k].poke && !poke_var(stims[k].poke, stims[k].pv)) printf("   (variable %s no encontrada)\n", stims[k].poke);
+      }
+      stage = 9;
+    }
+    if(scenario == 2 && avr->cycle >= c_ptt) { // CW
+      stage = 9;
+      if(!cw_ready && avr->cycle >= cw_next) {
+        if(btn_mv) { btn_mv = 0; pin('C', 3, 0); cw_next = avr->cycle + (uint64_t)(0.6 * F_XTAL_MCU);
+                     }
+        else if(!strncmp(lcd[1] + 11, "CW", 2)) { cw_ready = 1; cw_key0 = avr->cycle + (uint64_t)(0.5 * F_XTAL_MCU); lcd_show("modo CW seleccionado"); }
+        else if(cw_clicks < 6) { btn_mv = 4500; pin('C', 3, 1); cw_clicks++; cw_next = avr->cycle + (uint64_t)(0.12 * F_XTAL_MCU); } // boton derecho (modo)
+        else { cw_ready = -1; }
+      }
+      int kd = key_down(avr->cycle);
+      if(kd != key_state) { key_state = kd; pin('B', 5, !kd); }
+      if(!t_tx_on && cw_key0 && (si[3] & 4) == 0) t_tx_on = avr->cycle;
+    }
     uint8_t t1 = avr->data[0x80];
     if(t1 != tccr1a) { tccr1a = t1; evs.push_back({avr->cycle, 2, 0, t1}); }
-    if(stage == 0 && avr->cycle >= c_ptt) {
+    if(scenario == 0 && stage == 0 && avr->cycle >= c_ptt) {
       lcd_show("en recepcion");
       f_dial = si_clk(si, 0);
       memcpy(si_rx, si, 256);
@@ -299,6 +504,99 @@ int main(int argc, char** argv) {
     if(stage == 1 && avr->cycle >= c_rel - (uint64_t)(0.05 * F_XTAL_MCU) && lcd_hi != -2) { lcd_show("en transmision"); lcd_hi = -1; stage = 2; }
     if(stage == 2 && avr->cycle >= c_rel) { pin('B', 5, 1); stage = 3; }
     if(stage == 3 && !t_tx_off && (si[3] & 4)) t_tx_off = avr->cycle;
+  }
+  // ================================================================ escenario RX
+  if(scenario == 1) {
+    memcpy(lcd_stim[NSTIM - 1][0], lcd[0], 16); memcpy(lcd_stim[NSTIM - 1][1], lcd[1], 16);
+    printf("\n== Interrupcion de muestreo en RX ==\n");
+    isr_report("RX", st_rx);
+    printf("   ADC: %ld conversiones, %ld arranques ignorados por conversion en curso (%.2f %%)\n", adc_convs, adc_skipped, 100.0 * adc_skipped / (adc_convs + adc_skipped + 1));
+    { double secs = 5 * STIM_S;
+      printf("   puntualidad del muestreo I/Q (estimulos sin AGC, %.1f s): desviacion rms %.2f ciclos, max %ld; muestras desplazadas >8 ciclos: %.0f/s, >32: %.0f/s, >100: %.0f/s\n",
+             secs, sqrt(adcj_sq / (adcj_n + 1)), adcj_max, adcj_late8 / secs, adcj_late32 / secs, adcj_late100 / secs);
+      printf("   escrituras al LCD en ese tiempo: %.0f nibbles/s\n", lcd_nibbles / secs); }
+    printf("\n== Recepcion: senal conocida en I/Q (ADC0/ADC1) -> audio en OC1A ==\n");
+    printf("   banda deseada: Q %s respecto a I\n", rx_side > 0 ? "retrasada" : "adelantada");
+    printf("   %-28s  pico Hz   tono(cuentas rms)  resto   SINAD    THD   pico-pico   medidor LCD\n", "estimulo");
+    Aud r[32];
+    for(int k = 0; k < NSTIM; k++) {
+      uint64_t c0 = c_ptt + (uint64_t)((k * STIM_S + 1.2) * F_XTAL_MCU);
+      r[k] = audio_an(c0, stims[k].f);
+      Aud t2 = stims[k].f2 ? audio_an(c0, stims[k].f2) : r[k];
+      printf("   %-28s %7.1f   %8.2f        %7.2f  %5.1f dB %6.1f dB  %4.0f      |%.7s|\n", stims[k].name, r[k].fpk, sqrt(r[k].tone),
+             sqrt(fmax(0, r[k].total - r[k].tone - (stims[k].f2 ? t2.tone : 0))), 10 * log10(r[k].sinad + 1e-12), 10 * log10(r[k].thd + 1e-12), r[k].pp, lcd_stim[k][0] + 9);
+    }
+    double rej = 10 * log10((rx_side > 0 ? r[1].tone / r[0].tone : r[0].tone / r[1].tone) + 1e-12);
+    double agc = 20 * log10(sqrt(r[4].tone / (r[3].tone + 1e-12)));
+    printf("\n   rechazo de la banda lateral opuesta: %.1f dB\n", rej);
+    printf("   AGC: entrada +%.1f dB (3 -> 400 cuentas) => salida %+.1f dB\n", 20 * log10(400.0 / 3), agc);
+    printf("   respuesta sin AGC re 1000 Hz:  300 Hz %+.1f dB   2000 Hz %+.1f dB   2800 Hz %+.1f dB   3600 Hz %+.1f dB\n", 10 * log10(r[5].tone / r[6].tone),
+           10 * log10(r[7].tone / r[6].tone), 10 * log10(r[8].tone / r[6].tone), 10 * log10(r[9].tone / r[6].tone));
+    { // IMD de recepcion: productos 2f1-f2 (500 Hz) y 2f2-f1 (1700 Hz) con dos tonos
+      uint64_t c0 = c_ptt + (uint64_t)((10 * STIM_S + 1.2) * F_XTAL_MCU);
+      Aud i1 = audio_an(c0, 500), i2 = audio_an(c0, 1700), w1 = audio_an(c0, 900);
+      printf("   IMD3 de recepcion (dos tonos 900+1300 Hz): %.1f dBc\n", 10 * log10(fmax(i1.tone, i2.tone) / (w1.tone + 1e-12)));
+    }
+    int ok = st_rx.n && labs(st_rx.lost()) <= st_rx.expected() * 0.001 && fabs(r[0].fpk - 1000) < 5 + 1000 * (rx_side < 0) && rej < -30 &&
+             fabs(r[6].fpk - 1000) < 5 && fabs(r[7].fpk - 2000) < 5;
+    ok = st_rx.n && labs(st_rx.lost()) <= st_rx.expected() * 0.001 && rej < -40 && fabs(r[6].fpk - 1000) < 5 && fabs(r[7].fpk - 2000) < 5;
+    { // medidor S: de 3 a 400 cuentas son +42,5 dB; la lectura del LCD debe seguirlo y ser negativa (dBm reales)
+      int d3 = atoi(lcd_stim[3][0] + 9), d400 = atoi(lcd_stim[4][0] + 9);
+      int okm = abs((d400 - d3) - 42) <= 4 && d400 < -30;
+      printf("   medidor S: %d dBm (3 cuentas) -> %d dBm (400 cuentas): %+d dB para +42,5 dB de entrada  [%s]\n", d3, d400, d400 - d3, okm ? "OK" : "INCORRECTO");
+      ok = ok && okm;
+    }
+    printf("\nRESULTADO RX: %s\n", ok ? "OK" : "FALLO");
+    return ok ? 0 : 1;
+  }
+  // ================================================================ escenario CW
+  if(scenario == 2) {
+    lcd_show("tras manipular");
+    printf("\n== CW: boton de modo real + manipulacion con la llave (6 puntos de 48 ms y una raya) ==\n");
+    if(cw_ready != 1) { printf("   no se llego al modo CW con %d pulsaciones del boton\n", cw_clicks); return 1; }
+    printf("   modo CW tras %d pulsacion(es) del boton derecho\n", cw_clicks);
+    if(!t_tx_on) { printf("   la llave no produjo RF\n"); return 1; }
+    double f_nom = 0;
+    for(int i = 1; i < 12; i++) if(lcd[1][i] >= '0' && lcd[1][i] <= '9') f_nom = f_nom * 10 + (lcd[1][i] - '0');
+    f_nom *= 10;
+    const size_t N = (size_t)1 << 20; const double fs = F_XTAL_MCU / 16;
+    uint64_t c0 = cw_key0 - (uint64_t)(0.02 * F_XTAL_MCU);
+    int ok = 1;
+    for(int pass = 0; pass < 2; pass++) {
+      double rc = pass ? opt_rc_us : 0;
+      std::vector<cd> y; std::vector<float> env;
+      rf_build(c0, N, rc, f_nom, y, &env);
+      float top = 0; for(float v : env) if(v > top) top = v;
+      // flancos del primer punto: tiempos 10-90 %
+      size_t a10 = 0, a90 = 0, d90 = 0, d10 = 0;
+      for(size_t n = 0; n < N; n++) { if(!a10 && env[n] > 0.1f * top) a10 = n; if(!a90 && env[n] > 0.9f * top) { a90 = n; break; } }
+      for(size_t n = a90 + (size_t)(0.02 * fs); n < N; n++) { if(!d90 && env[n] < 0.9f * top) d90 = n; if(d90 && env[n] < 0.1f * top) { d10 = n; break; } }
+      long nel = 0; for(size_t n = 1; n < N; n++) nel += (env[n - 1] <= 0.5f * top && env[n] > 0.5f * top);
+      for(size_t n = 0; n < N; n++) y[n] *= 0.5 - 0.5 * cos(2 * M_PI * n / (double)N);
+      fft(y);
+      std::vector<double> p(N); double tot = 0, best = 0, fpk = 0;
+      for(size_t i = 0; i < N; i++) p[i] = std::norm(y[i]);
+      const double dfb = fs / N;
+      auto band = [&](double f0, double f1) { double s = 0; for(long k = (long)floor(f0 / dfb); k <= (long)ceil(f1 / dfb); k++) s += p[(size_t)(((k % (long)N) + N) % N)]; return s; };
+      for(long k = (long)(-3000 / dfb); k <= (long)(3000 / dfb); k++) { double v = p[(size_t)(((k % (long)N) + N) % N)]; if(v > best) { best = v; fpk = k * dfb; } }
+      tot = band(-20000, 20000);
+      auto out = [&](double w) { return 10 * log10((tot - band(fpk - w, fpk + w)) / tot + 1e-12); };
+      printf("   %s\n", pass ? "con el conformador RC del esquema (2 x 100 us):" : "PWM directo (sin filtro RC):");
+      if(pass) printf("      elementos emitidos: %ld; subida 10-90 %%: %.2f ms; bajada 90-10 %%: %.2f ms\n", nel, (a90 - a10) * 1e3 / fs, d10 > d90 ? (d10 - d90) * 1e3 / fs : -1.0);
+      printf("      portadora a dial %+.1f Hz; potencia fuera de +-250 Hz: %.1f dB, +-500 Hz: %.1f dB, +-1 kHz: %.1f dB, +-2 kHz: %.1f dB\n", fpk, out(250), out(500), out(1000), out(2000));
+      if(pass && (nel != 7 || fabs(fpk) > 20 || (a90 - a10) * 1e3 / fs < 0.5)) ok = 0;
+    }
+    // sidetone: tono en OC1A mientras la llave esta abajo (raya de 300 ms)
+    { const size_t NA = 1 << 14; std::vector<cd> x(NA); size_t i = 0; uint8_t v = 128; uint64_t ca = cw_key0 + (uint64_t)(0.72 * F_XTAL_MCU);
+      while(i < aud.size() && aud[i].cyc < ca) v = aud[i++].val;
+      double mean = 0; std::vector<double> s(NA);
+      for(size_t n = 0; n < NA; n++) { uint64_t c = ca + n * 320; while(i < aud.size() && aud[i].cyc <= c) v = aud[i++].val; s[n] = v; mean += v; }
+      mean /= NA; for(size_t n = 0; n < NA; n++) x[n] = (s[n] - mean) * (0.5 - 0.5 * cos(2 * M_PI * n / (double)NA));
+      fft(x); double best = 0, fpk = 0; for(size_t k2 = 5; k2 < NA / 2; k2++) if(std::norm(x[k2]) > best) { best = std::norm(x[k2]); fpk = k2 * 62500.0 / NA; }
+      printf("   sidetone durante la raya: %.0f Hz\n", fpk);
+    }
+    printf("\nRESULTADO CW: %s\n", ok ? "OK" : "FALLO");
+    return ok ? 0 : 1;
   }
   lcd_show("de vuelta en recepcion");
 
