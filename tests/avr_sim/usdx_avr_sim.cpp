@@ -34,7 +34,8 @@ static double now_s() { return avr->cycle / F_XTAL_MCU; }
 // ------------------------------------------------------------------ opciones
 static double opt_boot = 6.0, opt_tx = 2.4, opt_tail = 0.4;
 static double opt_a1 = 32, opt_f1 = 700, opt_a2 = 32, opt_f2 = 1100;
-static int    opt_voice = 0, opt_quiet = 0, opt_study = 0, opt_dump = 0;
+static int    opt_log2n = 20; // --win: 2^n muestras de RF analizadas (20 = 0,84 s; 22 = 3,4 s)
+static int    opt_voice = 0, opt_quiet = 0, opt_study = 0, opt_dump = 0, opt_tone = 0;
 static double opt_expect = 0; // --expect-imd3: IMD3 maxima admitida con el RC del esquema
 static double opt_rc_us = 100.0; // celula RC del conformador: 10 kohm x 10 nF (esquema usdx.png), dos en cascada
 
@@ -115,6 +116,18 @@ static void lcd_show(const char* tag) {
 // ------------------------------------------------------------------ ADC: microfono e I/Q
 static uint32_t vseed = 99;
 static double mic_counts(double t) {
+  if(opt_voice == 2) { // habla sintetica: silabas de nivel desigual con pausas, pulsos gloticos (120 Hz) y formantes
+    static const double lev[8] = {1.0, 0.7, 0.45, 1.0, 0.25, 0.0, 0.6, 0.12};
+    static const double fm[4][3] = {{700, 1200, 2500}, {350, 2000, 2700}, {500, 900, 2400}, {450, 1700, 2500}};
+    double ts = t * 4.5; long k = (long)ts; double u = ts - k;
+    uint32_t hsh = (uint32_t)k * 2654435761u; const double* F = fm[(hsh >> 20) & 3];
+    double e = lev[(hsh >> 27) & 7] * sin(M_PI * u), f0 = 120 * (1 + 0.08 * sin(2 * M_PI * 0.9 * t)), s = 0;
+    for(int h = 1; h * f0 < 2300; h++) { double f = h * f0, w = 0;
+      for(int j = 0; j < 3; j++) { double d = (f - F[j]) / (60 + 40 * j); w += (j ? 0.5 : 1.0) / (1 + d * d); }
+      s += (w + 0.03) * cos(2 * M_PI * f * t); }
+    vseed = vseed * 1103515245u + 12345u;
+    return opt_a1 * e * s * 0.9 + (int)((vseed >> 16) % 3) - 1;
+  }
   if(opt_voice) {
     double env = 0.55 + 0.45 * sin(2 * M_PI * 3.1 * t) * sin(2 * M_PI * 0.7 * t);
     vseed = vseed * 1103515245u + 12345u;
@@ -357,6 +370,8 @@ int main(int argc, char** argv) {
   const char* elf = NULL;
   for(int i = 1; i < argc; i++) {
     if(!strcmp(argv[i], "--voice")) opt_voice = 1;
+    else if(!strcmp(argv[i], "--speech")) opt_voice = 2;
+    else if(!strcmp(argv[i], "--win") && i + 1 < argc) opt_log2n = atoi(argv[++i]);
     else if(!strcmp(argv[i], "--quiet")) opt_quiet = 1;
     else if(!strcmp(argv[i], "--study")) opt_study = 1;
     else if(!strcmp(argv[i], "--dump-state")) opt_dump = 1;
@@ -364,6 +379,7 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--expect-imd3") && i + 1 < argc) { opt_expect = atof(argv[++i]); opt_study = 1; }
     else if(!strcmp(argv[i], "--rc") && i + 1 < argc) opt_rc_us = atof(argv[++i]);
     else if(!strcmp(argv[i], "--mic") && i + 1 < argc) opt_a1 = opt_a2 = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--tone") && i + 2 < argc) { opt_f1 = atof(argv[++i]); opt_a1 = atof(argv[++i]); opt_a2 = 0; opt_tone = 1; } // un solo tono: Hz y cuentas de ADC
     else if(!strcmp(argv[i], "--tx") && i + 1 < argc) opt_tx = atof(argv[++i]);
     else if(!strcmp(argv[i], "--boot") && i + 1 < argc) opt_boot = atof(argv[++i]); // segundos de arranque antes del estimulo
     else if(!strcmp(argv[i], "--syms") && i + 1 < argc) load_syms(argv[++i]);
@@ -622,7 +638,7 @@ int main(int argc, char** argv) {
   printf("   I2C total: %ld transacciones, %ld bytes; SI5351 %ld escrituras de registro; reles %ld\n", i2c_xfers, i2c_bytes, si_writes, lpf_writes);
 
   // ---- reconstruccion de la RF: reproducir los eventos sobre una rejilla de 16 ciclos (1,25 MHz)
-  const int    LOG2N = 20, STEP = 16;
+  const int    LOG2N = opt_log2n, STEP = 16;
   const size_t N = (size_t)1 << LOG2N;
   const double fs = F_XTAL_MCU / STEP;
   uint64_t     c0 = t_tx_on + (uint64_t)(1.2 * F_XTAL_MCU); // ALC y filtros asentados
@@ -669,7 +685,16 @@ int main(int argc, char** argv) {
   printf("   envolvente: pico %.0f %% del PWM maximo (OCR1B max %u, ICR1 %.0f), potencia media %.1f dB re pico, %.2f %% del tiempo en el tope\n",
          100.0 * pk * icr / (pwm_max ? pwm_max : 1), pwm_max, icr, 10 * log10(pw / nenv / (pk * pk + 1e-12)), 100.0 * clip / nenv);
   int ok_spec = 1;
-  if(!opt_voice) {
+  { // medida compacta para barridos (mejoras de TX): niveles en dB re portadora a PWM maximo (pwm_max del menu = 0 dB)
+    double fs0 = N * N * 0.25; // tono a plena escala con ventana Hann
+    double up = band(100, 3900), lo = band(-3900, -100), pt = 0;
+    if(opt_tone) { double pf = peak(-4000, 4000, 0); pt = band(pf - 25, pf + 25); }
+    printf("MEDIDA pico %.1f %%  media %.2f dB re pico  potencia en banda %.2f dB  tono %.2f dB  resto en banda %.1f dBc  banda opuesta %.1f dBc  tope %.2f %%  adyacente %.1f dBc\n",
+           100.0 * pk, 10 * log10(pw / nenv / (pk * pk + 1e-12)), 10 * log10(fmax(up, lo) / fs0 + 1e-12), 10 * log10(pt / fs0 + 1e-12),
+           opt_tone ? 10 * log10(fmax(fmax(up, lo) - pt, 1e-30) / (pt + 1e-30)) : 0.0, 10 * log10((fmin(up, lo) + 1e-30) / fmax(up, lo)), 100.0 * clip / nenv, 10 * log10((band(3300, 6300) + band(-6300, -3300) + 1e-30) / fmax(up, lo)));
+  }
+  if(opt_tone) { printf("\nRESULTADO: ISR RX %s | ISR TX %s\n", ok_rx ? "OK" : "DESBORDA", ok_tx ? "OK" : "DESBORDA"); }
+  else if(!opt_voice) {
     double p1 = peak(-4000, 4000, 0), p2 = peak(-4000, 4000, p1);
     double q1 = p1 - tone_ref, q2 = p2 - tone_ref; // respecto al dial nominal
     int lsb_side = (p1 + p2) < 0;

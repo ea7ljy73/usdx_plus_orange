@@ -37,10 +37,14 @@ const int16_t _F_SAMP_TX = (F_MCU * 4800LL / 20000000);
 
 volatile uint8_t mic_atten = 0; // F3.6: mic attenuation 0..4 in 6dB steps (menu)
 
-volatile bool     comp_enable = false; // F3.9b: voice compressor 2:1 (menu)
-#define COMP_TH 128                    // threshold on |ac| (post 6dB gain scale)
-static int16_t comp_env = 0;           // envelope follower state
-
+// F3.9b "TX Comp" 0..3: procesador de voz por recorte de envolvente (el
+// equivalente polar del recorte de RF). El ALC deja pasar picos hasta
+// 255+128*nivel (+3,5/+6/+8 dB) y lo que sobra se recorta a 255. Medido en
+// tests/avr_sim con habla sintetica: +3,3/+5,0/+6,2 dB de potencia media,
+// canal adyacente sin cambio y 0 ciclos de ISR; a cambio IMD3 de dos tonos
+// -18/-13/-11 dBc (0 = limpio, -32). Sustituye al compresor de audio 2:1,
+// que no subia la potencia media (-1 dB) y desbordaba la ISR (4457 ciclos).
+volatile uint8_t comp_enable = 0;
 volatile uint8_t tx_lowcut = 0; // F3.9c: HPF micro 0=off,1=100Hz,2=200Hz,3=400Hz
 volatile uint8_t tx_envpre = 0; // F3.10: preenfasis de envolvente 0=off(legacy), 1..3 = c1 0,5/1/1,5
 static int16_t  lc_lp     = 0;  // HPF state
@@ -145,22 +149,6 @@ inline int16_t ssb(int16_t in) {
     z1        = TX_DIV9(t); // lpf: (in - 8*z1) / 9 (legacy 2045)
   }
 
-  // F3.9b voice compressor 2:1 above COMP_TH (soft knee via instant attack +
-  // slow release envelope). Ganancia en Q6 con UNA division de 16 bit: la de
-  // 32 bit original (~550 ciclos) desbordaba la ISR de TX (medido en
-  // tests/avr_sim: 4300 ciclos de media para un periodo de 4160).
-  if(comp_enable && !dig_mode) {
-    int16_t aa = (ac >= 0) ? ac : -ac;
-    if(aa > comp_env)
-      comp_env = aa; // attack: instant
-    else
-      comp_env -= (comp_env - aa) >> 8; // release: ~53ms
-    if(comp_env > COMP_TH) {
-      uint8_t g = (uint16_t)((uint16_t)(COMP_TH + ((comp_env - COMP_TH) >> 1)) << 6) / (uint16_t)comp_env; // 32..64
-      ac        = (int16_t)(((int32_t)ac * g) >> 6);
-    }
-  }
-
   // smooth clipping limiter
   if(ac > 250) {
     ac = 250 + (ac - 250) / 2;
@@ -200,20 +188,18 @@ inline int16_t ssb(int16_t in) {
   uint16_t        a       = _amp << (drive);
   if(drive == 8) {
     a = 255; // legacy 2087: drive=8 = salida maxima constante
-  } else if(dig_mode) {
-    if(a > 255)
-      a = 255;
-  } else {
+  } else if(!dig_mode) { // dig_mode: solo el recorte a 255 de abajo
     if(alc_g != 0xFFFF)
       a = ((uint32_t)a * alc_g) >> 16;
-    if(a > 255) {
-      a = 255;
+    if(a > (uint16_t)(255 + ((uint16_t)comp_enable << 7))) { // TX Comp: margen de recorte
       alc_g -= (alc_g >> 4) + 1; // nunca llega a 0: minimo ~ -70 dB
     } else if(alc_g != 0xFFFF && !(++alc_rel & 63)) {
       uint16_t g = alc_g + (alc_g >> 7) + 1;
       alc_g      = (g < alc_g) ? 0xFFFF : g; // satura en ganancia unidad
     }
   }
+  if(a > 255)
+    a = 255;
   amp = (tx) ? lut[a] : 0;
 
   static int16_t prev_phase;

@@ -32,8 +32,8 @@ sim() { echo "=================== $1"; shift; ./usdx_avr_sim "$@" 2>&1 | grep -v
 
 build prod ../..
 sim "PRODUCCION: dos tonos 700+1100 Hz" "$B"/prod/*.elf --syms "$B/prod.syms"
-sim "PRODUCCION: peor caso de CPU (voz fuerte + compresor + low-cut)" "$B"/prod/*.elf --syms "$B/prod.syms" --voice --mic 120 \
-    --poke comp_enable=1 --poke tx_lowcut=2 --quiet
+sim "PRODUCCION: peor caso de CPU (habla fuerte + TX Comp 3 + low-cut)" "$B"/prod/*.elf --syms "$B/prod.syms" --speech --win 22 --tx 5 --mic 120 \
+    --poke comp_enable=3 --poke tx_lowcut=2 --quiet
 sim "PRODUCCION: preenfasis de envolvente (TX EnvPre=2) con el conformador RC del esquema" "$B"/prod/*.elf --syms "$B/prod.syms" \
     --poke tx_envpre=2 --expect-imd3 -28 --quiet
 sim "PRODUCCION: recepcion (senal conocida en I/Q -> audio, medidor S, AGC, respuesta)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario rx --quiet

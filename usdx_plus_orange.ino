@@ -406,8 +406,8 @@ const MenuParam MENU[] PROGMEM = {
     {28, (void*)&mic_atten, P_T8, 0, 4, NULL, 22, NULL},
     // DIGI Mode (F3.7: flat TX path for digital modes)
     {29, (void*)&dig_mode, P_ENUM, 0, 1, offon_label, 23, NULL},
-    // TX Comp (F3.9b: voice compressor 2:1)
-    {30, (void*)&comp_enable, P_ENUM, 0, 1, offon_label, 24, NULL},
+    // TX Comp (F3.9b: recorte de envolvente 0..3 = 0/+3,5/+6/+8 dB)
+    {30, (void*)&comp_enable, P_T8, 0, 3, NULL, 24, NULL},
     // TX LoCut (F3.9c: HPF micro; eslot 32 = banco extra)
     {31, (void*)&tx_lowcut, P_T8, 0, 3, NULL, 32, NULL},
     // TX EnvPre (F3.10: preenfasis de envolvente 0..3; eslot 37 = banco extra 0x2C5)

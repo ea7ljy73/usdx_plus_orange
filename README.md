@@ -58,7 +58,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 |------|-------|---------|
 | 20 TX Drive | 4–6 | ~5W PEP; start low, raise while watching SWR |
 | 28 Mic Atten | 0 | 6 dB/step attenuator; raise only if mic clips |
-| 30 TX Comp | ON | 2:1 voice compressor, more average talk power |
+| 30 TX Comp | 1–2 | Speech processor (envelope clipping after the ALC): about +3 / +5 / +6 dB average talk power at 1 / 2 / 3, at the cost of in-band IMD. 0 = cleanest signal |
 | 31 TX LoCut | 2 (200 Hz) | Removes sub-audio rumble; saves power and IMD |
 | 29 DIGI Mode | ON for digital | Flat TX path (USB + VOX + full bandwidth set manually) |
 | 23/24 PA Bias | Calibrate | PWM range where the PA starts / max power |
@@ -110,7 +110,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 27 | Backlight | ON, OFF |
 | 28 | Mic Atten | 0–4 (6 dB/step) |
 | 29 | DIGI Mode | ON, OFF |
-| 30 | TX Comp | ON, OFF |
+| 30 | TX Comp | 0 (off), 1, 2, 3 |
 | 31 | TX LoCut | OFF, 100, 200, 400 Hz |
 | 32 | AGC Start | ON, OFF |
 | 33 | AGC Rec | 1–8 (1 = legacy) |
