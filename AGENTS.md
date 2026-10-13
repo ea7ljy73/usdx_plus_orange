@@ -23,7 +23,7 @@ Eliminado y **no recrear**: `usdx_plus_orange_v2/`, `usdxWHITEBUTTONS/`,
 
 ```text
 usdx_plus_orange/                  <- RAIZ = producción (sketch Arduino)
-├── usdx_plus_orange.ino           <- setup()/loop(), menú (34 entradas), UI
+├── usdx_plus_orange.ino           <- setup()/loop(), menú (35 entradas), UI
 ├── usdx_settings.h                <- SOLO config (WHITE_BUTTONS); FIRMWARE_VERSION
 ├── hw.h                           <- pines, ADC, timers, ISRs, switch_rxtx
 ├── rx.h                           <- CIC, Hilbert, demod, AGC, NR, slow_dsp, process
@@ -106,7 +106,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 30804B (95%) flash, 1189B (58%) RAM, 0 warnings (2026-09-14)
+# Build actual: 31018B (96%) flash, 1190B (58%) RAM, 0 warnings (2026-10-13)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -141,7 +141,7 @@ gcc -O0 -o parity_rx main_test_rx.c rx_legacy.c rx_v2.c -lm
 | TX `ssb()` | **PARIDAD EXACTA** (avg\|diff\|=0, RMS/peak idénticos) |
 | RX core USB/LSB/CW/AM/FM (agc=0, filt=0) | **0 mismatches** (CIC+Hilbert+demod idénticos) |
 | RX att2 / volume / NR 0..1 | **0 mismatches** |
-| RX NR ≥2 | Divergencia **intencional** (NR de 2 polos, ver ROADMAP F4) |
+| RX NR ≥2 | Divergencia **intencional** (puerta de ruido DNR, ver ROADMAP F4) |
 | RX filt=1/2/3 (SSB) | **0 mismatches** |
 | RX filt=4..7 (CW) | **0 mismatches** |
 | RX agc=1 (AGC ON) | **0 mismatches** |
@@ -156,6 +156,50 @@ cd tests/ab_agc
 
 Valida con asserts: T1 precarga x8 audible en muestra 0 y t90 menor;
 T2 rec=4 varianza soplo <1/4, overshoot menor y sin clipping.
+
+### Simulaciones host del firmware real (2026-10-13)
+
+```bash
+./tests/run_all.sh            # TODO: paridad TX/RX, A/B AGC, menú, fw_sim, sincronía
+./tests/run_all.sh --build    # + compila producción y lab
+```
+
+| Test | Qué ejecuta | Qué garantiza |
+|---|---|---|
+| `tests/fw_sim/cat_sim` | `cat.h` real | Respuestas TS-480 como legacy; **FA/MD nunca tocan SI5351/LPF en TX** (se aplican en `loop()` con `cat_apply()`); `RC;` |
+| `tests/fw_sim/cw_sim` | `cw.h` real (prod y lab) | Keyer A/B (1:3, huecos, swap), mensajes CW, la paleta cancela el CQ; **decoder idéntico a legacy paso a paso** (682k pasos, con QRN y jitter) |
+| `tests/fw_sim/ui_sim` | `display_tick()`/`on_rit()` extraídas del `.ino` | Texto CW con offset legacy sin pisar el medidor; RIT normalizado; invariantes de `setup()`/`loop()` (`rit=0`, `vox=0`, sin LCD ni sintonía en TX) |
+| `tests/fw_sim/si5351_sim` | `si5351.h` real vs clase SI5351 de legacy, sobre un modelo de registros del chip | `freq()` y `freq_calc_fast` bit-exactos; mismo tráfico I2C que legacy (bulk completo); recuperación de una escritura perdida en 1 muestra |
+| `tests/fw_sim/txamp_sim` | `ssb()` de `tx.h` vs la de legacy, **fase y amplitud** con `tx=1` y `MAX_DP` | Sin saturar: bit-exacto con legacy. Saturando (ALC de pico F3.8): IMD3 ≤ −24 dBc, PEP completa, ataque ≤ 30 ms, vuelta a paridad ≤ 8 s |
+| `tests/fw_sim/rxtx_sim` | `switch_rxtx()` de `hw.h` vs la de legacy | 76 800 conmutaciones: misma secuencia de hardware y estado final; orden PA/receptor/oscilador, rampa anti-click, Practice, Semi-QSK |
+| `tests/fw_sim/txtiming_sim` | `ssb()` + SI5351 reales con la temporización del I2C | Espectro de TX (IMD3/5, banda opuesta, adyacente, lejanos) no peor que con la temporización de legacy (≤ 1 dB) |
+| `tests/menu_sim/run_menu.sh prod\|lab` | `menu.h` real | Motor de botones: rebotes, DC solo en MAIN, PT volumen solo en MAIN, wrap |
+| `tests/check_sync.py` | — | Módulos compartidos idénticos en producción y lab; `rx.h` solo difiere en taps `eng_*` |
+
+### Radio completa en simulador (`tests/avr_sim`, 2026-10-13)
+
+```bash
+./tests/avr_sim/run_avr_sim.sh [--legacy]   # o ./tests/run_all.sh --avr
+```
+
+Ejecuta el **`.elf` real** en un ATmega328P simulado (simavr, 20 MHz, ciclo a
+ciclo) con SI5351 (I2C bit-bang decodificado), relés LPF, LCD, micro por ADC y
+PTT. Mide cada interrupción `TIMER2_COMPA` (periodo, duración, anidamiento,
+muestras perdidas, perfil por función) y reconstruye la emisión SSB para sacar
+IMD3/IMD5, banda opuesta y espurios. Casos: dos tonos, peor caso de CPU (voz
+fuerte + compresor + low-cut, variables fijadas con `--poke`) y lab; `--legacy`
+pasa también `usdx-legazy` (sin DIAG) como referencia. simavr se descarga sin
+root a `~/.cache/usdx-simavr` si no está instalado.
+
+Con `--study` añade el conformador de envolvente del esquema (`usdx.png`:
+KEY_OUT → 10k/10n → 10k/10n → puertas BS170) con el PWM real, y barre el
+alineamiento amplitud/fase. De ahí sale **TX EnvPre** (F3.10, menú, 0 = legacy).
+
+Encontró lo que ningún test host podía ver: `F_CPU` sin redefinir (timers a
+78125/6010 Hz en vez de 62500/4808), ISR de TX al 98 % y desbordada con TX Comp.
+
+Límite: son simulaciones de lógica. No miden RF ni audio reales (IMD, espurios,
+tiempos I2C): eso sigue siendo la validación en hardware.
 
 ## Divergencias CORREGIDAS (2026-09-03) — paridad total alcanzada
 
@@ -178,7 +222,7 @@ T2 rec=4 varianza soplo <1/4, overshoot menor y sin clipping.
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
 
-> Build actual: 30804B (95%) flash, 1189B (58%) RAM, 0 warnings
+> Build actual: 31018B (96%) flash, 1190B (58%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código
@@ -189,6 +233,16 @@ T2 rec=4 varianza soplo <1/4, overshoot menor y sin clipping.
 - Strings de tabla de menú: **PROGMEM** + `pgm_read_ptr`.
 - Sin `#ifdef` de hardware en el código: config centralizada en
   `usdx_settings.h` (modelo WHITE_BUTTONS por defecto).
+
+## UX del menú (contrato, a sangre)
+
+Solo el botón de menú entra al menú. Dentro, menú y dial hacen lo mismo:
+en navegación el dial cambia de opción; una pulsación entra a edición;
+girando se modifica; pulsando se deja de editar, graba y vuelve a la
+opción (browser). **Solo menú saca a frecuencia** (en edición guarda y
+vuelve a la opción; otra pulsación sale). El dial nunca sale. No cambiar
+estas salidas sin pedirlo explícitamente (paridad legacy + UX validada
+en banco; ver `tests/menu_sim/`).
 
 ## Estructura de módulos
 

@@ -135,23 +135,51 @@ inline int16_t   process_agc_fast(int16_t in) {
 }
 
 // ---------------------------------------------------------------------------
-// Noise reduction: 2-pole EA lowpass (12dB/oct). nr=1 passthrough (legacy),
-// nr 2..8 cortes ~3000..850Hz. El 1-polo legacy colapsaba a 10Hz en nr=8
-// (-40dB en 1kHz: mudo); este quita siseo sin cargarse la voz. ~40 ciclos,
-// 4B RAM, 7B tabla. Divergencia intencional legacy en nr>=2 (conmutada por
-// el propio nivel NR; nr 0/1 idénticos).
+// Noise reduction: downward expander (noise gate, DNR-style). nr<=1 bypass
+// (legacy parity); nr 2..8 mutes background below a per-level threshold
+// (compensated by volume, so the knob means the same at any volume) with
+// hysteresis and smoothed gain against clicks. Gate OPEN = bit-exact
+// passthrough (voice untouched); a long-term peak reference hushes pauses
+// harder after loud speech. Weak near-noise signals duck at high nr and
+// steady carriers are unaffected (same caveats as Yaesu/Icom DNR: use low
+// nr for weak DX). Best with AGC on (stable post-AGC levels).
+// ~450B flash, 8B RAM, ~40 cycles/sample. Divergencia intencional legacy
+// en nr>=2 (nr 0/1 bit-identicos).
 // ---------------------------------------------------------------------------
-static const uint8_t NR_K[7] PROGMEM = {250, 240, 229, 211, 191, 167, 142};
 inline int16_t process_nr(int16_t in) {
-  static int16_t ea1, ea2;
+  static int16_t env;      // envelope: attack >>4 (~2ms), release >>7 (~16ms)
+  static int32_t smax;     // long-term peak reference, Q12
+  static int16_t g = 256;  // smoothed gain (256 = gate open)
+  // Envolvente + referencia SIEMPRE (estados calientes: al activar NR la
+  // puerta ya conoce el nivel y actua en ~2ms, sin periodo de espera).
+  int16_t m = in >> 15;
+  int16_t a = (in ^ m) - m;               // |in| sin ramas
+  if(a > env) env += (a - env) >> 4;      // ataque (abre con la voz)
+  else        env += (a - env) >> 7;      // release
+  int32_t e12 = (int32_t)env << 12;
+  if(smax == 0) { if(env > 8) smax = e12; }     // enganche frio instantaneo
+  else if(e12 > smax) smax += (e12 - smax) >> 12; // picos: sube lento (~1s)
+  else                smax += (e12 - smax) >> 10; // ... baja mas rapido
   if(nr <= 1) {
-    ea1 = ea2 = in;
-    return in; // bypass (estados siguen, sin thump al conmutar)
+    g = 256;
+    return in; // bypass bit-exacto (nr 0/1 paridad legacy)
   }
-  uint8_t k = pgm_read_byte(&NR_K[(nr <= 8) ? nr - 2 : 6]);
-  ea1 += (int16_t)(((int32_t)k * (in - ea1)) >> 8);
-  ea2 += (int16_t)(((int32_t)k * (ea1 - ea2)) >> 8);
-  return ea2;
+  uint8_t l = (nr > 8) ? 8 : nr;
+  int32_t th = (int32_t)(64 * (1 + l));   // umbral 192..576 (dominio vol 12)
+  int8_t  vs = volume - 12;               // compensacion de volumen
+  th = (vs >= 0) ? (th << vs) : (th >> -vs);
+  int32_t rel = (smax >> 12) >> 3;        // extra hush en pausas tras voz
+  if(rel > th) th = rel;
+  if(g > 128) th -= (th >> 2);            // histeresis: cerrar al 75%
+  int16_t thr = (th > 30000) ? 30000 : ((th < 8) ? 8 : (int16_t)th);
+  uint8_t open = (env > thr);
+  uint8_t d   = l >> 1;                   // profundidad: >>1..>>4
+  if(d > 4) d = 4;
+  int16_t tgt = open ? 256 : (int16_t)(256 >> d);
+  int16_t dg = tgt - g;
+  g += dg >> 3;                                   // suavizado anti-click (~1ms)
+  if((dg < 8) && (dg > -8)) g = tgt;              // anti-stall punto fijo
+  return (int16_t)(((int32_t)in * g) >> 8);
 }
 
 // ---------------------------------------------------------------------------
