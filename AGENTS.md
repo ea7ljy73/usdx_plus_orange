@@ -106,7 +106,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 31018B (96%) flash, 1190B (58%) RAM, 0 warnings (2026-10-13)
+# Build actual: 31084B (96%) flash, 1190B (58%) RAM, 0 warnings (2026-10-13)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -195,7 +195,13 @@ Con `--study` añade el conformador de envolvente del esquema (`usdx.png`:
 KEY_OUT → 10k/10n → 10k/10n → puertas BS170) con el PWM real, y barre el
 alineamiento amplitud/fase. De ahí sale **TX EnvPre** (F3.10, menú, 0 = legacy).
 
-Encontró lo que ningún test host podía ver: `F_CPU` sin redefinir (timers a
+Escenarios: emisión SSB (por defecto), `--scenario rx` (señal conocida en I/Q →
+audio en OC1A: rechazo de banda lateral, AGC, respuesta, IMD, medidor S leído
+del LCD) y `--scenario cw` (botón de modo real + llave: rampas, clics, sidetone).
+El ADC es un modelo propio fiel al chip (el de simavr no vale para I/Q alternos).
+
+Encontró lo que ningún test host podía ver: medidor S con `__builtin_clz` de
+16 bit (marcaba +60..+100 dB de más), `F_CPU` sin redefinir (timers a
 78125/6010 Hz en vez de 62500/4808), ISR de TX al 98 % y desbordada con TX Comp.
 
 Límite: son simulaciones de lógica. No miden RF ni audio reales (IMD, espurios,
@@ -222,7 +228,7 @@ tiempos I2C): eso sigue siendo la validación en hardware.
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
 
-> Build actual: 31018B (96%) flash, 1190B (58%) RAM, 0 warnings
+> Build actual: 31084B (96%) flash, 1190B (58%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código

@@ -180,11 +180,13 @@ uint16_t analogSampleMic() {
 // Pins
 // ---------------------------------------------------------------------------
 void initPins() {
-  digitalWrite(SIDETONE, LOW);
-  digitalWrite(RX, HIGH);
-  digitalWrite(KEY_OUT, LOW);
+  digitalWrite(SIG_OUT, LOW); // legacy 4242/4249: PB3 salida a 0. Se habia
+  digitalWrite(SIDETONE, LOW); // perdido en el refactor y la patilla quedaba
+  digitalWrite(RX, HIGH);      // como entrada al aire (detectado comparando
+  digitalWrite(KEY_OUT, LOW);  // registros con legacy en tests/avr_sim).
 
   pinMode(SIDETONE, OUTPUT);
+  pinMode(SIG_OUT, OUTPUT);
   pinMode(RX, OUTPUT);
   pinMode(KEY_OUT, OUTPUT);
   pinMode(BUTTONS, INPUT); // L/R/rotary button (v1: no internal pullup - HW has it)

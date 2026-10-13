@@ -2,7 +2,8 @@
 # run_avr_sim.sh — radio completa en simulador: el .elf REAL del firmware en un
 # ATmega328P simulado (simavr) a 20 MHz + SI5351, reles LPF, LCD, micro y PTT.
 # Mide la interrupcion de muestreo ciclo a ciclo y reconstruye la emision SSB.
-#   ./run_avr_sim.sh           produccion: dos tonos, peor caso (voz+comp+locut) y lab
+#   ./run_avr_sim.sh           produccion: emision SSB (dos tonos, peor caso de CPU, EnvPre),
+#                              recepcion, CW, y lab
 #   ./run_avr_sim.sh --legacy  ademas pasa usdx-legazy (sin DIAG) como referencia
 # simavr no necesita instalarse: si falta, se descarga el .deb y se extrae en
 # ~/.cache/usdx-simavr (apt-get download, sin root).
@@ -35,6 +36,8 @@ sim "PRODUCCION: peor caso de CPU (voz fuerte + compresor + low-cut)" "$B"/prod/
     --poke comp_enable=1 --poke tx_lowcut=2 --quiet
 sim "PRODUCCION: preenfasis de envolvente (TX EnvPre=2) con el conformador RC del esquema" "$B"/prod/*.elf --syms "$B/prod.syms" \
     --poke tx_envpre=2 --expect-imd3 -28 --quiet
+sim "PRODUCCION: recepcion (senal conocida en I/Q -> audio, medidor S, AGC, respuesta)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario rx --quiet
+sim "PRODUCCION: CW (boton de modo real + llave)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cw --quiet
 build lab ../../usdx-lab
 sim "LAB: dos tonos 700+1100 Hz" "$B"/lab/*.elf --syms "$B/lab.syms" --quiet
 if [ "$1" = "--legacy" ]; then # referencia: legacy con DIAG desactivado (sus chequeos de placa no aplican al simulador)
@@ -42,7 +45,15 @@ if [ "$1" = "--legacy" ]; then # referencia: legacy con DIAG desactivado (sus ch
   sed -i 's|^#define DIAG |//#define DIAG |' "$B/src/usdx-legazy/usdx_settings.h"
   build leg "$B/src/usdx-legazy"
   echo "=================== LEGACY (referencia, no cuenta para el resultado)"
-  ./usdx_avr_sim "$B"/leg/*.elf --syms "$B/leg.syms" 2>&1 | grep -v "^Loaded"
+  # estado del hardware tras el arranque: registros AVR, variables de RX/TX, SI5351 y reles deben coincidir con legacy
+  ./usdx_avr_sim "$B"/prod/*.elf --syms "$B/prod.syms" --quiet --tx 0.05 --dump-state 2>&1 | grep -E "^REG|^VAR|^SI5351|^RELES" > "$B/st_prod.txt"
+  ./usdx_avr_sim "$B"/leg/*.elf --syms "$B/leg.syms" --quiet --tx 0.05 --dump-state 2>&1 | grep -E "^REG|^VAR|^SI5351|^RELES" > "$B/st_leg.txt"
+  echo "=================== ESTADO TRAS EL ARRANQUE: produccion vs legacy ($(wc -l < "$B/st_prod.txt") registros y variables)"
+  # diferencias admitidas: ganancia AGC instantanea, variables que solo existen en uno
+  D=$(diff <(grep -vE "^VAR16 gain |^VAR txdelay |^VAR menumode |^SI5351" "$B/st_prod.txt") <(grep -vE "^VAR16 gain |^VAR txdelay |^VAR menumode |^SI5351" "$B/st_leg.txt"))
+  S1=$(grep "^SI5351" "$B/st_prod.txt"); S2=$(grep "^SI5351" "$B/st_leg.txt")
+  if [ -z "$D" ] && [ "$S1" = "$S2" ]; then echo "   identico a legacy"; else echo "$D"; [ "$S1" = "$S2" ] || echo "   SI5351 distinto"; echo "   ESTADO DISTINTO DE LEGACY"; rc=1; fi
+  for sc in ssb rx cw; do ./usdx_avr_sim "$B"/leg/*.elf --syms "$B/leg.syms" --scenario $sc --quiet 2>&1 | grep -v "^Loaded"; done
 fi
 [ $rc = 0 ] && echo "AVR_SIM: PASS" || echo "AVR_SIM: FAIL"
 exit $rc

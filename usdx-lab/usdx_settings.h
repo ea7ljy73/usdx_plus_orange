@@ -130,7 +130,7 @@ enum mode_t { LSB, USB, CW, FM, AM };
 #define AUDIO2 15  // PC1/A1 (pin 24)
 #define DVM 16     // PC2/A2 (pin 25)
 #define SCL 15     // AUX SCL alias para DVM read
-#define SIG_OUT 7  // PD7 alias reservado
+#define SIG_OUT 11 // PB3 (pin 17), como legacy 25. Salida a nivel bajo en reposo (initPins)
 
 // =============================================================================
 // CONSTANTES DE TX (SI_CLK_OE) - WHITE_BUTTONS (PA en CLK2)

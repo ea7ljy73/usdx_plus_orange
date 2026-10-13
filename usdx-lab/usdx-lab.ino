@@ -29,7 +29,7 @@ void (*vfo_apply_freq)(int32_t) = NULL;
 
 // --- Operador / control ------------------------------------------------
 volatile uint8_t mode     = USB;
-volatile int8_t  volume   = 10; // default pedido (legacy 12)
+volatile int8_t  volume   = 12; // legacy 2116 (SDR: el "volume = 10" de legacy 5076 solo aplica a dsp_cap == DSP)
 volatile uint8_t agc      = 1; // legacy default 1 (offon; w/o FAST_AGC)
 volatile uint8_t txdelay  = 0; // legacy default 0 (ms)
 volatile uint8_t practice = 0; // TX disabled
@@ -330,7 +330,7 @@ void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band m
 }
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
-uint8_t vfomode[2] = {LSB, USB}; // VFOA=LSB (40m), VFOB=USB (v1 G8RDI: was USB,USB)
+uint8_t vfomode[2] = {USB, USB}; // como legacy 3551 (7.074 = FT8, USB)
 void    on_vfosel() { // legacy 5585-5592
   uint8_t other   = !vfosel;
   vfo[vfosel]     = freq; // keep slots current
@@ -457,7 +457,11 @@ static const uint16_t SM_ATT[17] PROGMEM = {0,96,193,289,385,482,578,674,771,867
 //   rms = M*2^att2 / (256*1024*4*8*500*1.414/(0.707*1.1))
 //   dbm = 10*log10(rms*rms/50) + 30 - ref
 static int16_t sm_log20_16(uint32_t M) {
-  uint8_t e = 31 - __builtin_clz(M); // floor(log2), __builtin_clz(0) indef -> M>=1
+  // floor(log2(M)), M>=1. OJO: en AVR 'int' es de 16 bit; __builtin_clz(M)
+  // truncaba M y contaba sobre 16 bit (e salia 16..31: el medidor marcaba
+  // +60..+100 dB de mas). clzl opera sobre long = 32 bit. Detectado con
+  // tests/avr_sim --scenario rx (en host, con int de 32 bit, no se veia).
+  uint8_t e = 31 - __builtin_clzl(M);
   uint8_t j = (e >= 7) ? ((M >> (e - 7)) & 0xFF) - 128 : ((M << (7 - e)) & 0xFF) - 128;
   return (int16_t)(pgm_read_word(&SM_EXP[e]) + pgm_read_byte(&SM_FRAC[j]));
 }
