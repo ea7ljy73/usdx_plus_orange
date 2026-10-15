@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import re, os
-base='/home/jgalera/develop/arduino/usdx/usdx_plus_orange'
+base=os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 def lines(p): return open(p).read().split('\n')
 

@@ -1,6 +1,6 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
-**Firmware:** modular production release `v2.0.0` (single sketch in the project root) — strict parity with the `usdx-legazy/` reference (see `AGENTS.md`).
+**Firmware:** modular production release `v2.1.0` (single sketch in the project root) — strict parity with the legacy reference firmware it was rebuilt from (see `AGENTS.md`).
 
 **uSDX Plus Orange** is a modular rebuild of the uSDX firmware (PE1NNZ original, GW8RDI WhiteButtons lineage), maintained by **EA7LJY**. QRP SSB/CW/AM/FM transceiver on ATMEGA328P (2KB RAM, 32KB flash) with class-E EER transmit stage (~5W PEP) and SDR receiver (Tayloe detector + Hilbert transform).
 
@@ -22,7 +22,7 @@ The folder name must match the main file (`usdx_plus_orange/` → `usdx_plus_ora
 | `usdx_filter.h` | SSB/CW IIR filters |
 | `tests/` | Host parity harnesses (no hardware needed) |
 | `tools/` | Flash/RAM size tracking per build |
-| `usdx-legazy/` | Read-only reference firmware (parity source of truth, never modified) |
+| `usdx-legazy/` | Read-only reference firmware (parity source of truth). **Not distributed in this repository**: the parity tests need a local copy |
 | `usdx-lab/` | Lab firmware: copy + ADC/audio instrumentation, no CAT (see `usdx-lab/README_LAB.md`) |
 
 Docs: `AGENTS.md` (parity contract, build, tests), `ROADMAP.md` (improvement plan), `HARDWARE_TEST_GUIDE.md` (flashing + hardware checks).
@@ -31,10 +31,16 @@ Docs: `AGENTS.md` (parity contract, build, tests), `ROADMAP.md` (improvement pla
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Sketch uses 30804 bytes (95%) flash, 1189 bytes (58%) RAM, 0 warnings
+# Sketch uses 30788 bytes (95%) flash, 1188 bytes (58%) RAM, 0 warnings
 ```
 
-### Parity tests (host, no hardware)
+### Tests (host, no hardware)
+
+```bash
+./tests/run_all.sh [--build] [--avr]   # every host test (+ builds, + full radio in simavr)
+```
+
+Individual parity tests (they need the legacy reference in `usdx-legazy/`):
 
 ```bash
 cd tests/parity_tx
@@ -62,6 +68,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 31 TX LoCut | 2 (200 Hz) | Removes sub-audio rumble; saves power and IMD |
 | 29 DIGI Mode | ON for digital | Flat TX path (USB + VOX + full bandwidth set manually) |
 | 23/24 PA Bias | Calibrate | PWM range where the PA starts / max power |
+| 34 TX EnvPre | 0 until measured | Envelope pre-emphasis for the RC shaper before the PA gates: IMD3 −20 → −32 dBc at 2 (simulated). Worse if your board lacks that RC: set it with a two-tone test |
 
 ### RX
 
@@ -76,7 +83,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 
 ---
 
-## Menu (34 entries)
+## Menu (35 entries)
 
 | Id | Item | Range |
 |----|------|-------|
@@ -114,6 +121,7 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 | 31 | TX LoCut | OFF, 100, 200, 400 Hz |
 | 32 | AGC Start | ON, OFF |
 | 33 | AGC Hang | 1–8 (1 = legacy; each step ≈ 0.1 s) |
+| 34 | TX EnvPre | 0 (off), 1, 2, 3 |
 
 Shortcuts (L=left, E=encoder, R=right): **E+turn** volume · **R** mode · **R double** filter · **E double** band · **E / E long** step · **2x R long** VFO · **R long** RIT · **L** menu · **L+turn** quick menu · **R** back · **E long at power-up** factory reset.
 
@@ -124,7 +132,8 @@ For SSB voice connect an electret mic to the paddle jack (DOT = PTT, DASH = audi
 ## Features in this firmware
 
 - Bit-exact parity with the verified legacy reference (see tests above)
-- Menu-switchable improvements, all defaulting to legacy behavior: fixed-point S-meter, fast exact SI5351 calc, differential I2C, directional band change, mic attenuator, DIGI flat path, TX ALC, envelope-clipping speech processor (TX Comp), TX low-cut, NR noise gate, AGC fast-start / anti-pumping hang / Slow (M0PUB) mode
+- Menu-switchable improvements, all defaulting to legacy behavior: mic attenuator, DIGI flat path, envelope-clipping speech processor (TX Comp), TX low-cut, TX envelope pre-emphasis (TX EnvPre), NR noise gate, AGC fast-start / anti-pumping hang / Slow (M0PUB) mode
+- Always on (bit-exact or measured better than legacy): fixed-point S-meter, fast exact SI5351 calc, peak TX ALC, directional band change
 - Full CAT TS-480 subset, VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
 
 Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
@@ -136,6 +145,7 @@ Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUID
 | Rev. | Date | Features |
 |------|------|----------|
 | v2.0.0 | 2026-09-15 | Modular production release at project root (parity-verified); `usdx-lab/` instrumented copy for hardware tests. |
+| v2.1.0 | 2026-10-15 | Fixes found with the AVR simulator (`F_CPU`/timers, S-meter, PB3, TX ISR load); TX Comp, NR and AGC Hang redone and measured; new TX EnvPre; CQ Message trigger fixed. **EEPROM resets to factory defaults on first boot.** |
 
 Lineage: PE1NNZ original uSDX → GW8RDI WhiteButtons → modular parity rebuild (this firmware).
 
@@ -151,5 +161,9 @@ uSDX hardware variants (Sandwich by DL2MAN, WB2CBA transceiver and others) are d
 ## Credits
 
 Original uSDX concept, circuit and code by _Guido (PE1NNZ)_; sandwich PCB and class-E LPF by _Manuel (DL2MAN)_. This modular firmware maintained by **EA7LJY**.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Includes the original copyright and permission notice of Guido PE1NNZ (QCX-SSB / uSDX), from which this firmware derives.
 
 [uSDX Forum]: https://groups.io/g/ucx

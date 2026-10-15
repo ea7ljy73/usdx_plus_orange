@@ -45,7 +45,7 @@
 <body>
 <header>
   <h1>Guía de test hardware — uSDX Lab</h1>
-  <p>Verificación paso a paso con el firmware <code>usdx-lab</code> (menú Engineer). La radio de producción NO se usa para probar.</p>
+  <p>Verificación paso a paso con el firmware <code>usdx-lab</code> (monitor Engineer). La radio de producción NO se usa para probar.</p>
 </header>
 <main>
 <div class="toolbar">
@@ -66,15 +66,15 @@
 <section>
   <h2><span class="n">1</span>Arranque</h2>
   <ol>
-    <li>Encender. Debe mostrar <code>v2.0.0-lab</code> en la línea 2.</li>
+    <li>Encender. Debe mostrar <code>v2.1.0-lab</code> en la línea 2.</li>
     <li>Primera vez: resetea EEPROM solo (magia propia, no toca producción).</li>
-    <li>Menú (botón L) → última entrada <code>Engineer</code> → OFF/ADC/AUDIO con el encoder.</li>
+    <li>Menú (botón L) → las dos últimas filas, <code>Eng ADC</code> y <code>Eng Audio</code> (ON/OFF cada una; si las dos están en ON manda AUDIO).</li>
   </ol>
-  <div class="pass"><input type="checkbox"> PASS: arranca, versión lab visible, menú Engineer existe</div>
+  <div class="pass"><input type="checkbox"> PASS: arranca, versión lab visible, filas <code>Eng ADC</code>/<code>Eng Audio</code> existen</div>
 </section>
 
 <section>
-  <h2><span class="n">2</span>ADC en vacío (Engineer → ADC, sin antena, RX)</h2>
+  <h2><span class="n">2</span>ADC en vacío (<code>Eng ADC</code> = ON, sin antena, RX)</h2>
   <p>Pantalla: <code>ADC &lt;mean&gt; &lt;min&gt; &lt;max&gt;</code> / <code>RMS &lt;rms&gt; CL&lt;clips&gt; R&lt;rango&gt;</code>.</p>
   <table>
     <tr><th>Métrica</th><th>Esperado en vacío</th><th>Anotado (se verifica solo)</th></tr>
@@ -94,11 +94,11 @@
     <li>Observar MIN/MAX: no deben pegarse a 0/1023 de forma continua.</li>
   </ol>
   <div class="pass"><input type="checkbox"> PASS: excursión amplia sin CLIP sostenido</div>
-  <div class="warn">Si CLIP continuo → subir ATT (menú 1.10) o ATT2 (1.11) y repetir.</div>
+  <div class="warn">Si CLIP continuo → subir ATT (fila 9) o ATT2 (fila 10) y repetir.</div>
 </section>
 
 <section>
-  <h2><span class="n">4</span>Audio (Engineer → AUDIO, RX con voz/CW)</h2>
+  <h2><span class="n">4</span>Audio (<code>Eng Audio</code> = ON, RX con voz/CW)</h2>
   <p>Pantalla: <code>AU R&lt;rms&gt; P&lt;peak&gt;</code> / <code>DC&lt;±&gt; CR&lt;crest x10&gt; CL&lt;clips&gt;</code>.</p>
   <table>
     <tr><th>Métrica</th><th>Esperado</th><th>Anotado (se verifica solo)</th></tr>
@@ -110,14 +110,14 @@
   <div class="pass"><input type="checkbox"> PASS: audio presente, DC≈0, sin clipping con volumen medio</div>
   <ul>
     <li>Probar filtros (R doble): el RMS debe bajar al estrechar a CW.</li>
-    <li>Probar AGC ON/OFF (1.8): con AGC ON el RMS se estabiliza entre señales.</li>
+    <li>Probar AGC OFF/Fast (fila 7): con AGC ON el RMS se estabiliza entre señales.</li>
   </ul>
 </section>
 
 <section>
   <h2><span class="n">5</span>TX a carga ficticia (SOLO 50 Ω, empezar drive bajo)</h2>
   <ol>
-    <li>Engineer → OFF (pantalla normal).</li>
+    <li><code>Eng ADC</code> y <code>Eng Audio</code> en OFF (pantalla normal).</li>
     <li>Conectar carga 50 Ω. Modo USB, drive 2.</li>
     <li>PTT + silbido suave: observar consumo y, si hay wattmeter, potencia.</li>
     <li>Subir a drive 4 (valor producción) y repetir.</li>
@@ -135,8 +135,8 @@
 <section>
   <h2><span class="n">6</span>Separación lab / producción</h2>
   <ol>
-    <li>Flashear producción, comprobar que arranca con SUS ajustes (v2.0.0).</li>
-    <li>Volver a flashear lab, comprobar <code>v2.0.0-lab</code> y sus ajustes propios.</li>
+    <li>Flashear producción, comprobar que arranca con SUS ajustes (v2.1.0).</li>
+    <li>Volver a flashear lab, comprobar <code>v2.1.0-lab</code> y sus ajustes propios.</li>
   </ol>
   <div class="pass"><input type="checkbox"> PASS: cada firmware conserva sus ajustes (magias EEPROM distintas)</div>
 </section>

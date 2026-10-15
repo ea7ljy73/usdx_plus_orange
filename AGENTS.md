@@ -9,11 +9,11 @@ reintroducir mejoras.
 
 | Ruta | Qué es | Reglas |
 |---|---|---|
-| Raíz (`usdx_plus_orange.ino` + `.h`) | **Producción**: firmware definitivo v2.0.0, con CAT | NO tocar sin tests en verde; ver `## Producción` |
+| Raíz (`usdx_plus_orange.ino` + `.h`) | **Producción**: firmware definitivo v2.1.0, con CAT | NO tocar sin tests en verde; ver `## Producción` |
 | `usdx-lab/` | **Laboratorio**: copia + instrumentación (`eng_lab.h`), SIN CAT | Sketch autocontenido; ver `## Laboratorio` |
 | `usdx-legazy/` | Referencia de solo lectura (fuente de verdad de paridad) | Nunca se modifica ni se elimina |
 | `tests/` + `tools/` | Harnesses host y control de tamaño | Compartidos; el lab no los duplica |
-| `doc/` | Documentos históricos (plan refactor, auditoría paridad) | Solo consulta; no guían el trabajo actual |
+| `doc/` | Documentos históricos (plan refactor, auditoría paridad); local, no se publica | Solo consulta; no guían el trabajo actual |
 
 Eliminado y **no recrear**: `usdx_plus_orange_v2/`, `usdxWHITEBUTTONS/`,
 `usdx_plus_orange_ft8_menu/`, `src/`, `top.png`, `twotone.png`
@@ -40,9 +40,9 @@ usdx_plus_orange/                  <- RAIZ = producción (sketch Arduino)
 ├── block.png / usdx.png           <- imágenes usadas por los README
 ├── tests/                         <- harnesses host (ver abajo)
 ├── tools/size_report.py           <- coste flash/RAM por build (+ size_log.csv)
-├── usdx-legazy/                   <- referencia solo lectura (NO tocar)
+├── usdx-legazy/                   <- referencia solo lectura (NO tocar; no se publica)
 ├── usdx-lab/                      <- laboratorio (ver ## Laboratorio)
-└── doc/                           <- históricos solo consulta
+└── doc/                           <- históricos solo consulta (local, no se publica)
 ```
 
 ```text
@@ -52,12 +52,14 @@ usdx-lab/                          <- SKETCH LAB autocontenido (NO producción)
 ├── *.h                            <- copias de producción (ver README_LAB)
 ├── README_LAB.md                  <- qué es, build, regla de sincronía
 ├── GUIA_TEST_HW.md / .html        <- pruebas hardware paso a paso (+web)
-└── uSDX_Plus_Orange_V2_Instrumentacion_DSP.md  <- teoría DSP (documento base)
+└── uSDX_Plus_Orange_V2_Instrumentacion_DSP.md  <- teoría DSP (local, no se publica)
 ```
 
 ```text
 tests/parity_tx/  gen+main TX (ssb)      tests/parity_rx/  gen+main RX (DSP)
 tests/ab/         A/B IMD dos tonos      tests/ab_agc/     A/B AGC + regresión
+tests/menu_sim/   menú real (prod/lab)   tests/fw_sim/     CAT, CW, UI, SI5351, TX
+tests/avr_sim/    .elf real en simavr    tests/run_all.sh  todo lo anterior
 tools/            size_report.py + size_log.csv
 ```
 
@@ -66,7 +68,7 @@ tools/            size_report.py + size_log.csv
 - Sketch propio (`usdx-lab/usdx-lab.ino`): se compila desde su carpeta
   (`cd usdx-lab && arduino-cli compile --fqbn arduino:avr:uno .`).
 - Es una **copia** de producción con `eng_lab.h` (monitor ADC/audio) y sin
-  `cat.h` (la serie queda libre). Versión `v2.0.0-lab` y `F_VER_ID` propio:
+  `cat.h` (la serie queda libre). Versión `v2.1.0-lab` y `F_VER_ID` propio:
   no comparte EEPROM con producción.
 - Regla de sincronía: al cambiar producción, copiar a mano los `.h`
   afectados (salvo `usdx_settings.h`: mantener versión/magia lab).
@@ -82,8 +84,8 @@ tools/            size_report.py + size_log.csv
   se conserva para consulta, nunca se modifica ni se elimina.
 - El firmware debe producir la **misma salida** que legacy para la configuración
   activa (WHITE_BUTTONS). Toda divergencia debe estar documentada y justificada.
-- Las mejoras de "gama alta" (CESSB, compresor, EQ, AGC hang+noise floor) están
-  **diferidas**: reintroducir UNA A UNA, verificadas con el test de paridad.
+- Las mejoras se reintroducen UNA A UNA, tras flag de menú y verificadas con
+  el test de paridad (estado de cada una en `ROADMAP.md`).
 
 ## Producción
 
@@ -106,7 +108,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 30780B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-13)
+# Build actual: 30788B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-15)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -230,7 +232,7 @@ tiempos I2C): eso sigue siendo la validación en hardware.
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
 
-> Build actual: 30780B (95%) flash, 1188B (58%) RAM, 0 warnings
+> Build actual: 30788B (95%) flash, 1188B (58%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código
@@ -268,5 +270,5 @@ en banco; ver `tests/menu_sim/`).
 | `display.h` | LCD HD44780 + encoder PCINT + CGRAM |
 | `i2c.h` / `si5351.h` / `lpf.h` | I2C bit-bang, SI5351, LPF REV3 |
 | `usdx_filter.h` | Filtros IIR SSB/CW |
-| `tests/` | Harnesses host: `parity_tx`, `parity_rx`, `ab`, `ab_agc` |
+| `tests/` | Harnesses host (`parity_tx`, `parity_rx`, `ab`, `ab_agc`, `menu_sim`, `fw_sim`) y radio completa en simavr (`avr_sim`); todo con `run_all.sh` |
 | `tools/` | `size_report.py` + `size_log.csv` (flash/RAM por build) |

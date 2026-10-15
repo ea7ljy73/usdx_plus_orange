@@ -200,7 +200,7 @@ volatile uint16_t eeprom_offs = 0x150;
 #define EEPROM_MAGIC_OFF 0x140 // version signature (outside menu/vfo regions)
 #define EEPROM_TEXT_OFF 0x290 // CQ Message 48B (0x290..0x2BF; evita eslots 27..31)
 #define EEPROM_XTRA_OFF 0x2C0 // eslots >= 32: 1B c/u (0x2C0+eslot-32; sin solape)
-#define F_VER_ID 0xB0         // LAB: magia propia, no comparte EEPROM con produccion
+#define F_VER_ID 0xB1         // LAB: magia propia (0xB1: v2.1.0-lab), no comparte EEPROM con produccion
 void menu_eeprom_load(uint8_t eslot, void* ptr, uint8_t size) {
   if(eslot == 26) { // CQ Message: región propia 48B (no cabe en stride x8)
     eeprom_read_block(ptr, (const void*)EEPROM_TEXT_OFF, size);

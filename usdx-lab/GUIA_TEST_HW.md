@@ -1,6 +1,6 @@
 # Guía de test hardware — uSDX Lab
 
-Verificación paso a paso del firmware usando `usdx-lab` (menú Engineer +
+Verificación paso a paso del firmware usando `usdx-lab` (monitor Engineer +
 pantallas). La radio de producción NO se usa para probar.
 
 ## 0. Requisitos
@@ -12,13 +12,14 @@ pantallas). La radio de producción NO se usa para probar.
 
 ## 1. Arranque
 
-1. Encender. Debe mostrar `v2.0.0-lab` en la línea 2.
+1. Encender. Debe mostrar `v2.1.0-lab` en la línea 2.
 2. Primera vez: resetea EEPROM solo (magia propia, no toca producción).
-3. Menú (botón L) → última entrada `Engineer` → OFF/ADC/AUDIO con el encoder.
+3. Menú (botón L) → las dos últimas filas, `Eng ADC` y `Eng Audio` (ON/OFF
+   cada una; si las dos están en ON manda AUDIO).
 
-- [ ] PASS: arranca, versión lab visible, menú Engineer existe
+- [ ] PASS: arranca, versión lab visible, filas `Eng ADC`/`Eng Audio` existen
 
-## 2. ADC (Engineer → ADC, sin antena, RX)
+## 2. ADC (`Eng ADC` = ON, sin antena, RX)
 
 Pantalla: `ADC <mean> <min> <max>` / `RMS <rms> CL<clips> R<rango>`.
 
@@ -39,9 +40,9 @@ Pantalla: `ADC <mean> <min> <max>` / `RMS <rms> CL<clips> R<rango>`.
 2. Observar MIN/MAX: no deben pegarse a 0/1023 de forma continua.
 
 - [ ] PASS: excursión amplia sin CLIP sostenido
-- Si CLIP continuo → subir ATT (menú 1.10) o ATT2 (1.11) y repetir
+- Si CLIP continuo → subir ATT (fila 9) o ATT2 (fila 10) y repetir
 
-## 4. Audio (Engineer → AUDIO, RX con señal de voz/CW)
+## 4. Audio (`Eng Audio` = ON, RX con señal de voz/CW)
 
 Pantalla: `AU R<rms> P<peak>` / `DC<±> CR<crest x10> CL<clips>`.
 
@@ -54,11 +55,11 @@ Pantalla: `AU R<rms> P<peak>` / `DC<±> CR<crest x10> CL<clips>`.
 
 - [ ] PASS: audio presente, DC≈0, sin clipping con volumen medio
 - Probar filtros (R doble): el RMS debe bajar al estrechar a CW
-- Probar AGC ON/OFF (1.8): con AGC ON el RMS se estabiliza entre señales
+- Probar AGC OFF/Fast (fila 7): con AGC ON el RMS se estabiliza entre señales
 
 ## 5. TX a carga ficticia (SOLO 50 Ω, empezar drive bajo)
 
-1. Engineer → OFF (pantalla normal).
+1. `Eng ADC` y `Eng Audio` en OFF (pantalla normal).
 2. Conectar carga 50 Ω. Modo USB, drive 2.
 3. PTT + silbido suave: observar consumo y, si hay wattmeter, potencia.
 4. Subir a drive 4 (valor producción) y repetir.
@@ -70,8 +71,8 @@ Pantalla: `AU R<rms> P<peak>` / `DC<±> CR<crest x10> CL<clips>`.
 
 ## 6. Separación lab/producción
 
-1. Flashear producción, comprobar que arranca con SUS ajustes (v2.0.0).
-2. Volver a flashear lab, comprobar `v2.0.0-lab` y sus ajustes propios.
+1. Flashear producción, comprobar que arranca con SUS ajustes (v2.1.0).
+2. Volver a flashear lab, comprobar `v2.1.0-lab` y sus ajustes propios.
 
 - [ ] PASS: cada firmware conserva sus ajustes (magias EEPROM distintas)
 

@@ -13,7 +13,7 @@ en cada prueba. Incluye un apartado de resolución de problemas.
 | Placa | uSDX WHITE_BUTTONS (ATMEGA328P @20MHz, cristal SI5351 27MHz) |
 | Programador | USBasp en ISP (recomendado) o Arduino-ISP |
 | Constantes | `F_MCU 20MHz`, `F_XTAL 27MHz`, `WHITE_BUTTONS=1` (ya en `usdx_settings.h`) |
-| Build actual | 30804B flash (95%), 1189B RAM (58%) |
+| Build actual | 30788 B flash (95 %), 1188 B RAM (58 %) |
 
 > **IMPORTANTE — antes de grabar:** el firmware **no tiene fuses automáticos**.
 > Verifica que el MCU esté a 20MHz externo (CKSEL=1111, CKDIV8=0) como el v1.
@@ -27,7 +27,7 @@ en cada prueba. Incluye un apartado de resolución de problemas.
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
 ```
-Resultado esperado: `30804 bytes (95%)`, RAM `1189 (58%)`. Sin errores.
+Resultado esperado: `30788 bytes (95%)`, RAM `1188 (58%)`. Sin errores.
 
 ### Grabar con USBasp (recomendado)
 ```bash
@@ -50,8 +50,11 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
 
 ## 3. Arranque — qué esperar
 
-1. **LCD**: muestra `uSDX v2` durante ~300ms, luego `USB <freq>` en línea 1
-   (ej. `USB 7100000`) y `RX S..` en línea 2.
+1. **LCD**: durante ~300 ms muestra `uSDX` + logo en la línea 1 y la versión
+   (`v2.1.0`) en la línea 2. Después, la pantalla principal: línea 1 con
+   `uSDX` + logo y el S-meter (por defecto en dBm), línea 2 con la flecha de
+   VFO, la frecuencia y el modo (`7,074,000 USB`) y una `R` (RX) o `V` (VOX)
+   en la última columna.
 2. **Voltage**: si mides el pin AREF, ~2.5V (bias SDR).
 3. **Cat**: si conectas USB-serial, debe responder `ID020;` al `ID;` (puerto
    38400 baudios). Si no responde, revisa el puerto.
@@ -64,16 +67,17 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
 ## 4. Verificación RX
 
 ### Prueba 1 — Ruido / S-meter
-1. Con una antena o carga, en 40m USB (default 7.100MHz).
-2. Línea 2 muestra `RX S==` (barra de ruido ~varios segmentos).
+1. Con una antena o carga, en 40m USB (por defecto 7.074 MHz).
+2. La línea 1 muestra el nivel de ruido en el S-meter (formato según el menú
+   `S-meter`: dBm, S o barra).
 3. **Gira el encoder**: frecuencia cambia por pasos (stepsize predeterminado).
    Vibrar la frecuencia sintonizando estaciones — si hay audio válido, OK.
 
 ### Prueba 2 — Audio / filtros
-1. Entra en el menú (BL corto en principal). Navega a `FilterBW` (encoder).
+1. Entra en el menú (BL corto en principal). Navega a `Filter BW` (encoder).
    En `EDIT` (BL corto), cambia entre `Full/3000/2400/...`. El audio debe
    volverse más agudo/estrecho a filtros CW.
-2. **Vol** (1er parámetro): sube/baja volumen audiblemente.
+2. **Volume** (1er parámetro): sube/baja volumen audiblemente.
 3. **NR / ATT / AGC**: ajusta y comprueba que el ruido/nivel cambia.
 
 ### Prueba 3b — Mejoras de RX (medidas solo en simulador)
@@ -129,6 +133,15 @@ Sintoniza un segundo receptor a la misma frecuencia:
 3. **Mic Atten**: cada paso baja ~6 dB; úsalo si el ALC trabaja siempre a tope.
 4. Vigila la temperatura del PA con TX Comp 2-3: sube la potencia media.
 
+### Prueba 5c — TX EnvPre (dos tonos, analizador o SDR)
+Preénfasis de envolvente para el conformador RC (10k/10n ×2) entre KEY_OUT y
+las puertas del PA. Por defecto 0 (= legacy).
+1. Con dos tonos de audio (p. ej. 700 + 1900 Hz) y carga de 50 Ω, mide IMD3
+   con `TX EnvPre` 0, 1, 2 y 3.
+2. Simulado con el RC del esquema: −20 dBc (0) → −26 / −32 / −28 dBc (1/2/3).
+3. **Si tu placa no lleva ese RC, empeora**: quédate con el valor que mida
+   mejor en tu radio, o 0.
+
 ### Prueba 6 — CW TX (keyer)
 1. Modo CW (BR cambia modo). Conecta paddle en DIT/DAH.
 2. En el SDR sintoniza **frecuencia − 600Hz** (el v2 transmite a `freq -
@@ -146,8 +159,9 @@ Sintoniza un segundo receptor a la misma frecuencia:
 2. Barre el SDR en 2× y 3× la frecuencia: el LPF debe atenuar los armónicos.
 
 ### Prueba 9 — CAT TX
-1. Conecta USB-serial (38400). `FA;`/`IF;` responden; `TX1;`/`TX0;` alternan
-   TX/RX (la señal debe oírse en el receptor).
+1. Conecta USB-serial (38400). `FA;`/`IF;` responden. `TX;` (y también
+   `TX0;`/`TX1;`/`TX2;`, como legacy) pasa a TX; `RX;` vuelve a RX (la señal
+   debe oírse en el receptor).
 
 ---
 
@@ -175,13 +189,16 @@ Sintoniza un segundo receptor a la misma frecuencia:
 ```bash
 # en terminal serie 38400 8N1:
 ID;      ->  ID020;
-FA;      ->  FA007101000;     (frecuencia actual, sin captura)
+FA;      ->  FA00007074000;   (frecuencia actual, 11 dígitos)
 FA00007050000;  ->  sintoniza a 7.050MHz
-IF;      ->  IF...750...       (estado)
+IF;      ->  IF00007074000...  (estado TS-480, 38 caracteres)
+MD;      ->  MD2;             (modo: 1 LSB, 2 USB, 3 CW, 4 FM, 5 AM)
+MD3;     ->  pasa a CW
 TX;      ->  transmite (carga/dummy)
 RX;      ->  vuelve a RX
-MD1;     ->  usb ; MD3 -> CW
 ```
+Un comando desconocido responde `?;`. Los cambios de frecuencia o modo por
+CAT durante TX se aplican al volver a RX.
 Si `ID;` no responde: verifica el baudrate (38400) y que el
 USB-serial no esté ocupado por el bootloader ("serdas").
 
@@ -191,12 +208,13 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 
 | # | Prueba | Resultado esperado | OK? |
 |---|---|---|---|
-| 1 | Arranque LCD | `uSDX v2` → `USB 7100000` / `RX S..` | ☐ |
+| 1 | Arranque LCD | `uSDX` + `v2.1.0` → `7,074,000 USB` + S-meter | ☐ |
 | 2 | Ruido RX | S-meter >0, audio de ruido al sintonizar | ☐ |
 | 3 | Filtros/AGC/NR | Audio cambia con el menú | ☐ |
 | 3b | AGC Start / AGC Hang / NR | Sin bombeo, ruido baja en pausas, voz intacta | ☐ |
 | 4 | SSB TX (VOX) | Audio limpio sin clicks, portadora rechazada | ☐ |
 | 5b | TX Comp / LoCut / Mic Atten | Más potencia media, sin salpicadura | ☐ |
+| 5c | TX EnvPre | IMD3 de dos tonos igual o mejor que con 0 | ☐ |
 | 5 | CW keyer | Tonos limpios, Iambic responde | ☐ |
 | 6 | AM/FM TX | Portadora/desviación presentes | ☐ |
 | 7 | Menú | Navegación completa 35 params | ☐ |
@@ -205,20 +223,13 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 
 ---
 
-## 9. Limitaciones conocidas del v2 (vs v1)
+## 9. Limitaciones conocidas (heredadas de legacy)
 
-1. **VOX solo LSB/USB**: en AM/FM/CW no hay VOX automático (el CW usa keyer;
-   AM/FM requieren un hook de PTT). Mejora pendiente.
-2. **RIT/offset CW**: `rit` y el offset CW TX configurable no se aplican en el
-   TX aún (CAT `RTS` setea `rit`, se aplica sobre freq en modo listen soldad),
-   el TX no compensa. Limitación menor.
-3. **Decoder CW en RX**: la máquina de estados está, pero el detector de tono
-   audio (que derive transiciones de señal) es simplificado; puede no
-   decodificar de forma fiable hasta añadir el detector del v1.
-4. **Audio out sin integrator** (`ozi1/ozi2` del v1): posible leve diferencia
-   de nivel/tono de audio; no impide operar.
-5. **`digitalWrite`/`delay` en ISR TX**: `dsp_tx_cw` usa `delayMicroseconds`
-   (ramp anti-click) dentro de la ISR — igual que v1; controlar que no cuelgue.
+1. **VOX solo en LSB/USB**: en AM/FM se usa DIT como PTT y en CW el keyer.
+2. **RIT solo afecta a RX**: en TX se emite en la frecuencia del dial.
+3. **Rampa anti-clic de CW dentro de la ISR**: `dsp_tx_cw` usa
+   `delayMicroseconds` (31 pasos de 60 µs) al iniciar cada elemento, igual
+   que legacy.
 
 ---
 
@@ -228,13 +239,13 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 |---|---|---|
 | LCD negro / reset en bucle | Fuses a 1MHz (CKDIV8) | Escribir lfuse 0xFE |
 | RX sin audio | ADC ref / prescaler | Verificar `adc_start` F_ADC_CONV en setup |
-| TX sin RF / muy débil | `COM1B1` no activo | Verificar switch_rxtx (fix aplicado) |
-| TX distorsionado / clicks | Sample-rate OCR2A wrong | Ver fix R3 (OCR2A TX=4800) |
-| S-meter siempre 0 | `_absavg256` no actualiza | Verificar CIC `func_ptr` del RX |
-| No recuerda settings | EEPROM antes de 0x250 | slot VFO 0x250, menú hasta 0x248 |
+| TX sin RF / muy débil | Drive/PA Bias bajos, relés, PA | Revisar `TX Drive`, `PA Bias min/max` y alimentación del PA |
+| TX distorsionado / clicks | Nivel de micro o drive excesivos | Bajar `Mic Atten`/`TX Drive`; probar `TX Comp` 0 |
+| S-meter siempre 0 | Sin señal en el ADC | Revisar entrada RX, `ATT` y el menú `S-meter` (OFF) |
+| No recuerda settings | EEPROM de otra versión | Reset de fábrica: encender con el encoder pulsado |
 | CAT no responde | baudrate/port | 38400 8N1, cable USB-serial |
 
 ---
 
-*Firmware v2 documentado y verificado estáticamente (9 bugs R1-R3 corregidos).
-Esta guía es el protocolo de prueba para validar en hardware.*
+*Firmware verificado con los tests host y el simulador AVR (`tests/`). Esta
+guía es el protocolo para validarlo en hardware.*
