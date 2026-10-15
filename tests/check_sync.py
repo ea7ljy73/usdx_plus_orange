@@ -19,4 +19,10 @@ for a, b in [('menu.h', 'usdx-lab/menu.h'), ('usdx_settings.h', 'usdx-lab/usdx_s
              ('usdx_plus_orange.ino', 'usdx-lab/usdx-lab.ino')]:
     n = sum(1 for l in difflib.unified_diff(rd(a), rd(b), lineterm='', n=0) if l[:1] in '+-' and l[:3] not in ('+++', '---'))
     print('info %s: %d lineas distintas (divergencia por diseno)' % (a, n))
+# menu.h dispara el CQ en la unica fila P_TEXT de la tabla: debe ser CQ Message (label 22)
+for f in ['usdx_plus_orange.ino', 'usdx-lab/usdx-lab.ino']:
+    rows = [l for l in rd(f) if l.strip().startswith('{') and 'P_TEXT' in l]
+    ok = len(rows) == 1 and rows[0].strip().startswith('{22,')
+    print(('ok   ' if ok else 'FAIL ') + f + ': una sola fila P_TEXT y es CQ Message')
+    fails += not ok
 sys.exit(1 if fails else 0)

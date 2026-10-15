@@ -11,7 +11,7 @@ libre para futuras mediciones. Producción no se toca para probar.
 
 - **Sin CAT** (`cat.h` eliminado): la serie queda libre para laboratorio.
   A cambio se define `cat_active = 0` fijo (lo exigen `display.h`/`hw.h`).
-- **Versión y EEPROM propias**: `FIRMWARE_VERSION "v2.0.0-lab"` (visible en
+- **Versión y EEPROM propias**: `FIRMWARE_VERSION "v2.1.0-lab"` (visible en
   el arranque) y `F_VER_ID` distinto → no comparte ajustes con producción.
 - **Menú Engineer** (dos filas ON/OFF independientes, eslots 35/36):
   "Eng ADC" y "Eng Audio". Si ambas están on, manda AUDIO.
@@ -29,15 +29,14 @@ arduino-cli compile --fqbn arduino:avr:uno .
 ## Flasheo por ISP (Arduino Uno como programador, verificado 2026-09-17)
 
 El uSDX **no** se flashea por USB-serie: se usa un Arduino Uno como
-programador ISP en `/dev/ttyACM0`, cableado por ICSP al uSDX.
+programador ISP (aquí en `/dev/ttyACM0`; ajusta el puerto), cableado por ICSP al uSDX.
 
 1. **Preparar el programador** (una sola vez; se pierde si se sube otro
    sketch al Uno). Subida **normal** por USB del ejemplo ArduinoISP:
    ```bash
-   arduino-cli compile --fqbn arduino:avr:uno \
-     /snap/arduino/85/examples/11.ArduinoISP/ArduinoISP
-   arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno \
-     /snap/arduino/85/examples/11.ArduinoISP/ArduinoISP
+   ISP=<carpeta del IDE>/examples/11.ArduinoISP/ArduinoISP  # p. ej. /snap/arduino/current/...
+   arduino-cli compile --fqbn arduino:avr:uno "$ISP"
+   arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:avr:uno "$ISP"
    ```
    (En el IDE: Archivo → Ejemplos → 11.ArduinoISP → ArduinoISP → Subir.)
 2. **Flashear el lab** (desde la raíz del proyecto):
@@ -77,5 +76,4 @@ Al actualizar producción, resincronizar esta copia: copiar de la raíz los
 y adaptar `usdx-lab.ino` si el original cambió. El lab **nunca** se flashea
 como radio de uso: solo banco con carga de 50 Ω.
 
-Guía de instrumentación: `uSDX_Plus_Orange_V2_Instrumentacion_DSP.md`.
 Guía de pruebas hardware paso a paso: `GUIA_TEST_HW.md`.

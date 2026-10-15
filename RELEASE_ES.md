@@ -1,4 +1,10 @@
-# uSDX Plus Orange - Notas de Release
+# uSDX Plus Orange - Notas de Release (línea anterior v5.x / v6.00)
+
+> **Histórico.** Estas notas son de la línea monolítica anterior (v5.00–v6.00),
+> no del firmware actual. El firmware de este repositorio es la reconstrucción
+> modular **v2.x**, que vuelve a paridad con legacy: muchas funciones de
+> abajo (banda de 11 m, FT8 VOX, EQ, pre-énfasis de audio...) **no existen en v2.x**.
+> Estado actual: `README_ES.md` y `ROADMAP.md`.
 
 **Versión:** 6.00
 **Base:** uSDX Legacy 1.02x / usdxWHITEBUTTONS v4.00d (GW8RDI)

@@ -1,18 +1,21 @@
-# uSDX Plus Orange — Roadmap (v2.0.0 en producción + laboratorio)
+# uSDX Plus Orange — Roadmap (v2.1.0 en producción + laboratorio)
 
-## Estado actual (2026-09-15)
+## Estado actual (2026-10-15)
 
 - **Producción en la raíz**: `usdx_plus_orange.ino` + módulos, versión
-  `v2.0.0`, con CAT. Build: **31248 B (96 %) flash / 1193 B (58 %) RAM**,
-  0 warnings. Margen: ~1000 B flash, ~855 B RAM.
+  `v2.1.0`, con CAT (`F_VER_ID` 5: reset de EEPROM al actualizar). Build: **30788 B (95 %) flash / 1188 B (58 %) RAM**,
+  0 warnings. Margen: ~1468 B flash, ~860 B RAM.
+- **Tests**: `./tests/run_all.sh --build --avr` en verde (paridad TX/RX,
+  A/B AGC, menú, fw_sim, sincronía, simavr, compilación prod y lab).
 - **Paridad verificada con `usdx-legazy/`** (tests host, ver `AGENTS.md`):
   TX `ssb()` bit-exacto; RX core/filtros/AGC 0 mismatches (NR ≥2 diverge
   intencionado: puerta de ruido DNR).
 - **Mejoras integradas tras flag de menú** (todas apagables, default legacy):
-  S-meter punto fijo, `freq_calc_fast`, I2C bulk diferencial, banda
-  direccional, mic atten, DIGI/FT8 plano, ALC, TX Comp (recorte de envolvente
-  0..3), LoCut, puerta de ruido NR (suelo adaptativo), AGC Start (precarga x8),
-  AGC Hang (anti-bombeo, AGC Slow), AGC Slow M0PUB.
+  mic atten, DIGI/FT8 plano, TX Comp (recorte de envolvente 0..3), LoCut,
+  TX EnvPre, puerta de ruido NR (suelo adaptativo), AGC Start (precarga x8),
+  AGC Hang (anti-bombeo, AGC Slow), AGC Slow M0PUB. Siempre activas:
+  S-meter punto fijo, `freq_calc_fast`, banda direccional, ALC de pico.
+  (El I2C bulk diferencial F1.3 se retiró el 2026-10-13, ver Fase 2.)
 - **Laboratorio en `usdx-lab/`**: copia + `eng_lab.h` (monitor ADC/audio),
   sin CAT, versión/magia EEPROM propias. Toda prueba hardware se hace ahí
   (guía: `usdx-lab/GUIA_TEST_HW.md`).
@@ -184,13 +187,15 @@
 
 ## Historial — Fase 4: RX
 
-- [x] 12. AGC hang: EVALUADO Y REVERTIDO. Sin diferencia medible (dinámica
+- [x] 12. AGC hang (sobre AGC Fast): EVALUADO Y REVERTIDO. Sin diferencia medible (dinámica
   lenta del AGC domina; bug uint8→uint16 cazado por el camino). Paridad intacta.
 - [x] NB impulsos RX: PORTADO de v1 Y REVERTIDO. Post-Hilbert no puede actuar
   (ringing 14 taps lo puentea + integrador acumula). Un blanker útil iría
   pre-Hilbert. Sin efecto medido.
 - [x] Drive-by: `MENU_IDX_CWMSG` desactualizado tras inserts (apuntaba a TX Comp,
   disparaba CQ al editar comp). Corregido a 26 y reverificado tras revert NB.
+  **Se repitió con TX EnvPre (2026-10-15)**: ahora se identifica la fila por tipo
+  `P_TEXT`, sin índice fijo.
 - [x] 13. NR expansor (puerta DNR, F4; sustituye al 2-polos: el paso-bajos
   empastaba la voz y el suelo adaptativo la mataba en régimen permanente).
   Puerta con umbral por nivel compensado por volumen + histéresis + ganancia
@@ -201,6 +206,7 @@
   (nr 0/1 bit-idénticos; paridad RX resto 0 %).
   (+444 B flash, +4 B RAM). PENDIENTE validar en HW (oído: pausas mudas,
   sin bombeo/aspereza en nr 2-4).
+  **Rehecho 2026-10-13** con umbral relativo al suelo de ruido (ver arriba).
 - [x] 16. AGC arranque rápido (F4.16, menú "AGC Start" OFF/ON, eslot 33 banco
   extra; OFF = legacy exacto). Legacy arranca gain x1 y tarda ~7 s en cargar
   con banda floja (medido host); ON precarga x8 (8192): audible al instante,
@@ -223,7 +229,7 @@ GW8RDI, F5NPV — SIN implementar; ordenado por valor/coste para AVR)
 Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 "EVALUADO Y REVERTIDO" con motivo, y no se reintenta por esa vía.
 
-- [x] B1. AGC anti-bombeo como F4.17 "AGC Rec" (divisor recovery 1..8, 1=legacy;
+- [x] B1. (**Sustituido 2026-10-13 por AGC Hang**, ver arriba.) AGC anti-bombeo como F4.17 "AGC Rec" (divisor recovery 1..8, 1=legacy;
   eslot 34 banco extra). Solo ralentiza la SUBIDA (+1 cada N muestras); ataque
   intacto, mismo equilibrio. A/B host ráfagas: varianza soplo 18,3→2,5 (rec=4),
   overshoot flanco 625→250 (ya no clipa), rampa débil ×N (cubierta por F4.16).
@@ -285,3 +291,11 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 | 2026-09-15 | 30804 / 1189 | — | — | — | Fusión a raíz (v2.0.0 producción) + `usdx-lab/` creado (v2.0.0-lab, sin CAT, Engineer ADC/AUDIO). Paridad reverificada. Sin cambio de build |
 | 2026-09-17 | 31248 / 1193 | — | — | — | F4 NR expansor-puerta (+444 B/+4 B, sustituye 2-polos). AB: tono 23,9 intacto 0-8, ruido 53,7→3,4 (−5…−24dB). Paridad 0 (nr 0/1). PENDIENTE HW |
 | 2026-09-17 | 31264 / 1193 | — | — | — | Menú: doble-click (banda/filtro) puerta en MAIN + move con módulo real (+16 B). Divergencia intencional legacy (en legacy saltaba editando). Cazado en banco (lab). PENDIENTE HW |
+| 2026-10-09 | 31470 / 1195 | — | — | — | Fix paridad: CAT FA/MD fuera de TX + `RC;`, RIT=0 al arrancar, keyer cancela CQ, decoder CW legacy, debounce + puerta PT + timeout ADC |
+| 2026-10-13 | 31390 / 1188 | — | — | — | ALC de pico (F3.8 rehecho) + rollback F1.3 a bulk completo legacy (−100 B) |
+| 2026-10-13 | 30920 / 1188 | — | — | — | `F_CPU` 20007000, `freq_calc_fast` 32 bit, `/3` `/9` por multiplicación; `tests/avr_sim` |
+| 2026-10-13 | 31018 / 1190 | — | — | — | F3.10 TX EnvPre (+98 B) |
+| 2026-10-13 | 31084 / 1190 | — | — | — | Fix medidor S (`__builtin_clzl`), PB3 como legacy, modo USB por defecto |
+| 2026-10-13 | 30938 / 1188 | — | — | — | TX Comp rehecho como recorte de envolvente (−146 B) |
+| 2026-10-13 | 30780 / 1188 | 76 (simavr) | 83 (simavr) | — | NR rehecho (suelo adaptativo) y AGC Hang sustituye a AGC Rec (−158 B) |
+| 2026-10-15 | 30788 / 1188 | — | — | — | Fix: el CQ se disparaba en `CQ Interval` en vez de `CQ Message` (índice fijo desfasado al insertar TX EnvPre); ahora por tipo `P_TEXT` + check en `tests/check_sync.py` (+8 B) |

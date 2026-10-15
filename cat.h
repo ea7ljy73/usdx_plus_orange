@@ -117,9 +117,6 @@ static void Command_RC() {
   Serial.print("RC;");
 }
 static void Command_FL0() { Serial.print("FL0;"); }
-static void Command_TX0() { switch_rxtx(1); } // legacy parity (TX on)
-static void Command_TX1() { switch_rxtx(1); }
-static void Command_TX2() { switch_rxtx(1); }
 static void Command_PS1() { /* no-op (legacy parity) */ }
 static void Command_VX(char c) {
   Serial.print("VX");

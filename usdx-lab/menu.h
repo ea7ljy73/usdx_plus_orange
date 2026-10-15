@@ -94,7 +94,6 @@ extern char              cw_msg[1][48];
 #endif
 
 #define N_MENU_ITEMS 37 // declared capacity; MENU_COUNT computed from table
-#define MENU_IDX_CWMSG 26 // index of the CQ Message entry (legacy CWMSG1)
 
 // ---------------------------------------------------------------------------
 // Forward declarations (table + eeprom helpers live in menu.cpp / .ino)
@@ -500,7 +499,9 @@ inline void Menu::handle_event(uint8_t ev) {
       break;
     case BL_ | SC_: // 1: enter menu, 2: edit, 3: save (stay in select), 4: exit
 #ifdef CW_MESSAGE
-      if((state == MENU_SELECT) && (index == MENU_IDX_CWMSG)) { // trigger CQ message
+      // CQ Message (legacy CWMSG1) is the only P_TEXT row: match by type, not by
+      // table index (a fixed index went stale twice when rows were inserted)
+      if((state == MENU_SELECT) && (pgm_read_byte(&MENU[index].type) == P_TEXT)) { // trigger CQ message
         cw_msg_event = millis();
         cw_msg_id    = 0;
         state        = MENU_MAIN;

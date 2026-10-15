@@ -4,9 +4,9 @@
 Igual extracción que gen_parity_tx.py pero con tx=1, LUT lineal y captura
 de (df, amp) por muestra para reconstruir la SSB polar en el harness A/B.
 """
-import re
+import os, re
 
-BASE = '/home/jgalera/develop/arduino/usdx/usdx_plus_orange'
+BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 with open(f'{BASE}/tx.h') as f:
     src = f.read()

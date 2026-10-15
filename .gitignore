@@ -5,6 +5,10 @@
 /docs/
 /usdx-legazy/
 /prompt.txt
+
+# Documentos de trabajo internos (no se publican)
+/doc/
+/usdx-lab/uSDX_Plus_Orange_V2_Instrumentacion_DSP.md
 /CLAUDE.md
 
 # Claude Code agent directories

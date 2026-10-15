@@ -1,6 +1,6 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
-**Firmware:** release de producción `v2.0.0`, modular (un único sketch en la raíz del proyecto) — paridad estricta con la referencia `usdx-legazy/` (ver `AGENTS.md`).
+**Firmware:** release de producción `v2.1.0`, modular (un único sketch en la raíz del proyecto) — paridad estricta con el firmware legacy de referencia del que se reconstruyó (ver `AGENTS.md`).
 
 **uSDX Plus Orange** es una reconstrucción modular del firmware uSDX (original de PE1NNZ, linaje WhiteButtons de GW8RDI), mantenido por **EA7LJY**. Transceptor QRP SSB/CW/AM/FM sobre ATMEGA328P (2KB RAM, 32KB flash) con etapa TX clase-E EER (~5W PEP) y receptor SDR (detector Tayloe + transformada de Hilbert).
 
@@ -22,7 +22,7 @@ El nombre de la carpeta debe coincidir con el fichero principal (`usdx_plus_oran
 | `usdx_filter.h` | Filtros IIR SSB/CW |
 | `tests/` | Harnesses de paridad en host (sin hardware) |
 | `tools/` | Seguimiento de flash/RAM por build |
-| `usdx-legazy/` | Firmware de referencia de solo lectura (fuente de verdad de paridad, no se modifica) |
+| `usdx-legazy/` | Firmware de referencia de solo lectura (fuente de verdad de paridad). **No se distribuye en este repositorio**: los tests de paridad necesitan una copia local |
 | `usdx-lab/` | Firmware de laboratorio: copia + instrumentación ADC/audio, sin CAT (ver `usdx-lab/README_LAB.md`) |
 
 Docs: `AGENTS.md` (contrato de paridad, build, tests), `ROADMAP.md` (plan de mejoras), `HARDWARE_TEST_GUIDE.md` (flasheo + pruebas hardware).
@@ -31,10 +31,16 @@ Docs: `AGENTS.md` (contrato de paridad, build, tests), `ROADMAP.md` (plan de mej
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Sketch usa 30804 bytes (95%) de flash, 1189 bytes (58%) de RAM, 0 warnings
+# Sketch usa 30788 bytes (95%) de flash, 1188 bytes (58%) de RAM, 0 warnings
 ```
 
-### Tests de paridad (host, sin hardware)
+### Tests (host, sin hardware)
+
+```bash
+./tests/run_all.sh [--build] [--avr]   # todos los tests host (+ compila, + radio completa en simavr)
+```
+
+Tests de paridad sueltos (necesitan la referencia legacy en `usdx-legazy/`):
 
 ```bash
 cd tests/parity_tx
@@ -62,6 +68,7 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 | 31 TX LoCut | 2 (200 Hz) | Elimina retumbe sub-audio; ahorra potencia e IMD |
 | 29 DIGI Mode | ON en digital | Path TX plano (USB + VOX + BW completo manual) |
 | 23/24 PA Bias | Calibrar | Rango PWM donde arranca el PA / potencia máx |
+| 34 TX EnvPre | 0 hasta medirlo | Preénfasis de envolvente para el RC que hay antes de las puertas del PA: IMD3 −20 → −32 dBc con 2 (simulado). Empeora si tu placa no lleva ese RC: ajústalo con dos tonos |
 
 ### RX
 
@@ -76,7 +83,45 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 
 ---
 
-## Menú (34 entradas)
+## Menú (35 entradas)
+
+| Id | Parámetro | Rango |
+|----|-----------|-------|
+| 0 | Volume | -1–16 (girar a la izquierda en 0 = apagar/encender) |
+| 1 | Mode | LSB, USB, CW, FM, AM |
+| 2 | Filter BW | Full, 3000, 2400, 1800, 500, 200, 100, 50 Hz |
+| 3 | Band | 160, 80, 60, 40, 30, 20, 17, 15, 12, 10, 6 m |
+| 4 | Tune Rate | 10M, 1M, 0.5M, 100k, 10k, 1k, 0.5k, 100, 10, 1 |
+| 5 | VFO Mode | A, B (+Split con pulsación larga) |
+| 6 | RIT | ON, OFF |
+| 7 | AGC | OFF, Fast, Slow |
+| 8 | NR | 0–8 |
+| 9 | ATT | 0, -13, -20, -33, -40, -53, -60, -73 dB |
+| 10 | ATT2 | 0–16 (digital, 6 dB/paso) |
+| 11 | S-meter | OFF, dBm, S, S-bar, wpm |
+| 12 | CW Decoder | ON, OFF |
+| 13 | Semi QSK | ON, OFF |
+| 14 | Keyer Speed | 1–60 WPM |
+| 15 | Keyer Mode | Iambic A, Iambic B, Straight |
+| 16 | Keyer Swap | ON, OFF |
+| 17 | Practice | ON, OFF (TX desactivado) |
+| 18 | VOX | ON, OFF |
+| 19 | Noise Gate | 0–255 |
+| 20 | TX Drive | 0–8 (8 = envolvente constante) |
+| 21 | CQ Interval | 0–60 s |
+| 22 | CQ Message | Texto (48 caracteres) |
+| 23 | PA Bias min | 0–254 |
+| 24 | PA Bias max | 1–255 |
+| 25 | Ref freq | 14–28 MHz (calibración del cristal) |
+| 26 | IQ Phase | 0–180° |
+| 27 | Backlight | ON, OFF |
+| 28 | Mic Atten | 0–4 (6 dB/paso) |
+| 29 | DIGI Mode | ON, OFF |
+| 30 | TX Comp | 0 (off), 1, 2, 3 |
+| 31 | TX LoCut | OFF, 100, 200, 400 Hz |
+| 32 | AGC Start | ON, OFF |
+| 33 | AGC Hang | 1–8 (1 = legacy; cada paso ≈ 0,1 s) |
+| 34 | TX EnvPre | 0 (off), 1, 2, 3 |
 
 | Id | Entrada | Rango |
 |----|---------|-------|
@@ -124,7 +169,8 @@ Para voz SSB conecta un micro electret al jack de paddle (DOT = PTT, DASH = audi
 ## Características de este firmware
 
 - Paridad bit-exacta con la referencia legacy verificada (ver tests arriba)
-- Mejoras conmutables por menú, todas con default legacy: S-meter en punto fijo, cálculo SI5351 rápido y exacto, I2C diferencial, cambio de banda direccional, atenuador de micro, path DIGI plano, ALC en TX, procesador de voz por recorte de envolvente (TX Comp), low-cut TX, puerta de ruido NR, AGC arranque rápido / hang anti-bombeo / modo Slow (M0PUB)
+- Mejoras conmutables por menú, todas con default legacy: atenuador de micro, path DIGI plano, procesador de voz por recorte de envolvente (TX Comp), low-cut TX, preénfasis de envolvente (TX EnvPre), puerta de ruido NR, AGC arranque rápido / hang anti-bombeo / modo Slow (M0PUB)
+- Siempre activas (bit-exactas o medidas mejor que legacy): S-meter en punto fijo, cálculo SI5351 rápido y exacto, ALC de pico en TX, cambio de banda direccional
 - Subconjunto CAT TS-480 completo, VFO A/B + RIT/Split, keyer Iambic-A/B/Straight + decodificador CW + mensajes CQ, menú procedimental con persistencia EEPROM
 
 Detalle y medidas: `ROADMAP.md`. Validación hardware: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
@@ -136,6 +182,7 @@ Detalle y medidas: `ROADMAP.md`. Validación hardware: `HARDWARE_TEST_GUIDE.md` 
 | Rev. | Fecha | Características |
 |------|-------|-----------------|
 | v2.0.0 | 2026-09-15 | Release modular de producción en la raíz (paridad verificada); copia instrumentada `usdx-lab/` para pruebas hardware. |
+| v2.1.0 | 2026-10-15 | Correcciones halladas con el simulador AVR (`F_CPU`/timers, S-meter, PB3, carga de la ISR de TX); TX Comp, NR y AGC Hang rehechos y medidos; nuevo TX EnvPre; corregido el disparo del CQ Message. **La EEPROM vuelve a valores de fábrica en el primer arranque.** |
 
 Linaje: uSDX original de PE1NNZ → WhiteButtons de GW8RDI → reconstrucción modular con paridad (este firmware).
 
@@ -151,5 +198,9 @@ Variantes hardware uSDX (Sandwich de DL2MAN, transceptor WB2CBA y otras) en el [
 ## Créditos
 
 Concepto, circuito y código originales del uSDX por _Guido (PE1NNZ)_; PCB sándwich y LPF clase-E por _Manuel (DL2MAN)_. Este firmware modular mantenido por **EA7LJY**.
+
+## Licencia
+
+MIT — ver [`LICENSE`](LICENSE). Incluye el aviso de copyright y permiso original de Guido PE1NNZ (QCX-SSB / uSDX), del que deriva este firmware.
 
 [uSDX Forum]: https://groups.io/g/ucx
