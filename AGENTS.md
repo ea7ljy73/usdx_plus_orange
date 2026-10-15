@@ -36,7 +36,7 @@ usdx_plus_orange/                  <- RAIZ = producción (sketch Arduino)
 ├── usdx_filter.h                  <- filtros IIR SSB/CW
 ├── AGENTS.md / README.md / README_ES.md / ROADMAP.md
 ├── HARDWARE_TEST_GUIDE.md         <- flasheo + checks hardware (producción)
-├── RELEASE.md / RELEASE_ES.md     <- notas de release históricas
+├── RELEASE.md / RELEASE_ES.md     <- notas de release v2.x (EN/ES)
 ├── block.png / usdx.png           <- imágenes usadas por los README
 ├── tests/                         <- harnesses host (ver abajo)
 ├── tools/size_report.py           <- coste flash/RAM por build (+ size_log.csv)
