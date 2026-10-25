@@ -1,6 +1,7 @@
 #!/bin/bash
 # run_fw_sim.sh — simulaciones host del firmware REAL (sin hardware):
-#   cat_sim : cat.h de producción (CAT TS-480, FA/MD nunca en TX, RC;)
+#   cat_sim : cat.h de producción (CAT TS-480, FA/MD nunca en TX, RC;,
+#             comandos ampliados y EX contra la MENU[] real del .ino)
 #   cw_sim  : cw.h (keyer iámbico, mensajes CW, decoder) + PARIDAD paso a
 #             paso del decoder contra usdx-legazy (gen_cw_legacy.py)
 #   ui_sim  : display_tick()/on_rit() extraídas del .ino (prod y lab) +
@@ -19,6 +20,7 @@ rc=0
 run() { echo "== $1 =="; shift; "$@" || rc=1; }
 
 cp ../../cat.h cat_under_test.h
+python3 gen_cat_menu.py || exit 1
 $CXX -o cat_sim cat_sim.cpp || exit 1
 run "cat_sim (cat.h produccion)" ./cat_sim
 

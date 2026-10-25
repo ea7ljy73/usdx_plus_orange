@@ -38,6 +38,35 @@ sim "PRODUCCION: preenfasis de envolvente (TX EnvPre=2) con el conformador RC de
     --poke tx_envpre=2 --expect-imd3 -28 --quiet
 sim "PRODUCCION: recepcion (senal conocida en I/Q -> audio, medidor S, AGC, respuesta)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario rx --quiet
 sim "PRODUCCION: CW (boton de modo real + llave)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cw --quiet
+# CAT TS-480 por la UART real (38400 baudios, byte a byte): lo que haria un
+# cliente/Hamlib. '#' = cualquier caracter; @var=valor comprueba la RAM.
+TXPOS='IF##########################'  # 'IF' + 26: el siguiente es P8 (TX/RX)
+CAT_SCRIPT="ID;=ID020;|FA;=FA00007074000;|IF;=IF00007074000*|AG0;=AG0192;|AG0255;=@volume=16|AG0;=AG0255;"
+CAT_SCRIPT+="|AG0096;=@volume=6|SM0;=SM000##;|GT002;=@agc=2|GT;=GT002;|RA;=RA0000;|NR;=NR0;|RL04;=@nr=4|NR;=NR2;"
+CAT_SCRIPT+="|PC;=PC050;|PC100;=@drive=8|MG;=MG100;|MG050;=@mic_atten=2|KS030;=@keyer_speed=30|KS;=KS030;|VX;=VX0;"
+CAT_SCRIPT+="|FB;=FB00014074000;|FB00014200000;=|FB;=FB00014200000;|FR;=FR0;|FR1;=@vfosel=1|FA;=FA00014200000;|FT;=FT1;|FR0;=@vfosel=0|FA;=FA00007074000;|FB;=FB00014200000;" # conmutar no pisa el otro VFO
+CAT_SCRIPT+="|EX0050000;=EX00500000;|EX00500001;=@vfosel=1|FA;=FA00014200000;|EX00500000;=@vfosel=0|FA;=FA00007074000;"
+CAT_SCRIPT+="|RT;=RT0;|RU00500;=|IF;=IF0000707400000000+05001*|RD00200;=|IF;=IF0000707400000000+03001*|RC;=RC;|RT;=RT0;"
+CAT_SCRIPT+="|EX0190000;=EX01900004;|EX0300000;=EX03000000;|EX03000002;=@comp_enable=2|PR;=PR1;|EX0340000;=EX03400000;"
+CAT_SCRIPT+="|EX0250000;=EX025000027000000;|EX0400000;=?;|EX03000009;=?;|GTx;=?;|ZZ;=?;"
+CAT_SCRIPT+="|MD3;=|MD;=MD3;|MD2;=|MD;=MD2;"
+# TX por CAT: el estado lo da P8 del IF ('tx' es el latch de portadora y cae a 0
+# con el micro en silencio); en TX lo que toca RF se rechaza, FA se anota (el
+# SI5351 se programa al volver a RX, como legacy) y el volumen sigue funcionando
+CAT_SCRIPT+="|TX;=|IF;=${TXPOS}1*|EX00100003;=?;|FA00007100000;=|IF;=IF00007100000*|AG0192;=@volume=12|RX;=RX0;|IF;=IF00007100000${TXPOS#IF###########}0*"
+sim "PRODUCCION: CAT TS-480 por la UART (firmware real)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cat --quiet --cat "$CAT_SCRIPT"
+# sondeo continuo como flrig/Hamlib (FA/IF/SM/AG) con escrituras intercaladas, al
+# ritmo minimo del cliente (120 ms) y a 50 ms: ni un byte perdido ni muestras de RX
+POLL="FA;=FA00007074000;|IF;=IF00007074000*|SM0;=SM000##;|AG0;=AG0192;"
+STRESS="$POLL|FA00007075000;=|FA;=FA00007075000;|FA00007074000;=|$POLL|$POLL|GT002;=|GT;=GT002;|GT001;=|$POLL|$POLL"
+STRESS="$STRESS|$POLL|RU00100;=|IF;=IF0000707400000000+01001*|RC;=RC;|$POLL|$POLL"
+sim "PRODUCCION: CAT, sondeo continuo cada 120 ms" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cat --quiet --cat-step 0.12 --cat "$STRESS"
+sim "PRODUCCION: CAT, sondeo continuo cada 50 ms (mas rapido que el cliente)" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cat --quiet --cat-step 0.05 --cat "$STRESS"
+# persistencia: lo cambiado por CAT sobrevive al reinicio (EEPROM real del simulador)
+PERSIST="AG0080;=|GT002;=|EX03000002;=|PC025;=|EX02800003;=|FB00010120000;=|IF;=*|IF;=*|IF;=*|IF;=*|IF;=*|IF;=*"
+sim "PRODUCCION: CAT, cambios y guardado en EEPROM" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cat --quiet --cat "$PERSIST" --ee-save "$B/ee_cat.bin"
+sim "PRODUCCION: CAT, tras reiniciar con esa EEPROM" "$B"/prod/*.elf --syms "$B/prod.syms" --scenario cat --quiet --ee-load "$B/ee_cat.bin" \
+    --cat "AG0;=AG0080;@volume=5|GT;=GT002;|EX0300000;=EX03000002;|PC;=PC025;|MG;=MG025;|FB;=FB00010120000;|FA;=FA00007074000;|VX;=VX0;"
 echo "=================== PRODUCCION: mejoras de RX (AGC Start, AGC Hang, NR) medidas sobre el audio"
 if python3 -c "import numpy" 2>/dev/null; then python3 rx_mejoras.py ./usdx_avr_sim "$B"/prod/*.elf "$B/prod.syms" || rc=1
 else echo "   (omitido: falta numpy)"; fi

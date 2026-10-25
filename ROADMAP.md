@@ -1,9 +1,9 @@
 # uSDX Plus Orange — Roadmap (v2.1.0 en producción + laboratorio)
 
-## Estado actual (2026-10-15)
+## Estado actual (2026-10-25)
 
 - **Producción en la raíz**: `usdx_plus_orange.ino` + módulos, versión
-  `v2.1.0`, con CAT (`F_VER_ID` 5: reset de EEPROM al actualizar). Build: **30788 B (95 %) flash / 1188 B (58 %) RAM**,
+  `v2.1.0` + CAT TS-480 ampliado en `dev` (`F_VER_ID` 5, sin cambio de EEPROM). Build: **31964 B (99 %) flash / 1097 B (53 %) RAM**,
   0 warnings. Margen: ~1468 B flash, ~860 B RAM.
 - **Tests**: `./tests/run_all.sh --build --avr` en verde (paridad TX/RX,
   A/B AGC, menú, fw_sim, sincronía, simavr, compilación prod y lab).
@@ -98,6 +98,30 @@
     Límites: atenúa señales a <10 dB del ruido y tonos continuos a los 2–3 s.
   - −158 B de flash entre los dos cambios.
 - Build: 30780 B (95 %) flash / 1188 B (58 %) RAM.
+
+## CAT TS-480 ampliado (2026-10-25)
+
+- Nuevos (sintaxis TS-480, para flrig/Hamlib/WSJT-X y usdxcontrol): `AG0`
+  volumen, `SM0` S-meter (S9 = 15), `GT` AGC, `RA` atenuador, `NR`/`RL`, `PC`
+  potencia, `MG` micro, `PR` TX Comp, `KS` keyer, `VX` VOX, `RT`/`RU`/`RD`
+  RIT, `FB` VFO B, `FR`/`FT` (sin split) y **`EX`**: los 34 parámetros
+  numéricos del menú por su número de LCD. `IF` con RIT, TX/RX y VFO.
+- Un único mecanismo sobre `MENU[]`: rango, EEPROM y `on_change` como el menú;
+  lo que toca RF se rechaza en TX. Respuestas montadas en `CATcmd` con `F()`:
+  −91 B de RAM. +1176 B de flash en total.
+- Encontrado con `tests/avr_sim --scenario cat` (UART real):
+  - `display_tick()` reponía el cursor cada 100 ms aunque no pintase nada: cada
+    escritura de la LCD apaga la UART (pines compartidos) y se perdía ~1 % de
+    los bytes de CAT (comandos desalineados). Con `smode` 0 ya no escribe.
+  - `tx` es el latch de portadora (`CARRIER_COMPLETELY_OFF_ON_LOW`): en TX por
+    CAT cae a 0 en cada pausa de la voz, y `cat_apply()` habría tocado el
+    SI5351 con la ISR de TX activa. Ahora el estado de TX sale de `OCR2A`.
+  - El S-meter se calcula aunque `smode` sea 0 (para `SM;`).
+- Fix de paso: `on_vfosel()` (VFO A/B desde el menú) pisaba el otro VFO.
+- Fuera por flash (se pueden recuperar si se libera margen): `KY` (≈150 B),
+  `BU/BD` (≈90 B), `UP/DN` (≈110 B), `FW` (≈100 B); sus funciones se cubren con
+  `EX`/`FA`.
+- PENDIENTE HW: con el adaptador UART-USB (§7 de `HARDWARE_TEST_GUIDE.md`).
 
 ## Pendiente (en orden)
 
@@ -299,3 +323,4 @@ Regla: si algo se evalúa y no funciona o no mide mejor → revert + entrada
 | 2026-10-13 | 30938 / 1188 | — | — | — | TX Comp rehecho como recorte de envolvente (−146 B) |
 | 2026-10-13 | 30780 / 1188 | 76 (simavr) | 83 (simavr) | — | NR rehecho (suelo adaptativo) y AGC Hang sustituye a AGC Rec (−158 B) |
 | 2026-10-15 | 30788 / 1188 | — | — | — | Fix: el CQ se disparaba en `CQ Interval` en vez de `CQ Message` (índice fijo desfasado al insertar TX EnvPre); ahora por tipo `P_TEXT` + check en `tests/check_sync.py` (+8 B) |
+| 2026-10-25 | 31964 / 1097 | — | — | — | CAT TS-480 ampliado (AG/SM/GT/RA/NR/RL/PC/MG/KS/VX/PR/RT/RU/RD/FB/FR/FT + EX sobre `MENU[]`, +1176 B / −91 B RAM); LCD sin escribir con `smode` 0; TX por `OCR2A`; fix `on_vfosel`. Probado en host y simavr (UART real). PENDIENTE HW |

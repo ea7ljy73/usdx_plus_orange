@@ -162,6 +162,9 @@ las puertas del PA. Por defecto 0 (= legacy).
 1. Conecta USB-serial (38400). `FA;`/`IF;` responden. `TX;` (y también
    `TX0;`/`TX1;`/`TX2;`, como legacy) pasa a TX; `RX;` vuelve a RX (la señal
    debe oírse en el receptor).
+2. En TX, `IF;` debe dar `1` en la posición 28 **también callado** (el micro
+   en silencio apaga la portadora pero la radio sigue en TX), y `PC025;`
+   baja la potencia en el aire.
 
 ---
 
@@ -186,21 +189,39 @@ las puertas del PA. Por defecto 0 (= legacy).
 ## 7. CAT
 
 ### Prueba 9 — Control por PC
+CAT compatible **Kenwood TS-480** (flrig, Hamlib/rigctld, WSJT-X con el
+modelo TS-480). Las escrituras no responden (como el TS-480); un rechazo o un
+comando desconocido responde `?;`.
+
 ```bash
-# en terminal serie 38400 8N1:
-ID;      ->  ID020;
-FA;      ->  FA00007074000;   (frecuencia actual, 11 dígitos)
+# en terminal serie 38400 8N1 (picocom -b 38400 /dev/ttyUSB0):
+ID;             ->  ID020;
+FA;             ->  FA00007074000;   (frecuencia actual, 11 dígitos)
 FA00007050000;  ->  sintoniza a 7.050MHz
-IF;      ->  IF00007074000...  (estado TS-480, 38 caracteres)
-MD;      ->  MD2;             (modo: 1 LSB, 2 USB, 3 CW, 4 FM, 5 AM)
-MD3;     ->  pasa a CW
-TX;      ->  transmite (carga/dummy)
-RX;      ->  vuelve a RX
+IF;             ->  IF00007050000...;  (38 caracteres; pos. 28 = 1 en TX)
+MD;             ->  MD2;             (modo: 1 LSB, 2 USB, 3 CW, 4 FM, 5 AM)
+AG0;            ->  AG0192;          (volumen 12 -> 192)
+AG0080;         ->  baja el volumen a 5 (se oye)
+SM0;            ->  SM00005;         (0..30, S9 = 0015; sube con señal)
+GT;             ->  GT001;           (AGC Fast); GT002; -> Slow
+FB;             ->  FB00014074000;   (VFO B, sin conmutar)
+FR1;            ->  pasa a VFO B (pantalla con flecha B); FR0; vuelve a A
+RU00500;        ->  RIT +500 Hz (pantalla "RIT +0500"); RC; lo borra
+EX0300000;      ->  EX03000000;      (menú 30, TX Comp); EX03000001; lo pone a 1
+EX0400000;      ->  ?;               (no existe)
+TX;             ->  transmite (carga/dummy); IF; muestra '1' en la pos. 28
+RX;             ->  RX0;  vuelve a RX
 ```
-Un comando desconocido responde `?;`. Los cambios de frecuencia o modo por
-CAT durante TX se aplican al volver a RX.
+Durante TX se rechaza (`?;`) lo que toca RF (modo, banda, VFO, atenuador…);
+`FA`/`MD`/RIT se aplican al volver a RX. Volumen, potencia y micro funcionan
+también en TX. Lo cambiado por CAT se guarda en EEPROM como desde el menú:
+**apaga y enciende** y comprueba con `AG0;`, `GT;`, `EX0300000;`.
+Referencia completa de comandos y tabla `EX`: `usdxcontrol/docs`
+(`cat-extensiones-peticion.md`, `cat-generico-interprete-especificacion.md`).
 Si `ID;` no responde: verifica el baudrate (38400) y que el
 USB-serial no esté ocupado por el bootloader ("serdas").
+Con el CAT activo el S-meter de la pantalla se apaga (como legacy) para no
+escribir en la LCD, que comparte pines con la UART.
 
 ---
 
@@ -219,7 +240,7 @@ USB-serial no esté ocupado por el bootloader ("serdas").
 | 6 | AM/FM TX | Portadora/desviación presentes | ☐ |
 | 7 | Menú | Navegación completa 35 params | ☐ |
 | 8 | Persistencia | Vuelve con valores guardados tras power cycle | ☐ |
-| 9 | CAT | `ID/FA/IF/MD/TX/RX` responden | ☐ |
+| 9 | CAT | `ID/FA/IF/MD/TX/RX` + `AG/SM/GT/FB/FR/RU/EX` responden y persisten | ☐ |
 
 ---
 

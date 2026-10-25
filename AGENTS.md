@@ -36,6 +36,7 @@ usdx_plus_orange/                  <- RAIZ = producción (sketch Arduino)
 ├── usdx_filter.h                  <- filtros IIR SSB/CW
 ├── AGENTS.md / README.md / README_ES.md / ROADMAP.md
 ├── HARDWARE_TEST_GUIDE.md         <- flasheo + checks hardware (producción)
+├── GUIA_ESTACION_PC.md            <- fonía SSB desde el PC: CAT, audio, EasyEffects, SDR++ (sin probar)
 ├── RELEASE.md / RELEASE_ES.md     <- notas de release v2.x (EN/ES)
 ├── block.png / usdx.png           <- imágenes usadas por los README
 ├── tests/                         <- harnesses host (ver abajo)
@@ -94,7 +95,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 - El contrato de paridad sigue vigente: ningún cambio funcional entra sin
   su test host en verde (`parity_tx`, `parity_rx`, `ab_agc`).
-- Presupuesto: flash al 95 % (~1,4 KB libres), RAM al 58 %. Todo cambio
+- Presupuesto: flash al 99 % (~290 B libres tras el CAT ampliado), RAM al 53 %. Todo cambio
   declara su coste (`python3 tools/size_report.py --note "..."`).
 - Cambios de layout/semántica EEPROM → subir `F_VER_ID` y avisar de reset
   a fábrica (arranque con encoder pulsado).
@@ -108,7 +109,7 @@ Este es el firmware definitivo de producción (`FIRMWARE_VERSION` en
 
 ```bash
 arduino-cli compile --fqbn arduino:avr:uno .
-# Build actual: 30788B (95%) flash, 1188B (58%) RAM, 0 warnings (2026-10-15)
+# Build actual: 31964B (99%) flash, 1097B (53%) RAM, 0 warnings (2026-10-25)
 ```
 
 ## Tests de paridad (host, sin hardware)
@@ -168,9 +169,9 @@ T2 rec=4 varianza soplo <1/4, overshoot menor y sin clipping.
 
 | Test | Qué ejecuta | Qué garantiza |
 |---|---|---|
-| `tests/fw_sim/cat_sim` | `cat.h` real | Respuestas TS-480 como legacy; **FA/MD nunca tocan SI5351/LPF en TX** (se aplican en `loop()` con `cat_apply()`); `RC;` |
+| `tests/fw_sim/cat_sim` | `cat.h` real + la `MENU[]` real extraída del `.ino` (`gen_cat_menu.py`) | Respuestas TS-480 como legacy; **FA/MD/RIT nunca tocan SI5351/LPF en TX** (ni en las pausas de la voz, con `tx`=0); comandos ampliados AG/SM/GT/RA/NR/RL/PC/MG/KS/VX/PR/RT/FB/FR/FT/RU/RD/EX: escalas, rangos, `?;` sin efecto, persistencia en EEPROM, rechazo en TX de lo que toca RF |
 | `tests/fw_sim/cw_sim` | `cw.h` real (prod y lab) | Keyer A/B (1:3, huecos, swap), mensajes CW, la paleta cancela el CQ; **decoder idéntico a legacy paso a paso** (682k pasos, con QRN y jitter) |
-| `tests/fw_sim/ui_sim` | `display_tick()`/`on_rit()` extraídas del `.ino` | Texto CW con offset legacy sin pisar el medidor; RIT normalizado; invariantes de `setup()`/`loop()` (`rit=0`, `vox=0`, sin LCD ni sintonía en TX) |
+| `tests/fw_sim/ui_sim` | `display_tick()`/`on_rit()`/`on_vfosel()` extraídas del `.ino` | Texto CW con offset legacy sin pisar el medidor; con `smode` 0 (CAT) no escribe en la LCD; RIT normalizado; VFO A/B desde el menú sin pisar el otro VFO; invariantes de `setup()`/`loop()` (`rit=0`, `vox=0`, sin LCD ni sintonía en TX) |
 | `tests/fw_sim/si5351_sim` | `si5351.h` real vs clase SI5351 de legacy, sobre un modelo de registros del chip | `freq()` y `freq_calc_fast` bit-exactos; mismo tráfico I2C que legacy (bulk completo); recuperación de una escritura perdida en 1 muestra |
 | `tests/fw_sim/txamp_sim` | `ssb()` de `tx.h` vs la de legacy, **fase y amplitud** con `tx=1` y `MAX_DP` | Sin saturar: bit-exacto con legacy. Saturando (ALC de pico F3.8): IMD3 ≤ −24 dBc, PEP completa, ataque ≤ 30 ms, vuelta a paridad ≤ 8 s |
 | `tests/fw_sim/rxtx_sim` | `switch_rxtx()` de `hw.h` vs la de legacy | 76 800 conmutaciones: misma secuencia de hardware y estado final; orden PA/receptor/oscilador, rampa anti-click, Practice, Semi-QSK |
@@ -203,6 +204,12 @@ Escenarios: emisión SSB (por defecto), `--scenario rx` (señal conocida en I/Q 
 audio en OC1A: rechazo de banda lateral, AGC, respuesta, IMD, medidor S leído
 del LCD) y `--scenario cw` (botón de modo real + llave: rampas, clics, sidetone).
 El ADC es un modelo propio fiel al chip (el de simavr no vale para I/Q alternos).
+`--scenario cat` (2026-10-25) manda tramas CAT por la **UART real** a 38400
+baudios, byte a byte al ritmo de la línea (`--cat "CMD;=respuesta@var=valor|..."`,
+`--cat-step`), y comprueba respuestas, RAM y que la ISR de RX no pierde muestras;
+con `--ee-save`/`--ee-load` verifica que lo cambiado por CAT sobrevive al reinicio.
+Casos en `run_avr_sim.sh`: guion completo (65 pasos), sondeo tipo Hamlib a 120 y
+50 ms, y persistencia.
 
 Encontró lo que ningún test host podía ver: medidor S con `__builtin_clz` de
 16 bit (marcaba +60..+100 dB de más), `F_CPU` sin redefinir (timers a
@@ -231,8 +238,21 @@ tiempos I2C): eso sigue siendo la validación en hardware.
 13. **Polaridad botón**: `inv=0` (pulsado=HIGH, legacy 162).
 14. **`powerDown()`** portado; **`analogSafeRead`/`analogSampleMic`/VOX** legacy.
 15. **`do_tune`**: clamp legacy, alineación bandval, RIT en tiempo real.
+16. **VFO A/B en el menú** (2026-10-25): `on_vfosel()` volvía a conmutar tras
+    escribir el menú `vfosel` y pisaba el otro VFO; ahora como legacy 5585.
 
-> Build actual: 30788B (95%) flash, 1188B (58%) RAM, 0 warnings
+### CAT ampliado (2026-10-25, divergencias intencionales)
+
+Sobre el subconjunto legacy, comandos TS-480 estándar mapeados a `MENU[]`
+(`CAT_MAP` en `cat.h`) + `EX` genérico (nº de menú de la LCD). Diferencias con
+legacy: `AG0;` lee el volumen (legacy: eco), `RT0/1` y `VX0/1` actúan (legacy:
+eco), `RC;` reaplica el SI5351, `IF` lleva offset/estado del RIT, TX/RX y VFO,
+las escrituras no responden y se rechazan con `?;`. TX real por `OCR2A` (no por
+`tx`, que es el latch de portadora). Con `smode` 0 la LCD no se refresca en
+reposo (perdía bytes de CAT, legacy no refrescaba). Referencia de comandos en
+`usdxcontrol/docs`. Quedaron fuera por flash: `KY`, `BU/BD`, `UP/DN`, `FW`.
+
+> Build actual: 31964B (99%) flash, 1097B (53%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
 
 ## Convenciones de código

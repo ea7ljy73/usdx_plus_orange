@@ -331,13 +331,10 @@ void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band m
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
 uint8_t vfomode[2] = {USB, USB}; // como legacy 3551 (7.074 = FT8, USB)
-void    on_vfosel() { // legacy 5585-5592
-  uint8_t other   = !vfosel;
-  vfo[vfosel]     = freq; // keep slots current
-  vfomode[vfosel] = mode;
-  vfosel          = other;
-  freq            = vfo[vfosel];
-  mode            = vfomode[vfosel];
+void    on_vfosel() { // legacy 5585-5592: vfosel YA cambiado por el menú.
+  // Antes conmutaba otra vez y pisaba el otro VFO con la frecuencia del actual.
+  freq = vfo[vfosel];
+  mode = vfomode[vfosel];
   if(mode != CW)
     stepsize = STEP_1k;
   else

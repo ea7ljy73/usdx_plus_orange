@@ -22,6 +22,7 @@ extern "C" {
 #include "avr_adc.h"
 #include "avr_eeprom.h"
 #include "avr_ioport.h"
+#include "avr_uart.h"
 #include "sim_avr.h"
 #include "sim_cycle_timers.h"
 #include "sim_elf.h"
@@ -142,7 +143,23 @@ static double mic_counts(double t) {
   return opt_a1 * sin(2 * M_PI * opt_f1 * t) + opt_a2 * sin(2 * M_PI * opt_f2 * t);
 }
 static int mic_on;
-static int scenario = 0; // 0 = emision SSB, 1 = recepcion, 2 = CW
+static int scenario = 0; // 0 = emision SSB, 1 = recepcion, 2 = CW, 3 = rxt, 4 = CAT
+// escenario 4 (cat): tramas CAT por la UART REAL a 38400 baudios (byte a byte, al
+// ritmo de la linea: si el firmware tiene RXEN apagado, el byte se pierde como en
+// la placa). Cada paso: "CMD;" [ "=" respuesta esperada ] { "@" variable "=" valor };
+// en la respuesta '#' = un caracter cualquiera, '*' = el resto.
+struct CatStep { std::string cmd, exp; int has_exp; std::vector<std::pair<std::string, int>> vars; };
+static std::vector<CatStep> cat_steps;
+static std::string          uart_out;
+static double               cat_step_s = 0.25; // --cat-step: segundos entre comandos
+static void uart_tx_cb(struct avr_irq_t*, uint32_t v, void*) { uart_out += (char)v; }
+static bool cat_glob(const char* p, const char* s) {
+  for(; *p; p++, s++) {
+    if(*p == '*') return true;
+    if(!*s || (*p != '#' && *p != *s)) return false;
+  }
+  return !*s;
+}
 struct Stim { const char* name; double f, a, f2, a2; int swap; const char* poke; int pv; };
 static Stim stims[] = {
   {"tono +1000 Hz (AGC)", 1000, 60, 0, 0, 0, NULL, 0},
@@ -399,7 +416,25 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--quiet")) opt_quiet = 1;
     else if(!strcmp(argv[i], "--study")) opt_study = 1;
     else if(!strcmp(argv[i], "--dump-state")) opt_dump = 1;
-    else if(!strcmp(argv[i], "--scenario") && i + 1 < argc) { i++; scenario = !strcmp(argv[i], "rx") ? 1 : !strcmp(argv[i], "cw") ? 2 : !strcmp(argv[i], "rxt") ? 3 : 0; }
+    else if(!strcmp(argv[i], "--scenario") && i + 1 < argc) { i++; scenario = !strcmp(argv[i], "rx") ? 1 : !strcmp(argv[i], "cw") ? 2 : !strcmp(argv[i], "rxt") ? 3 : !strcmp(argv[i], "cat") ? 4 : 0; }
+    else if(!strcmp(argv[i], "--cat-step") && i + 1 < argc) cat_step_s = atof(argv[++i]);
+    else if(!strcmp(argv[i], "--cat") && i + 1 < argc) { // pasos separados por '|'
+      std::string all = argv[++i];
+      for(size_t a = 0; a < all.size();) {
+        size_t b = all.find('|', a); if(b == std::string::npos) b = all.size();
+        std::string t = all.substr(a, b - a); a = b + 1;
+        CatStep st; st.has_exp = 0;
+        size_t sc = t.find(';'); st.cmd = t.substr(0, sc + 1); t = t.substr(sc + 1);
+        size_t at = t.find('@');
+        if(!t.empty() && t[0] == '=') { st.exp = t.substr(1, at == std::string::npos ? std::string::npos : at - 1); st.has_exp = 1; }
+        while(at != std::string::npos) {
+          size_t nx = t.find('@', at + 1), eq = t.find('=', at);
+          st.vars.push_back({t.substr(at + 1, eq - at - 1), atoi(t.c_str() + eq + 1)});
+          at = nx;
+        }
+        cat_steps.push_back(st);
+      }
+    }
     else if(!strcmp(argv[i], "--expect-imd3") && i + 1 < argc) { opt_expect = atof(argv[++i]); opt_study = 1; }
     else if(!strcmp(argv[i], "--rc") && i + 1 < argc) opt_rc_us = atof(argv[++i]);
     else if(!strcmp(argv[i], "--mic") && i + 1 < argc) opt_a1 = opt_a2 = atof(argv[++i]);
@@ -428,11 +463,37 @@ int main(int argc, char** argv) {
   pin('B', 5, 1); pin('B', 4, 1); // DIT/PTT y DAH sueltos (pull-up)
   pin('C', 3, 0);                 // botones sueltos
   pin('D', 6, 1); pin('D', 7, 1); // encoder en reposo
+  avr_irq_t* uart_in = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_INPUT);
+  if(scenario == 4) {
+    uint32_t fl = 0;
+    avr_ioctl(avr, AVR_IOCTL_UART_GET_FLAGS('0'), &fl);
+    fl &= ~AVR_UART_FLAG_STDIO; // la salida va al comprobador, no a la consola
+    avr_ioctl(avr, AVR_IOCTL_UART_SET_FLAGS('0'), &fl);
+    avr_irq_register_notify(avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_OUTPUT), uart_tx_cb, NULL);
+  }
 
   const double   STIM_S = 2.3; // por estimulo: 1,2 s de asentamiento + 1,05 s de medida
   if(scenario == 1) { opt_tx = NSTIM * STIM_S; opt_tail = 0; }
   if(scenario == 2) { opt_tx = 5.2; opt_tail = 0.2; }
   if(scenario == 3) { opt_boot = 0.001; opt_tx = 0; for(auto& g : seq) opt_tx += g.dur; opt_tail = 0; }
+  const double CAT_STEP_S = cat_step_s; // por defecto 250 ms (el cliente garantiza >= 120 ms)
+  if(scenario == 4) { opt_boot = 3.0; opt_tx = cat_steps.size() * CAT_STEP_S + 0.01; opt_tail = 0; }
+  int      cat_tx_seen = 0; // CAT: estadistica de la ISR de RX solo antes del primer TX
+  int      cat_k = -1, cat_fail = 0, cat_lost = 0, rx_on = 1; uint64_t rx_off0 = 0, rx_off_sum = 0, rx_off_max = 0; long rx_off_n = 0; size_t cat_mark = 0, cat_byte = 0; uint64_t cat_next = 0;
+  const uint64_t cat_step_cyc = (uint64_t)(CAT_STEP_S * F_XTAL_MCU), cat_byte_cyc = (uint64_t)(10.0 / 38400 * F_XTAL_MCU);
+  auto cat_check = [&](int k) {
+    const CatStep& st = cat_steps[k];
+    std::string r = uart_out.substr(cat_mark);
+    int ok = !st.has_exp || cat_glob(st.exp.c_str(), r.c_str());
+    std::string bad;
+    for(auto& v : st.vars) { int x = peek_var(v.first.c_str()); if(x != (v.second & 0xff)) { ok = 0; bad += " " + v.first + "=" + std::to_string(x); } }
+    if(!ok) for(auto& d : dsyms) if(!strcmp(d.name, "CATcmd")) { // lo que el firmware tiene en el buffer
+      char cb[41]; for(int j = 0; j < 40; j++) { uint8_t c = avr->data[d.addr + j]; cb[j] = (c >= 32 && c < 127) ? c : '.'; } cb[40] = 0;
+      bad += std::string(" CATcmd=[") + cb + "] cat_ptr=" + std::to_string(peek_var("cat_ptr"));
+    }
+    printf("   CAT %-20s -> %-40s %s%s\n", st.cmd.c_str(), r.empty() ? "(sin respuesta)" : r.c_str(), ok ? "ok" : "FALLO", bad.c_str());
+    cat_fail += !ok;
+  };
   if(opt_eeload) { // EEPROM de una ejecucion anterior (+ cambios --ee dir=valor): arranque con ajustes de menu reales
     static uint8_t eb[1024]; memset(eb, 0xff, sizeof eb);
     FILE* f = fopen(opt_eeload, "rb"); if(f) { if(fread(eb, 1, sizeof eb, f) != sizeof eb) printf("   (EEPROM incompleta)\n"); fclose(f); } else printf("   (no se pudo leer %s)\n", opt_eeload);
@@ -474,7 +535,7 @@ int main(int argc, char** argv) {
     if(depth && (uint16_t)(avr->data[0x5d] | (avr->data[0x5e] << 8)) == (uint16_t)(stk[depth - 1].sp + 2)) {
       depth--;
       double per = 64.0 * (avr->data[0xb3] + 1); // OCR2A, prescaler 64
-      int    txi = scenario == 0 && t_tx_on && !t_tx_off && avr->cycle < c_rel, rxi = (stage == 0 && stk[depth].c0 >= c_rx0) || (scenario == 1 && stage == 9);
+      int    txi = scenario == 0 && t_tx_on && !t_tx_off && avr->cycle < c_rel, rxi = (stage == 0 && stk[depth].c0 >= c_rx0) || (scenario == 1 && stage == 9) || (scenario == 4 && stage == 9 && !cat_tx_seen);
       IsrStat* st = txi ? &st_tx : rxi ? &st_rx : NULL;
       if(st) { st->add(stk[depth].c0, avr->cycle - stk[depth].c0, per, depth + 1); if(!depth) st->busy += avr->cycle - busy_from; }
     }
@@ -521,6 +582,30 @@ int main(int argc, char** argv) {
       }
       stage = 9;
     }
+    if(scenario == 4) { // ventanas con el receptor UART apagado (LCD en los pines compartidos)
+      int on = avr->data[0xc1] & 0x10;
+      if(!on && rx_on) rx_off0 = avr->cycle;
+      if(on && !rx_on && rx_off0 && avr->cycle >= c_ptt) { uint64_t w = avr->cycle - rx_off0; rx_off_n++; rx_off_sum += w; if(w > rx_off_max) rx_off_max = w; }
+      rx_on = on;
+    }
+    // depuracion: CAT_WATCH=variable traza sus cambios (y la funcion que los hizo)
+    if(scenario == 4 && getenv("CAT_WATCH")) { static int wa = -2, lv = -1; static uint16_t lpc;
+      if(wa == -2) { wa = -1; for(auto& d : dsyms) if(!strcmp(d.name, getenv("CAT_WATCH"))) wa = d.addr; }
+      if(wa >= 0 && avr->data[wa] != lv) { Sym* sy = syms.empty() ? NULL : sym_at(lpc); printf("      t=%.5f %s=%d (pc anterior %s)\n", now_s(), getenv("CAT_WATCH"), avr->data[wa], sy ? sy->name : "?"); lv = avr->data[wa]; }
+      lpc = avr->pc; }
+    if(scenario == 4 && avr->cycle >= c_ptt) { // CAT por la UART
+      stage = 9;
+      if(avr->data[0xb3] > 16) cat_tx_seen = 1; // OCR2A a frecuencia de TX
+      int k = (int)((avr->cycle - c_ptt) / cat_step_cyc);
+      if(k != cat_k) {
+        if(cat_k >= 0 && cat_k < (int)cat_steps.size()) cat_check(cat_k);
+        cat_k = k; cat_mark = uart_out.size(); cat_byte = 0; cat_next = avr->cycle;
+      }
+      if(cat_k < (int)cat_steps.size() && cat_byte < cat_steps[cat_k].cmd.size() && avr->cycle >= cat_next) {
+        if(!(avr->data[0xc1] & 0x10)) { cat_lost++; printf("   (byte '%c' de %s perdido: RXEN apagado, t=%.4f s)\n", cat_steps[cat_k].cmd[cat_byte], cat_steps[cat_k].cmd.c_str(), now_s()); }
+        avr_raise_irq(uart_in, (uint8_t)cat_steps[cat_k].cmd[cat_byte++]); cat_next += cat_byte_cyc;
+      }
+    }
     if(scenario == 2 && avr->cycle >= c_ptt) { // CW
       stage = 9;
       if(!cw_ready && avr->cycle >= cw_next) {
@@ -555,6 +640,18 @@ int main(int argc, char** argv) {
   }
   if(opt_eesave) { static uint8_t eb[1024]; avr_eeprom_desc_t d = {eb, 0, sizeof eb}; avr_ioctl(avr, AVR_IOCTL_EEPROM_GET, &d);
     FILE* f = fopen(opt_eesave, "wb"); if(f) { fwrite(eb, 1, sizeof eb, f); fclose(f); } }
+  if(scenario == 4) {
+    if(cat_k >= 0 && cat_k < (int)cat_steps.size()) cat_check(cat_k);
+    printf("   CAT: %d/%d pasos ok, %d bytes perdidos con RXEN apagado\n", (int)cat_steps.size() - cat_fail, (int)cat_steps.size(), cat_lost);
+    if(st_rx.n) {
+      isr_report("ISR de RX con trafico CAT (hasta el primer TX)", st_rx);
+      // mismo criterio que el escenario RX (el anidamiento 2 es de diseno: sdr_rx_00 hace el DSP de 8 muestras)
+      if(labs(st_rx.lost()) > st_rx.expected() * 0.001) { printf("   la ISR de RX pierde muestras con CAT: FALLO\n"); cat_fail++; }
+    }
+    printf("   UART RX apagada por la LCD: %ld veces, %.1f ms en total (%.2f %% del tiempo), maximo %.0f us\n", rx_off_n,
+           rx_off_sum * 1e3 / F_XTAL_MCU, 100.0 * rx_off_sum / (double)(c_end - c_ptt), rx_off_max * 1e6 / F_XTAL_MCU);
+    return cat_fail ? 1 : 0;
+  }
   if(scenario == 3) { // audio completo a 7812,5 Hz (media de 8 muestras de 62,5 kHz), float32, para analizar fuera
     long h[320] = {0}; for(auto& e : aud) h[e.cyc % 320]++;
     long best = -1; int ph = 0;

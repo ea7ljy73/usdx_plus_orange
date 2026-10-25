@@ -1,4 +1,4 @@
-// ui_sim.cpp - simulacion host de display_tick() y on_rit() REALES (extraidas
+// ui_sim.cpp - simulacion host de display_tick(), on_rit() y on_vfosel() REALES (extraidas
 // del .ino por gen_ui.py). Verifica el decoder CW en pantalla con el esquema
 // de legacy (5180-5192) y la normalizacion del RIT.
 #include "sim_common.h"
@@ -34,6 +34,16 @@ static int16_t smeter(int16_t = 0) {
   if(smode == 4) { lcd.setCursor(14, 0); lcd.print("25"); }
   return 0;
 }
+
+// para on_vfosel() (VFO A/B)
+#define STEP_1k 5
+#define CW 2
+volatile int32_t  freq = 7074000;
+volatile uint8_t  vfosel = 0, filt = 0, nr = 0;
+int32_t           vfo[2] = {7074000, 14074000};
+uint8_t           vfomode[2] = {1, 2};
+volatile uint32_t save_event_time = 0;
+void              bandval_align() { sim_ev("BAL;"); }
 
 #include "ui_under_test.h"
 
@@ -73,6 +83,13 @@ int main() {
   semi_qsk_timeout = 0; vox_tx = 1; smeter_calls = 0; display_tick();
   CHECK(smeter_calls == 0, "U3 con VOX transmitiendo no pinta el medidor");
   vox_tx = 0;
+#if UI_PROD
+  // CAT (smode 0): se calcula el medidor (SM;) pero la LCD no se toca: cada
+  // escritura apaga la UART (pines compartidos) y perdia bytes de CAT
+  smode = 0; smeter_calls = 0; lcd.setCursor(3, 0); display_tick();
+  CHECK(smeter_calls == 1 && lcd.x == 3 && lcd.y == 0, "U5 smode=0: calcula el medidor sin escribir en la LCD");
+  smode = 1;
+#endif
 
   // RIT: el menu (P_ENUM) solo escribe el byte bajo de un int32
   rit = -500; *(uint8_t*)&rit = 1; evlog[0] = 0; on_rit();
@@ -81,6 +98,16 @@ int main() {
   CHECK(rit == 0 && stepsize == STEP_500, "U4 RIT OFF desde offset negativo queda en 0 (no -512)");
   rit = 0; *(uint8_t*)&rit = 1; on_rit();
   CHECK(rit == 1 && stepsize == STEP_10, "U4 RIT ON normal");
+
+  // VFO A/B desde el menu: edit_value() escribe vfosel y llama a on_change, y
+  // commit() lo llama otra vez. Antes on_vfosel() volvia a conmutar y pisaba
+  // el otro VFO con la frecuencia del actual.
+  mode = 1; freq = 7074000; vfosel = 1; evlog[0] = 0;
+  on_vfosel(); on_vfosel(); // edicion + confirmacion
+  CHECK(freq == 14074000 && mode == 2 && vfo[0] == 7074000 && vfo[1] == 14074000, "U6 menu VFO A->B: carga B y no pisa ningun VFO");
+  CHECK(filt == 4 && nr == 0 && HAS("VFOAP;") && save_event_time, "U6 en CW: filtro 500, NR off, reprograma y guarda");
+  vfosel = 0; on_vfosel(); on_vfosel();
+  CHECK(freq == 7074000 && mode == 1 && vfo[1] == 14074000, "U6 menu VFO B->A: vuelve a A intacto");
 
   return SUMMARY();
 }

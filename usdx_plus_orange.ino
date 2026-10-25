@@ -17,6 +17,9 @@
 #include <avr/eeprom.h>
 #include <math.h>
 
+static_assert(((F_CPU / 64) / F_SAMP_RX) - 1 <= CAT_OCR2A_RX_MAX && ((F_CPU / 64) / F_SAMP_TX) - 1 > CAT_OCR2A_RX_MAX,
+              "cat_busy() distingue TX de RX por OCR2A");
+
 SI5351 si5351;
 LCD    lcd;
 Menu   menu;
@@ -324,13 +327,11 @@ void on_band() { // legacy BAND edit (5581 + change handler 5682): recall band m
 // VFO A/B memory (legacy 3550-3553; vfosel already declared above)
 int32_t vfo[2]     = {7074000, 14074000}; // VFOA=40m, VFOB=20m (legacy defaults)
 uint8_t vfomode[2] = {USB, USB}; // como legacy 3551 (7.074 = FT8, USB)
-void    on_vfosel() { // legacy 5585-5592
-  uint8_t other   = !vfosel;
-  vfo[vfosel]     = freq; // keep slots current
-  vfomode[vfosel] = mode;
-  vfosel          = other;
-  freq            = vfo[vfosel];
-  mode            = vfomode[vfosel];
+void    on_vfosel() { // legacy 5585-5592: vfosel YA cambiado (menú o CAT FR/EX005).
+  // Antes conmutaba otra vez: desde el menú pisaba el otro VFO con la frecuencia
+  // del actual. vfo[]/vfomode[] ya van al día (do_tune, cat_apply, on_mode).
+  freq = vfo[vfosel];
+  mode = vfomode[vfosel];
   if(mode != CW)
     stepsize = STEP_1k;
   else
@@ -461,7 +462,7 @@ static int16_t sm_log20_16(uint32_t M) {
 // (%2048 loops). Ours: same structure with time-based ticks (10x100ms).
 static int16_t smeter(int16_t ref = 0) {
   max_absavg256 = max(_absavg256, max_absavg256); // peak
-  if(smode && (++smeter_cnt % 5) == 0) { // display ~2Hz: fluido sin saturar
+  if((++smeter_cnt % 5) == 0) { // ~2Hz; calcula siempre (SM; por CAT), pinta segun smode
     { // recompute dBm: integer log10 (~100 ciclos), sin el float de legacy
       uint32_t M = max_absavg256;
       if(M == 0)
@@ -610,6 +611,9 @@ void display_tick() {
     lcd.print(cw_line + ((smode == 0) ? 0 : (smode == 1) ? 7 : (smode == 3) ? 5 : 3));
   } else if(!(semi_qsk_timeout) && (!vox_tx)) {
     smeter();
+    if(!smode)
+      return; // sin medidor (CAT) no se pinta nada: cada escritura de la LCD apaga
+              // la UART (pines compartidos) y se perdian bytes de CAT (tests/avr_sim)
   }
   if(menu.state == MENU_MAIN) { // smeter() apaga el cursor: reponerlo (display_vfo parity)
     lcd.setCursor(stepsize + 1, 1);

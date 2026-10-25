@@ -19,9 +19,9 @@ def func(sig):
         k += 1
     return src[i:k + 1]
 
-body = {n: func(s) for n, s in (('display_tick', 'void display_tick()'), ('on_rit', 'void on_rit()'),
+body = {n: func(s) for n, s in (('display_tick', 'void display_tick()'), ('on_rit', 'void on_rit()'), ('on_vfosel', 'void    on_vfosel()'),
                                  ('setup', 'void setup()'), ('loop', 'void loop()'))}
-open('ui_under_test.h', 'w').write('// GENERADO por gen_ui.py desde %s - NO editar.\n%s\n\n%s\n' % (path, body['on_rit'], body['display_tick']))
+open('ui_under_test.h', 'w').write('// GENERADO por gen_ui.py desde %s - NO editar.\n#define UI_PROD %d\n%s\n\n%s\n\n%s\n' % (path, target == 'prod', body['on_rit'], body['on_vfosel'], body['display_tick']))
 
 fails = 0
 def lint(ok, name):
