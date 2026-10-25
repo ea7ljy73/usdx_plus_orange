@@ -60,6 +60,18 @@ TX `ssb()` es bit-exacto respecto a legacy; core RX, filtros y AGC dan 0 mismatc
 
 ### TX (voz SSB)
 
+**Configuración aconsejable de partida** (probada en el aire en 40 m LSB el
+2026-10-18, escuchada en SDR: banda lateral correcta, portadora suprimida, sin
+tonos y canal limpio por encima de 2,7 kHz):
+
+`TX Drive 4` · `Mic Atten 0` · `TX Comp 1` · `TX LoCut 2` · `TX EnvPre 0` ·
+`DIGI Mode OFF` · `VOX OFF` (usar PTT) · `PA Bias` de fábrica (0 / 128)
+
+Subir a `TX Comp 2` solo para DX si la voz no suena áspera, y `TX Drive` por
+encima de 4 solo con ROE comprobada (< 1,5) y vigilando la temperatura del PA.
+Pendiente de medir: potencia media con vatímetro, banda opuesta/salpicadura (IQ)
+y `TX EnvPre` con dos tonos.
+
 | Menú | Valor | Beneficio |
 |------|-------|-----------|
 | 20 TX Drive | 4–6 | ~5W PEP; empezar bajo y subir viendo SWR |

@@ -60,6 +60,18 @@ TX `ssb()` is bit-exact vs legacy; RX core, filters and AGC report 0 mismatches 
 
 ### TX (SSB voice)
 
+**Suggested starting configuration** (tested on air on 40 m LSB on 2026-10-18,
+monitored on an SDR: correct sideband, carrier suppressed, no tones and a clean
+channel above 2.7 kHz):
+
+`TX Drive 4` · `Mic Atten 0` · `TX Comp 1` · `TX LoCut 2` · `TX EnvPre 0` ·
+`DIGI Mode OFF` · `VOX OFF` (use PTT) · `PA Bias` factory (0 / 128)
+
+Go to `TX Comp 2` only for DX if the voice does not sound harsh, and raise
+`TX Drive` above 4 only with a checked SWR (< 1.5) while watching PA temperature.
+Still to be measured: average power with a wattmeter, opposite sideband/splatter
+(IQ) and `TX EnvPre` with a two-tone test.
+
 | Menu | Value | Benefit |
 |------|-------|---------|
 | 20 TX Drive | 4–6 | ~5W PEP; start low, raise while watching SWR |
