@@ -51,7 +51,7 @@ Si el lfuse muestra CKDIV8 activo (no 0xFE/0xFF con div activo), escribe
 ## 3. Arranque — qué esperar
 
 1. **LCD**: durante ~300 ms muestra `uSDX` + logo en la línea 1 y la versión
-   (`v2.1.0`) en la línea 2. Después, la pantalla principal: línea 1 con
+   (`v2.2.0`) en la línea 2. Después, la pantalla principal: línea 1 con
    `uSDX` + logo y el S-meter (por defecto en dBm), línea 2 con la flecha de
    VFO, la frecuencia y el modo (`7,074,000 USB`) y una `R` (RX) o `V` (VOX)
    en la última columna.
@@ -216,8 +216,7 @@ Durante TX se rechaza (`?;`) lo que toca RF (modo, banda, VFO, atenuador…);
 `FA`/`MD`/RIT se aplican al volver a RX. Volumen, potencia y micro funcionan
 también en TX. Lo cambiado por CAT se guarda en EEPROM como desde el menú:
 **apaga y enciende** y comprueba con `AG0;`, `GT;`, `EX0300000;`.
-Referencia completa de comandos y tabla `EX`: `usdxcontrol/docs`
-(`cat-extensiones-peticion.md`, `cat-generico-interprete-especificacion.md`).
+Referencia completa de comandos y tabla `EX`: [`CAT.md`](CAT.md).
 Si `ID;` no responde: verifica el baudrate (38400) y que el
 USB-serial no esté ocupado por el bootloader ("serdas").
 Con el CAT activo el S-meter de la pantalla se apaga (como legacy) para no
@@ -229,7 +228,7 @@ escribir en la LCD, que comparte pines con la UART.
 
 | # | Prueba | Resultado esperado | OK? |
 |---|---|---|---|
-| 1 | Arranque LCD | `uSDX` + `v2.1.0` → `7,074,000 USB` + S-meter | ☐ |
+| 1 | Arranque LCD | `uSDX` + `v2.2.0` → `7,074,000 USB` + S-meter | ☐ |
 | 2 | Ruido RX | S-meter >0, audio de ruido al sintonizar | ☐ |
 | 3 | Filtros/AGC/NR | Audio cambia con el menú | ☐ |
 | 3b | AGC Start / AGC Hang / NR | Sin bombeo, ruido baja en pausas, voz intacta | ☐ |

@@ -12,7 +12,7 @@ pantallas). La radio de producción NO se usa para probar.
 
 ## 1. Arranque
 
-1. Encender. Debe mostrar `v2.1.0-lab` en la línea 2.
+1. Encender. Debe mostrar `v2.2.0-lab` en la línea 2.
 2. Primera vez: resetea EEPROM solo (magia propia, no toca producción).
 3. Menú (botón L) → las dos últimas filas, `Eng ADC` y `Eng Audio` (ON/OFF
    cada una; si las dos están en ON manda AUDIO).
@@ -71,8 +71,8 @@ Pantalla: `AU R<rms> P<peak>` / `DC<±> CR<crest x10> CL<clips>`.
 
 ## 6. Separación lab/producción
 
-1. Flashear producción, comprobar que arranca con SUS ajustes (v2.1.0).
-2. Volver a flashear lab, comprobar `v2.1.0-lab` y sus ajustes propios.
+1. Flashear producción, comprobar que arranca con SUS ajustes (v2.2.0).
+2. Volver a flashear lab, comprobar `v2.2.0-lab` y sus ajustes propios.
 
 - [ ] PASS: cada firmware conserva sus ajustes (magias EEPROM distintas)
 

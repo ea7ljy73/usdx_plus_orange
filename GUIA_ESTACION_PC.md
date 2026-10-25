@@ -5,7 +5,8 @@ y TX por una tarjeta de sonido USB, procesado de voz en el PC y cascada ancha
 con un SDR externo como panadaptador.
 
 > **Estado: sin probar en hardware.** Esta guía describe el montaje previsto;
-> no requiere cambios de firmware (v2.1.0 de producción tal cual). Valida cada
+> funciona con la v2.1.0; con la v2.2.0 flrig además lee el S-meter y maneja
+> volumen, AGC, potencia y micro por CAT. Valida cada
 > paso en orden y no transmitas hasta que la recepción y el CAT funcionen.
 > TX siempre con antena de ROE baja (< 1,5) o carga de 50 Ω.
 
@@ -79,7 +80,7 @@ Comandos (TS-480): `FA` `FB` `FR`/`FT` `IF` `MD` `TX`/`TX0-2` `RX` `RT`
 `NR`/`RL` `PC` (potencia) `MG` (micro) `PR` (TX Comp) `KS` (keyer) `VX`
 (VOX) y `EX` (cualquier parámetro del menú por su número), más `ID` `PS` `AI`
 `XT1` `FL0` `RS`. Lo desconocido o fuera de rango responde `?;`. Sin split
-(`FT` = `FR`). Referencia: `usdxcontrol/docs/cat-extensiones-peticion.md`.
+(`FT` = `FR`). Referencia: [`CAT.md`](CAT.md).
 
 En Linux, si el puerto da *permiso denegado*:
 `sudo usermod -aG dialout $USER` y vuelve a iniciar sesión.

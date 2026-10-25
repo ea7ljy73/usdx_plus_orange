@@ -1,9 +1,9 @@
-# uSDX Plus Orange — Roadmap (v2.1.0 en producción + laboratorio)
+# uSDX Plus Orange — Roadmap (v2.2.0 en producción + laboratorio)
 
 ## Estado actual (2026-10-25)
 
 - **Producción en la raíz**: `usdx_plus_orange.ino` + módulos, versión
-  `v2.1.0` + CAT TS-480 ampliado en `dev` (`F_VER_ID` 5, sin cambio de EEPROM). Build: **31964 B (99 %) flash / 1097 B (53 %) RAM**,
+  `v2.2.0` (v2.1.0 + CAT TS-480 ampliado; `F_VER_ID` 5, sin cambio de EEPROM: se conservan los ajustes). Build: **31964 B (99 %) flash / 1097 B (53 %) RAM**,
   0 warnings. Margen: ~1468 B flash, ~860 B RAM.
 - **Tests**: `./tests/run_all.sh --build --avr` en verde (paridad TX/RX,
   A/B AGC, menú, fw_sim, sincronía, simavr, compilación prod y lab).

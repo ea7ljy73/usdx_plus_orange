@@ -9,7 +9,7 @@ reintroducir mejoras.
 
 | Ruta | Qué es | Reglas |
 |---|---|---|
-| Raíz (`usdx_plus_orange.ino` + `.h`) | **Producción**: firmware definitivo v2.1.0, con CAT | NO tocar sin tests en verde; ver `## Producción` |
+| Raíz (`usdx_plus_orange.ino` + `.h`) | **Producción**: firmware definitivo v2.2.0, con CAT TS-480 ampliado | NO tocar sin tests en verde; ver `## Producción` |
 | `usdx-lab/` | **Laboratorio**: copia + instrumentación (`eng_lab.h`), SIN CAT | Sketch autocontenido; ver `## Laboratorio` |
 | `usdx-legazy/` | Referencia de solo lectura (fuente de verdad de paridad) | Nunca se modifica ni se elimina |
 | `tests/` + `tools/` | Harnesses host y control de tamaño | Compartidos; el lab no los duplica |
@@ -35,6 +35,7 @@ usdx_plus_orange/                  <- RAIZ = producción (sketch Arduino)
 ├── perf.h                         <- medidor CPU (flag PERF_METER, coste 0 sin él)
 ├── usdx_filter.h                  <- filtros IIR SSB/CW
 ├── AGENTS.md / README.md / README_ES.md / ROADMAP.md
+├── CAT.md                         <- referencia CAT TS-480: comandos, tabla EX, implementación, pruebas
 ├── HARDWARE_TEST_GUIDE.md         <- flasheo + checks hardware (producción)
 ├── GUIA_ESTACION_PC.md            <- fonía SSB desde el PC: CAT, audio, EasyEffects, SDR++ (sin probar)
 ├── RELEASE.md / RELEASE_ES.md     <- notas de release v2.x (EN/ES)
@@ -69,7 +70,7 @@ tools/            size_report.py + size_log.csv
 - Sketch propio (`usdx-lab/usdx-lab.ino`): se compila desde su carpeta
   (`cd usdx-lab && arduino-cli compile --fqbn arduino:avr:uno .`).
 - Es una **copia** de producción con `eng_lab.h` (monitor ADC/audio) y sin
-  `cat.h` (la serie queda libre). Versión `v2.1.0-lab` y `F_VER_ID` propio:
+  `cat.h` (la serie queda libre). Versión `v2.2.0-lab` y `F_VER_ID` propio:
   no comparte EEPROM con producción.
 - Regla de sincronía: al cambiar producción, copiar a mano los `.h`
   afectados (salvo `usdx_settings.h`: mantener versión/magia lab).
@@ -249,8 +250,8 @@ legacy: `AG0;` lee el volumen (legacy: eco), `RT0/1` y `VX0/1` actúan (legacy:
 eco), `RC;` reaplica el SI5351, `IF` lleva offset/estado del RIT, TX/RX y VFO,
 las escrituras no responden y se rechazan con `?;`. TX real por `OCR2A` (no por
 `tx`, que es el latch de portadora). Con `smode` 0 la LCD no se refresca en
-reposo (perdía bytes de CAT, legacy no refrescaba). Referencia de comandos en
-`usdxcontrol/docs`. Quedaron fuera por flash: `KY`, `BU/BD`, `UP/DN`, `FW`.
+reposo (perdía bytes de CAT, legacy no refrescaba). Referencia completa
+(comandos, tabla `EX`, implementación y pruebas): `CAT.md`. Quedaron fuera por flash: `KY`, `BU/BD`, `UP/DN`, `FW`.
 
 > Build actual: 31964B (99%) flash, 1097B (53%) RAM, 0 warnings
 > (ver log de medidas en ROADMAP.md). Pendiente: validación en hardware.
@@ -284,7 +285,7 @@ en banco; ver `tests/menu_sim/`).
 | `rx.h` | CIC, Hilbert, demod, AGC, NR, slow_dsp, process |
 | `tx.h` | ssb(), dsp_tx_*_, LUT, VOX |
 | `cw.h` | Keyer Iambic A/B, decoder, tonos |
-| `cat.h` | CAT TS-480 |
+| `cat.h` | CAT TS-480 (referencia en `CAT.md`) |
 | `vfo.h` | VFO A/B, band memory (EEPROM) |
 | `menu.h` | Menú declarativo (tabla PROGMEM + callbacks) |
 | `display.h` | LCD HD44780 + encoder PCINT + CGRAM |

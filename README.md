@@ -1,6 +1,6 @@
 # uSDX Plus Orange: micro Software Defined Transceiver
 
-**Firmware:** modular production release `v2.1.0` (single sketch in the project root) — strict parity with the legacy reference firmware it was rebuilt from (see `AGENTS.md`).
+**Firmware:** modular production release `v2.2.0` (single sketch in the project root) — strict parity with the legacy reference firmware it was rebuilt from (see `AGENTS.md`).
 
 **uSDX Plus Orange** is a modular rebuild of the uSDX firmware (PE1NNZ original, GW8RDI WhiteButtons lineage), maintained by **EA7LJY**. QRP SSB/CW/AM/FM transceiver on ATMEGA328P (2KB RAM, 32KB flash) with class-E EER transmit stage (~5W PEP) and SDR receiver (Tayloe detector + Hilbert transform).
 
@@ -146,7 +146,7 @@ For SSB voice connect an electret mic to the paddle jack (DOT = PTT, DASH = audi
 - Bit-exact parity with the verified legacy reference (see tests above)
 - Menu-switchable improvements, all defaulting to legacy behavior: mic attenuator, DIGI flat path, envelope-clipping speech processor (TX Comp), TX low-cut, TX envelope pre-emphasis (TX EnvPre), NR noise gate, AGC fast-start / anti-pumping hang / Slow (M0PUB) mode
 - Always on (bit-exact or measured better than legacy): fixed-point S-meter, fast exact SI5351 calc, peak TX ALC, directional band change
-- Full CAT TS-480 subset, VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
+- TS-480 compatible CAT (frequency, mode, VFO A/B, RIT, volume, S-meter, AGC, NR, attenuator, power, mic, keyer, VOX and `EX` for any menu parameter; see [`CAT.md`](CAT.md), in Spanish), VFO A/B + RIT/Split, Iambic-A/B/Straight keyer + CW decoder + CQ messages, procedural menu with EEPROM persistence
 
 Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUIDE.md` + `usdx-lab/GUIA_TEST_HW.md`.
 
@@ -158,6 +158,7 @@ Details and measurements: `ROADMAP.md`. Hardware validation: `HARDWARE_TEST_GUID
 |------|------|----------|
 | v2.0.0 | 2026-09-15 | Modular production release at project root (parity-verified); `usdx-lab/` instrumented copy for hardware tests. |
 | v2.1.0 | 2026-10-15 | Fixes found with the AVR simulator (`F_CPU`/timers, S-meter, PB3, TX ISR load); TX Comp, NR and AGC Hang redone and measured; new TX EnvPre; CQ Message trigger fixed. **EEPROM resets to factory defaults on first boot.** |
+| v2.2.0 | 2026-10-25 | Extended TS-480 CAT: volume (`AG0`), S-meter (`SM0`), AGC, attenuator, NR, power, mic, keyer, VOX, RIT (`RT/RU/RD`), VFO B (`FB/FR`) and `EX` for any menu parameter; `IF` with RIT/TX/VFO. Fixed: CAT bytes lost to the LCD, CAT TX during voice pauses and menu VFO A/B (overwrote the other VFO). **Keeps v2.1.0 settings.** Hardware validation pending. |
 
 Lineage: PE1NNZ original uSDX → GW8RDI WhiteButtons → modular parity rebuild (this firmware).
 

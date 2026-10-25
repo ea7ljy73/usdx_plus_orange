@@ -11,7 +11,7 @@ libre para futuras mediciones. Producción no se toca para probar.
 
 - **Sin CAT** (`cat.h` eliminado): la serie queda libre para laboratorio.
   A cambio se define `cat_active = 0` fijo (lo exigen `display.h`/`hw.h`).
-- **Versión y EEPROM propias**: `FIRMWARE_VERSION "v2.1.0-lab"` (visible en
+- **Versión y EEPROM propias**: `FIRMWARE_VERSION "v2.2.0-lab"` (visible en
   el arranque) y `F_VER_ID` distinto → no comparte ajustes con producción.
 - **Menú Engineer** (dos filas ON/OFF independientes, eslots 35/36):
   "Eng ADC" y "Eng Audio". Si ambas están on, manda AUDIO.
